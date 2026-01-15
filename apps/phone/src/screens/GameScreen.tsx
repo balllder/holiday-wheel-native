@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import Svg, { Path, G, Text as SvgText } from 'react-native-svg';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import {
@@ -41,8 +42,63 @@ export function GameScreen({ route, navigation }: GameScreenProps): React.JSX.El
   const activeIdx = useGameStore((state) => state.activeIdx);
   const myPlayerIdx = useGameStore((state) => state.myPlayerIdx);
   const currentWedge = useGameStore((state) => state.currentWedge);
+  const wheelSlots = useGameStore((state) => state.wheelSlots);
+  const lastSpinIdx = useGameStore((state) => state.lastSpinIndex);
   const isMyTurn = useGameStore(selectIsMyTurn);
   const canBuzz = useGameStore(selectCanBuzz);
+
+  // Wheel rotation state
+  const [wheelRotation, setWheelRotation] = useState(0);
+  const prevSpinIdx = useRef<number | null>(null);
+  const animationRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Animate wheel when spin index changes
+  useEffect(() => {
+    if (lastSpinIdx !== null && lastSpinIdx !== prevSpinIdx.current && wheelSlots.length > 0) {
+      prevSpinIdx.current = lastSpinIdx;
+
+      // Calculate target rotation - center the slot under the pointer
+      const anglePerSlot = 360 / wheelSlots.length;
+      // Add half a slot width to center the slot under the pointer
+      const targetSlotAngle = lastSpinIdx * anglePerSlot + anglePerSlot / 2;
+      const spins = 3;
+      const targetRotation = wheelRotation + spins * 360 + (360 - targetSlotAngle - (wheelRotation % 360));
+
+      // Clear any existing animation
+      if (animationRef.current) {
+        clearInterval(animationRef.current);
+      }
+
+      // Animate using setInterval
+      const startRotation = wheelRotation;
+      const totalDelta = targetRotation - startRotation;
+      const duration = 2500;
+      const startTime = Date.now();
+
+      animationRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        // Ease out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const currentRotation = startRotation + totalDelta * eased;
+
+        setWheelRotation(currentRotation);
+
+        if (progress >= 1) {
+          if (animationRef.current) {
+            clearInterval(animationRef.current);
+            animationRef.current = null;
+          }
+        }
+      }, 16);
+    }
+
+    return () => {
+      if (animationRef.current) {
+        clearInterval(animationRef.current);
+      }
+    };
+  }, [lastSpinIdx, wheelSlots.length]);
 
   useEffect(() => {
     // Connect to socket
@@ -94,30 +150,205 @@ export function GameScreen({ route, navigation }: GameScreenProps): React.JSX.El
     socketService.buzz(room);
   };
 
-  // Build puzzle display
+  // Wheel colors matching the TV show
+  const WHEEL_COLORS = [
+    '#c41e3a', '#0047ab', '#ff8c00', '#ffcc00', '#9932cc', '#ff1493',
+    '#008b8b', '#dc143c', '#4169e1', '#ff4500', '#32cd32', '#9400d3',
+    '#ff69b4', '#1e90ff', '#ffd700', '#00ced1', '#ff6347', '#8a2be2',
+  ];
+
+  const renderWheel = () => {
+    if (wheelSlots.length === 0) return null;
+
+    const size = 300;
+    const radius = size / 2 - 5;
+    const centerX = size / 2;
+    const centerY = size / 2;
+
+    const getWedgeLabel = (slot: any): string => {
+      if (typeof slot === 'number') return `$${slot}`;
+      if (typeof slot === 'string') return slot;
+      if (slot?.type === 'PRIZE') return slot.name || 'PRIZE';
+      if (slot?.type) return slot.type;
+      return '';
+    };
+
+    const elements: React.ReactElement[] = [];
+
+    wheelSlots.forEach((slot, idx) => {
+      const anglePerSlot = 360 / wheelSlots.length;
+      const startAngle = idx * anglePerSlot - 90;
+      const endAngle = startAngle + anglePerSlot;
+      const startRad = (startAngle * Math.PI) / 180;
+      const endRad = (endAngle * Math.PI) / 180;
+
+      const x1 = centerX + radius * Math.cos(startRad);
+      const y1 = centerY + radius * Math.sin(startRad);
+      const x2 = centerX + radius * Math.cos(endRad);
+      const y2 = centerY + radius * Math.sin(endRad);
+
+      const largeArc = anglePerSlot > 180 ? 1 : 0;
+      const pathD = `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+
+      const color = WHEEL_COLORS[idx % WHEEL_COLORS.length];
+      const label = getWedgeLabel(slot);
+      const isBankrupt = label === 'BANKRUPT';
+      const isLoseTurn = label === 'LOSE A TURN';
+
+      // Add wedge path
+      elements.push(
+        <Path
+          key={`wedge-${idx}`}
+          d={pathD}
+          fill={isBankrupt ? '#000' : isLoseTurn ? '#fff' : color}
+          stroke="#222"
+          strokeWidth={1}
+        />
+      );
+
+      // Add text label - position near outer edge where wedge is wider
+      const midAngle = (startAngle + endAngle) / 2;
+      const midRad = (midAngle * Math.PI) / 180;
+      const textRadius = radius * 0.78;
+      const textX = centerX + textRadius * Math.cos(midRad);
+      const textY = centerY + textRadius * Math.sin(midRad);
+
+      // Rotate text to read outward from center, flip if on left side of wheel
+      // Normalize angle to 0-360 range
+      const normalizedAngle = ((midAngle % 360) + 360) % 360;
+      let rotation = midAngle;
+      // Flip text on left side of wheel (90 to 270 degrees) so it's not upside down
+      if (normalizedAngle > 90 && normalizedAngle < 270) {
+        rotation = midAngle + 180;
+      }
+
+      // Use full labels with smaller font for longer text
+      const displayLabel = label;
+      const textColor = isBankrupt ? '#fff' : isLoseTurn ? '#000' : '#000';
+      const fontSize = label.length > 8 ? 6 : label.length > 5 ? 7 : 9;
+
+      elements.push(
+        <SvgText
+          key={`text-${idx}`}
+          x={textX}
+          y={textY}
+          fill={textColor}
+          fontSize={fontSize}
+          fontWeight="bold"
+          textAnchor="middle"
+          alignmentBaseline="middle"
+          transform={`rotate(${rotation}, ${textX}, ${textY})`}
+        >
+          {displayLabel}
+        </SvgText>
+      );
+    });
+
+    return (
+      <View style={styles.wheelContainer}>
+        <View style={styles.wheelPointer} />
+        <View
+          style={{
+            width: size,
+            height: size,
+            transform: [{ rotate: `${wheelRotation}deg` }],
+          }}
+        >
+          <Svg width={size} height={size}>
+            {elements}
+          </Svg>
+        </View>
+      </View>
+    );
+  };
+
+  // Build puzzle display - split into rows like the real Wheel of Fortune board
   const renderPuzzleBoard = () => {
-    const answer = puzzle.answer || '';
+    const answer = (puzzle.answer || '').toUpperCase();
+    const ROW_WIDTHS = [12, 14, 14, 12];
+    const BOARD_ROWS = 4;
+
+    // Word-wrap algorithm matching the web version
+    const wrapWordsToLines = (text: string): string[] => {
+      const words = text.split(/\s+/).filter(w => w);
+      const lines: string[] = [];
+      let lineIdx = 0;
+      let cur = '';
+
+      for (const w of words) {
+        const maxW = ROW_WIDTHS[Math.min(lineIdx, BOARD_ROWS - 1)];
+        if (!cur) {
+          cur = w;
+          continue;
+        }
+        if (cur.length + 1 + w.length <= maxW) {
+          cur = cur + ' ' + w;
+        } else {
+          lines.push(cur);
+          lineIdx++;
+          cur = w;
+        }
+      }
+      if (cur) lines.push(cur);
+
+      // Ensure we have exactly BOARD_ROWS lines
+      while (lines.length < BOARD_ROWS) lines.push('');
+      while (lines.length > BOARD_ROWS) {
+        const last = lines.pop()!;
+        const maxW = ROW_WIDTHS[BOARD_ROWS - 1];
+        lines[lines.length - 1] = (lines[lines.length - 1] + ' ' + last).slice(0, maxW);
+      }
+
+      return lines.map((l, i) => {
+        const maxW = ROW_WIDTHS[i];
+        return l.length > maxW ? l.slice(0, maxW) : l;
+      });
+    };
+
+    // Layout lines into grid with centering
+    const lines = wrapWordsToLines(answer);
+    const grid: (string | null)[][] = [];
+
+    for (let r = 0; r < BOARD_ROWS; r++) {
+      const rowWidth = ROW_WIDTHS[r];
+      const line = lines[r];
+      const row: (string | null)[] = Array(rowWidth).fill(null);
+      const padLeft = Math.max(0, Math.floor((rowWidth - line.length) / 2));
+      for (let i = 0; i < line.length && padLeft + i < rowWidth; i++) {
+        row[padLeft + i] = line[i];
+      }
+      grid.push(row);
+    }
+
     return (
       <View style={styles.puzzleBoard}>
         <Text style={styles.category}>{puzzle.category || 'Loading...'}</Text>
-        <View style={styles.puzzleGrid}>
-          {answer.split('').map((char, idx) => {
-            const isLetter = /[A-Z]/i.test(char);
-            const isRevealed = isLetter && revealed.has(char.toUpperCase());
-            return (
-              <View
-                key={idx}
-                style={[
-                  styles.puzzleCell,
-                  !isLetter && styles.emptyCell,
-                  isLetter && !isRevealed && styles.hiddenCell,
-                ]}
-              >
-                {isRevealed && <Text style={styles.puzzleLetter}>{char.toUpperCase()}</Text>}
-              </View>
-            );
-          })}
-        </View>
+        {grid.map((row, rowIdx) => (
+          <View key={rowIdx} style={styles.puzzleRow}>
+            {row.map((char, idx) => {
+              const isLetter = char !== null && /[A-Z]/i.test(char);
+              const isSpace = char === ' ';
+              const isRevealed = isLetter && revealed.has(char!.toUpperCase());
+              const isEmpty = char === null;
+
+              return (
+                <View
+                  key={idx}
+                  style={[
+                    styles.puzzleCell,
+                    (isEmpty || isSpace) && styles.emptyCell,
+                    isLetter && !isRevealed && styles.hiddenCell,
+                  ]}
+                >
+                  {isRevealed && <Text style={styles.puzzleLetter}>{char}</Text>}
+                  {char && !isLetter && !isSpace && (
+                    <Text style={styles.puzzleLetter}>{char}</Text>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        ))}
       </View>
     );
   };
@@ -151,6 +382,9 @@ export function GameScreen({ route, navigation }: GameScreenProps): React.JSX.El
         </Text>
         <Text style={styles.phaseText}>{phase.toUpperCase()}</Text>
       </View>
+
+      {/* Wheel */}
+      {renderWheel()}
 
       {/* Puzzle Board */}
       {renderPuzzleBoard()}
@@ -266,6 +500,24 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 14,
   },
+  wheelContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+    position: 'relative',
+  },
+  wheelPointer: {
+    position: 'absolute',
+    top: -10,
+    zIndex: 10,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 12,
+    borderRightWidth: 12,
+    borderTopWidth: 20,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#d4af37',
+  },
   puzzleBoard: {
     backgroundColor: '#1a5cb8',
     borderRadius: 8,
@@ -281,15 +533,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
   },
-  puzzleGrid: {
+  puzzleRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'center',
+    marginVertical: 2,
   },
   puzzleCell: {
-    width: 28,
-    height: 34,
-    margin: 2,
+    width: 22,
+    height: 28,
+    marginHorizontal: 1,
     borderRadius: 3,
     justifyContent: 'center',
     alignItems: 'center',
@@ -302,7 +554,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   puzzleLetter: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#1a1a2e',
   },
