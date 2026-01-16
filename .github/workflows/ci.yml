@@ -59,6 +59,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup Hermes compiler
+        run: |
+          cd node_modules/react-native/sdks/hermesc/linux64-bin
+          chmod +x hermesc
+          ls -la
+
       - name: Build Android APK (Phone)
         run: |
           cd apps/phone/android
