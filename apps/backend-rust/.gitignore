@@ -1,0 +1,12 @@
+# Rust build artifacts
+/target/
+
+# Environment files
+.env
+
+# IDE
+.idea/
+*.iml
+
+# Database files (local)
+*.db
