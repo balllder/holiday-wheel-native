@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -14,10 +14,9 @@ import {
   useGameStore,
   useAuthStore,
   socketService,
-  selectActivePlayer,
   ROW_WIDTHS,
 } from '@holiday-wheel/shared';
-import type { Player, WedgeValue } from '@holiday-wheel/shared';
+import type { WedgeValue } from '@holiday-wheel/shared';
 import type { TVStackParamList } from '../navigation/TVNavigator';
 
 type TVGameScreenProps = {
@@ -28,7 +27,7 @@ type TVGameScreenProps = {
 const API_URL = 'http://192.168.1.100:5000';
 const HOST_CODE = 'holiday'; // Default host code
 
-export function TVGameScreen({ route, navigation }: TVGameScreenProps): React.JSX.Element {
+export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
   const { room } = route.params;
   const [controlsVisible, setControlsVisible] = useState(false);
   const [focusedControl, setFocusedControl] = useState(0);
@@ -42,7 +41,6 @@ export function TVGameScreen({ route, navigation }: TVGameScreenProps): React.JS
   const activeIdx = useGameStore((state) => state.activeIdx);
   const currentWedge = useGameStore((state) => state.currentWedge);
   const isHost = useGameStore((state) => state.isHost);
-  const activePlayer = useGameStore(selectActivePlayer);
 
   // Handle TV remote events
   useTVEventHandler((evt) => {

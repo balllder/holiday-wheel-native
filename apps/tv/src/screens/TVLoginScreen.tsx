@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   TVFocusGuideView,
-  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore, authService } from '@holiday-wheel/shared';

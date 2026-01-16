@@ -8,7 +8,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import Svg, { Path, G, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import {
@@ -28,7 +28,7 @@ type GameScreenProps = {
 
 const API_URL = 'http://10.0.2.2:5000';
 
-export function GameScreen({ route, navigation }: GameScreenProps): React.JSX.Element {
+export function GameScreen({ route }: GameScreenProps): React.JSX.Element {
   const { room } = route.params;
   const [letterInput, setLetterInput] = useState('');
   const [solveInput, setSolveInput] = useState('');
@@ -98,6 +98,7 @@ export function GameScreen({ route, navigation }: GameScreenProps): React.JSX.El
         clearInterval(animationRef.current);
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastSpinIdx, wheelSlots.length]);
 
   useEffect(() => {
