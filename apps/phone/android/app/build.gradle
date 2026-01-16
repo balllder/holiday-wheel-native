@@ -1,3 +1,5 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
@@ -45,7 +47,14 @@ react {
 
     /* Hermes Commands */
     //   The hermes compiler command to run. By default it is 'hermesc'
-    // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
+    def hermescPath = "../../../../node_modules/react-native/sdks/hermesc/%OS-BIN%/hermesc"
+    if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+        hermesCommand = file(hermescPath.replace("%OS-BIN%", "win64-bin")).absolutePath
+    } else if (Os.isFamily(Os.FAMILY_MAC)) {
+        hermesCommand = file(hermescPath.replace("%OS-BIN%", "osx-bin")).absolutePath
+    } else {
+        hermesCommand = file(hermescPath.replace("%OS-BIN%", "linux64-bin")).absolutePath
+    }
     //
     //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
     // hermesFlags = ["-O", "-output-source-map"]
