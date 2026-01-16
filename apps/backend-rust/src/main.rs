@@ -9,15 +9,18 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod auth;
 mod db;
+mod email;
 mod game;
 mod routes;
 
+use email::EmailService;
 use game::GameManager;
 
 /// Application state shared across handlers
 pub struct AppState {
     pub game_manager: RwLock<GameManager>,
     pub db: db::Database,
+    pub email: EmailService,
 }
 
 #[tokio::main]
@@ -40,6 +43,13 @@ async fn main() -> anyhow::Result<()> {
     let db = db::Database::new(&db_path).await?;
     info!("Connected to database: {}", db_path);
 
+    // Initialize email service
+    let email = EmailService::from_env();
+    info!(
+        "Email service initialized (enabled: {})",
+        std::env::var("EMAIL_ENABLED").unwrap_or_else(|_| "false".to_string())
+    );
+
     // Initialize game manager
     let game_manager = GameManager::new();
 
@@ -47,6 +57,7 @@ async fn main() -> anyhow::Result<()> {
     let state = Arc::new(AppState {
         game_manager: RwLock::new(game_manager),
         db,
+        email,
     });
 
     // Set up Socket.IO

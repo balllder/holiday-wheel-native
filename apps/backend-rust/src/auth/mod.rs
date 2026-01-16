@@ -303,8 +303,16 @@ async fn register_user(
 
     match state.db.create_user(new_user).await {
         Ok(_) => {
-            // TODO: Send verification email
-            // For now, we'll just return success
+            // Send verification email
+            if let Err(e) = state
+                .email
+                .send_verification_email(&email, &verification_token)
+                .await
+            {
+                tracing::warn!("Failed to send verification email: {}", e);
+                // Don't fail registration if email fails - user can request resend
+            }
+
             (
                 StatusCode::OK,
                 Json(RegisterResponse {
