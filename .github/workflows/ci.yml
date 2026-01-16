@@ -70,3 +70,23 @@ jobs:
           name: phone-apk
           path: apps/phone/android/app/build/outputs/apk/release/*.apk
           retention-days: 14
+
+  build-backend-docker:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/backend-rust
+          push: false
+          tags: holiday-wheel-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
