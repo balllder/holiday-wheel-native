@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=5000
+      - RUST_LOG=info
+      - HOST_CODE=holiday
+      - DATABASE_URL=sqlite:/app/data/puzzles.db
+      - EMAIL_ENABLED=false
+    restart: unless-stopped
