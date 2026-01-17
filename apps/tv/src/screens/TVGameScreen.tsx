@@ -2,9 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
-  TVFocusGuideView,
   useTVEventHandler,
   BackHandler,
 } from 'react-native';
@@ -15,9 +13,12 @@ import {
   useAuthStore,
   socketService,
   ROW_WIDTHS,
+  AnimatedWheel,
 } from '@holiday-wheel/shared';
 import type { WedgeValue } from '@holiday-wheel/shared';
 import type { TVStackParamList } from '../navigation/TVNavigator';
+import { HostControlPanel } from '../components/HostControlPanel';
+import { RoomQRCode } from '../components/RoomQRCode';
 
 type TVGameScreenProps = {
   navigation: NativeStackNavigationProp<TVStackParamList, 'TVGame'>;
@@ -30,7 +31,7 @@ const HOST_CODE = 'holiday'; // Default host code
 export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
   const { room } = route.params;
   const [controlsVisible, setControlsVisible] = useState(false);
-  const [focusedControl, setFocusedControl] = useState(0);
+  const [showQRCode, setShowQRCode] = useState(true);
 
   const token = useAuthStore((state) => state.token);
   const connected = useGameStore((state) => state.connected);
@@ -40,10 +41,12 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
   const players = useGameStore((state) => state.players);
   const activeIdx = useGameStore((state) => state.activeIdx);
   const currentWedge = useGameStore((state) => state.currentWedge);
+  const wheelSlots = useGameStore((state) => state.wheelSlots);
+  const lastSpinIndex = useGameStore((state) => state.lastSpinIndex);
   const isHost = useGameStore((state) => state.isHost);
 
-  // Handle TV remote events
-  useTVEventHandler((evt) => {
+  // Handle TV remote events (Menu/PlayPause toggles host controls)
+  useTVEventHandler((evt: { eventType: string }) => {
     if (evt.eventType === 'menu' || evt.eventType === 'playPause') {
       setControlsVisible((prev) => !prev);
     }
@@ -77,16 +80,12 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
     };
   }, [room, token]);
 
-  const controls = [
-    { label: 'SPIN', action: () => socketService.spin(room) },
-    { label: 'NEW PUZZLE', action: () => socketService.newPuzzle(room) },
-    { label: 'TOSS-UP', action: () => socketService.startTossup(room) },
-    { label: 'END TOSS-UP', action: () => socketService.endTossup(room) },
-    { label: 'FINAL', action: () => socketService.startFinal(room) },
-    { label: 'END FINAL', action: () => socketService.endFinal(room) },
-    { label: 'NEW GAME', action: () => socketService.newGame(room) },
-    { label: 'REVEAL', action: () => socketService.revealAll(room) },
-  ];
+  // Hide QR code when players join
+  useEffect(() => {
+    if (players.length > 0) {
+      setShowQRCode(false);
+    }
+  }, [players.length]);
 
   const formatWedge = (wedge: WedgeValue | null): string => {
     if (!wedge) return '--';
@@ -163,9 +162,17 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
       <View style={styles.main}>
         {/* Left: Wheel area */}
         <View style={styles.wheelSection}>
-          <View style={styles.wheelPlaceholder}>
-            <Text style={styles.wheelText}>🎡</Text>
-          </View>
+          {wheelSlots.length > 0 ? (
+            <AnimatedWheel
+              wheelSlots={wheelSlots}
+              lastSpinIndex={lastSpinIndex}
+              size={500}
+            />
+          ) : (
+            <View style={styles.wheelPlaceholder}>
+              <Text style={styles.wheelText}>🎡</Text>
+            </View>
+          )}
           <View style={styles.wedgeDisplay}>
             <Text style={styles.wedgeValue}>{formatWedge(currentWedge)}</Text>
           </View>
@@ -179,46 +186,39 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
             <Text style={styles.phaseText}>{phase.toUpperCase()}</Text>
           </View>
         </View>
+
+        {/* Right: QR Code for joining (when no players) */}
+        {showQRCode && (
+          <View style={styles.qrSection}>
+            <RoomQRCode room={room} serverUrl={API_URL} size={180} />
+          </View>
+        )}
       </View>
 
       {/* Bottom: Players bar */}
       <View style={styles.playersBar}>
-        {players.map((player, idx) => (
-          <View
-            key={player.id}
-            style={[styles.playerCard, idx === activeIdx && styles.activePlayer]}
-          >
-            <Text style={styles.playerName}>{player.name}</Text>
-            <Text style={styles.playerTotal}>${player.total}</Text>
-            <Text style={styles.playerRound}>Round: ${player.round_bank}</Text>
-          </View>
-        ))}
+        {players.length === 0 ? (
+          <Text style={styles.waitingText}>Waiting for players to join...</Text>
+        ) : (
+          players.map((player, idx) => (
+            <View
+              key={player.id}
+              style={[styles.playerCard, idx === activeIdx && styles.activePlayer]}
+            >
+              <Text style={styles.playerName}>{player.name}</Text>
+              <Text style={styles.playerTotal}>${player.total}</Text>
+              <Text style={styles.playerRound}>Round: ${player.round_bank}</Text>
+            </View>
+          ))
+        )}
       </View>
 
       {/* Host controls overlay */}
-      {controlsVisible && (
-        <View style={styles.controlsOverlay}>
-          <TVFocusGuideView style={styles.controlsBar} autoFocus>
-            {controls.map((ctrl, idx) => (
-              <TouchableOpacity
-                key={ctrl.label}
-                style={[
-                  styles.controlButton,
-                  focusedControl === idx && styles.controlButtonFocused,
-                ]}
-                onPress={ctrl.action}
-                onFocus={() => setFocusedControl(idx)}
-                hasTVPreferredFocus={idx === 0}
-              >
-                <Text style={styles.controlButtonText}>{ctrl.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </TVFocusGuideView>
-          <Text style={styles.controlsHint}>
-            Press Menu to hide controls
-          </Text>
-        </View>
-      )}
+      <HostControlPanel
+        room={room}
+        visible={controlsVisible}
+        onClose={() => setControlsVisible(false)}
+      />
 
       {/* Connection status */}
       <View style={[styles.connStatus, connected ? styles.connGreen : styles.connRed]}>
@@ -231,7 +231,7 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
       {/* Menu hint when controls hidden */}
       {!controlsVisible && (
         <View style={styles.menuHint}>
-          <Text style={styles.menuHintText}>Press Menu for controls</Text>
+          <Text style={styles.menuHintText}>Press Menu for host controls</Text>
         </View>
       )}
     </View>
@@ -250,14 +250,14 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   wheelSection: {
-    width: 320,
+    width: 520,
     alignItems: 'center',
     justifyContent: 'center',
   },
   wheelPlaceholder: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
+    width: 500,
+    height: 500,
+    borderRadius: 250,
     backgroundColor: '#1a0a3e',
     borderWidth: 4,
     borderColor: '#d4af37',
@@ -265,17 +265,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   wheelText: {
-    fontSize: 120,
+    fontSize: 200,
   },
   wedgeDisplay: {
     marginTop: 24,
     backgroundColor: '#d4af37',
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 8,
+    paddingHorizontal: 48,
+    paddingVertical: 20,
+    borderRadius: 12,
   },
   wedgeValue: {
-    fontSize: 32,
+    fontSize: 40,
     fontWeight: 'bold',
     color: '#1a0a3e',
   },
@@ -286,15 +286,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   category: {
-    fontSize: 36,
+    fontSize: 42,
     fontWeight: 'bold',
     color: '#ffd700',
-    marginBottom: 24,
+    marginBottom: 32,
   },
   puzzleBoard: {
     backgroundColor: '#1a5cb8',
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 16,
+    padding: 24,
     borderWidth: 4,
     borderColor: '#d4af37',
   },
@@ -303,10 +303,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   puzzleCell: {
-    width: 52,
-    height: 62,
-    margin: 3,
-    borderRadius: 4,
+    width: 56,
+    height: 68,
+    margin: 4,
+    borderRadius: 6,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
@@ -318,36 +318,46 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   puzzleLetter: {
-    fontSize: 36,
+    fontSize: 42,
     fontWeight: 'bold',
     color: '#1a1a2e',
   },
   phaseBadge: {
-    marginTop: 24,
+    marginTop: 32,
     backgroundColor: '#6c5ce7',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 12,
   },
   phaseText: {
     color: '#fff',
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
+  },
+  qrSection: {
+    width: 240,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   playersBar: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 20,
+    gap: 24,
     paddingHorizontal: 40,
-    paddingVertical: 20,
+    paddingVertical: 24,
     borderTopWidth: 2,
     borderTopColor: '#333',
+    minHeight: 140,
+  },
+  waitingText: {
+    color: '#888',
+    fontSize: 24,
   },
   playerCard: {
     backgroundColor: '#1a0a3e',
-    borderRadius: 12,
-    padding: 20,
-    minWidth: 180,
+    borderRadius: 16,
+    padding: 24,
+    minWidth: 200,
     alignItems: 'center',
     borderWidth: 3,
     borderColor: 'transparent',
@@ -358,66 +368,27 @@ const styles = StyleSheet.create({
   },
   playerName: {
     color: '#fff',
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: 'bold',
   },
   playerTotal: {
     color: '#d4af37',
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: 'bold',
     marginTop: 8,
   },
   playerRound: {
     color: '#888',
-    fontSize: 18,
+    fontSize: 20,
     marginTop: 4,
-  },
-  controlsOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(13, 6, 40, 0.95)',
-    padding: 24,
-    borderTopWidth: 2,
-    borderTopColor: '#d4af37',
-  },
-  controlsBar: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 16,
-  },
-  controlButton: {
-    backgroundColor: '#d4af37',
-    paddingHorizontal: 28,
-    paddingVertical: 18,
-    borderRadius: 10,
-    borderWidth: 3,
-    borderColor: 'transparent',
-  },
-  controlButtonFocused: {
-    borderColor: '#fff',
-    transform: [{ scale: 1.05 }],
-  },
-  controlButtonText: {
-    color: '#1a0a3e',
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
-  controlsHint: {
-    color: '#888',
-    fontSize: 18,
-    textAlign: 'center',
-    marginTop: 16,
   },
   connStatus: {
     position: 'absolute',
-    top: 20,
-    right: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    top: 24,
+    right: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 24,
   },
   connGreen: {
     backgroundColor: 'rgba(76, 175, 80, 0.3)',
@@ -427,17 +398,17 @@ const styles = StyleSheet.create({
   },
   connText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 18,
   },
   menuHint: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 24,
     left: 0,
     right: 0,
     alignItems: 'center',
   },
   menuHintText: {
     color: '#555',
-    fontSize: 18,
+    fontSize: 20,
   },
 });

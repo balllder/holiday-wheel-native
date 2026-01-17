@@ -118,11 +118,20 @@ export function LobbyScreen({ navigation }: LobbyScreenProps): React.JSX.Element
         </TouchableOpacity>
       </View>
 
+      {/* Scan QR Code button */}
+      <TouchableOpacity
+        style={styles.qrButton}
+        onPress={() => navigation.navigate('QRScan')}
+      >
+        <Text style={styles.qrButtonText}>📷 Scan QR Code to Join TV Game</Text>
+      </TouchableOpacity>
+
       {/* Mode explanation */}
       <View style={styles.modeHelp}>
         <Text style={styles.modeHelpText}>
           <Text style={styles.modeHelpBold}>Play:</Text> Full game on this device{'\n'}
-          <Text style={styles.modeHelpBold}>📱:</Text> Use as controller (TV displays game)
+          <Text style={styles.modeHelpBold}>📱:</Text> Use as controller (TV displays game){'\n'}
+          <Text style={styles.modeHelpBold}>📷:</Text> Scan QR from Apple TV to join
         </Text>
       </View>
 
@@ -206,6 +215,18 @@ const styles = StyleSheet.create({
   },
   controllerBtnText: {
     fontSize: 20,
+  },
+  qrButton: {
+    backgroundColor: '#4caf50',
+    marginHorizontal: 16,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  qrButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   modeHelp: {
     paddingHorizontal: 16,

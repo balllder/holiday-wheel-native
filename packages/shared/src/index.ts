@@ -4,6 +4,9 @@ export * from './types';
 // Constants
 export * from './constants';
 
+// Components
+export { AnimatedWheel } from './components/AnimatedWheel';
+
 // Stores
 export {
   useGameStore,
@@ -23,3 +26,4 @@ export {
 // Services
 export { socketService } from './services/socketService';
 export { authService } from './services/authService';
+export { configService } from './services/configService';

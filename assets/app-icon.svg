@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- Gradient for wheel segments -->
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f4d03f"/>
+      <stop offset="50%" style="stop-color:#d4af37"/>
+      <stop offset="100%" style="stop-color:#b8960c"/>
+    </linearGradient>
+
+    <!-- Background gradient -->
+    <radialGradient id="bgGradient" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" style="stop-color:#1a0a3e"/>
+      <stop offset="100%" style="stop-color:#0d0628"/>
+    </radialGradient>
+
+    <!-- Wheel segment colors -->
+    <linearGradient id="red" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e74c3c"/>
+      <stop offset="100%" style="stop-color:#c0392b"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3498db"/>
+      <stop offset="100%" style="stop-color:#2980b9"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2ecc71"/>
+      <stop offset="100%" style="stop-color:#27ae60"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f39c12"/>
+      <stop offset="100%" style="stop-color:#d68910"/>
+    </linearGradient>
+    <linearGradient id="purple" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#9b59b6"/>
+      <stop offset="100%" style="stop-color:#8e44ad"/>
+    </linearGradient>
+    <linearGradient id="pink" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e91e63"/>
+      <stop offset="100%" style="stop-color:#c2185b"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1abc9c"/>
+      <stop offset="100%" style="stop-color:#16a085"/>
+    </linearGradient>
+    <linearGradient id="yellow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f1c40f"/>
+      <stop offset="100%" style="stop-color:#d4ac0d"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="url(#bgGradient)"/>
+
+  <!-- Outer glow ring -->
+  <circle cx="512" cy="512" r="420" fill="none" stroke="url(#goldGradient)" stroke-width="8" opacity="0.3"/>
+
+  <!-- Wheel base -->
+  <circle cx="512" cy="512" r="380" fill="#1a0a3e" stroke="url(#goldGradient)" stroke-width="12"/>
+
+  <!-- Wheel segments (8 segments) -->
+  <g transform="translate(512, 512)">
+    <!-- Segment 1 - Red -->
+    <path d="M 0 0 L 0 -350 A 350 350 0 0 1 247.5 -247.5 Z" fill="url(#red)"/>
+    <!-- Segment 2 - Blue -->
+    <path d="M 0 0 L 247.5 -247.5 A 350 350 0 0 1 350 0 Z" fill="url(#blue)"/>
+    <!-- Segment 3 - Green -->
+    <path d="M 0 0 L 350 0 A 350 350 0 0 1 247.5 247.5 Z" fill="url(#green)"/>
+    <!-- Segment 4 - Orange -->
+    <path d="M 0 0 L 247.5 247.5 A 350 350 0 0 1 0 350 Z" fill="url(#orange)"/>
+    <!-- Segment 5 - Purple -->
+    <path d="M 0 0 L 0 350 A 350 350 0 0 1 -247.5 247.5 Z" fill="url(#purple)"/>
+    <!-- Segment 6 - Pink -->
+    <path d="M 0 0 L -247.5 247.5 A 350 350 0 0 1 -350 0 Z" fill="url(#pink)"/>
+    <!-- Segment 7 - Teal -->
+    <path d="M 0 0 L -350 0 A 350 350 0 0 1 -247.5 -247.5 Z" fill="url(#teal)"/>
+    <!-- Segment 8 - Yellow -->
+    <path d="M 0 0 L -247.5 -247.5 A 350 350 0 0 1 0 -350 Z" fill="url(#yellow)"/>
+
+    <!-- Segment divider lines -->
+    <line x1="0" y1="0" x2="0" y2="-350" stroke="#1a0a3e" stroke-width="4"/>
+    <line x1="0" y1="0" x2="247.5" y2="-247.5" stroke="#1a0a3e" stroke-width="4"/>
+    <line x1="0" y1="0" x2="350" y2="0" stroke="#1a0a3e" stroke-width="4"/>
+    <line x1="0" y1="0" x2="247.5" y2="247.5" stroke="#1a0a3e" stroke-width="4"/>
+    <line x1="0" y1="0" x2="0" y2="350" stroke="#1a0a3e" stroke-width="4"/>
+    <line x1="0" y1="0" x2="-247.5" y2="247.5" stroke="#1a0a3e" stroke-width="4"/>
+    <line x1="0" y1="0" x2="-350" y2="0" stroke="#1a0a3e" stroke-width="4"/>
+    <line x1="0" y1="0" x2="-247.5" y2="-247.5" stroke="#1a0a3e" stroke-width="4"/>
+  </g>
+
+  <!-- Dollar signs on segments -->
+  <g font-family="Arial, sans-serif" font-weight="bold" font-size="48" fill="#fff" text-anchor="middle">
+    <text x="512" y="220" transform="rotate(22.5, 512, 512)">$500</text>
+    <text x="512" y="220" transform="rotate(67.5, 512, 512)">$900</text>
+    <text x="512" y="220" transform="rotate(112.5, 512, 512)">$300</text>
+    <text x="512" y="220" transform="rotate(157.5, 512, 512)">$800</text>
+    <text x="512" y="220" transform="rotate(202.5, 512, 512)">$400</text>
+    <text x="512" y="220" transform="rotate(247.5, 512, 512)">$600</text>
+    <text x="512" y="220" transform="rotate(292.5, 512, 512)">$700</text>
+    <text x="512" y="220" transform="rotate(337.5, 512, 512)">$1000</text>
+  </g>
+
+  <!-- Center hub -->
+  <circle cx="512" cy="512" r="80" fill="url(#goldGradient)" stroke="#1a0a3e" stroke-width="6"/>
+  <circle cx="512" cy="512" r="50" fill="#1a0a3e"/>
+
+  <!-- "H" in center -->
+  <text x="512" y="530" font-family="Georgia, serif" font-size="72" font-weight="bold" fill="url(#goldGradient)" text-anchor="middle">H</text>
+
+  <!-- Top pointer -->
+  <polygon points="512,60 480,130 544,130" fill="url(#goldGradient)" stroke="#1a0a3e" stroke-width="3"/>
+
+  <!-- Outer decorative ring -->
+  <circle cx="512" cy="512" r="395" fill="none" stroke="url(#goldGradient)" stroke-width="6"/>
+
+  <!-- Corner decorations (subtle) -->
+  <circle cx="100" cy="100" r="30" fill="url(#goldGradient)" opacity="0.15"/>
+  <circle cx="924" cy="100" r="30" fill="url(#goldGradient)" opacity="0.15"/>
+  <circle cx="100" cy="924" r="30" fill="url(#goldGradient)" opacity="0.15"/>
+  <circle cx="924" cy="924" r="30" fill="url(#goldGradient)" opacity="0.15"/>
+</svg>

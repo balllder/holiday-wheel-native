@@ -8,6 +8,7 @@ import { RegisterScreen } from '../screens/RegisterScreen';
 import { LobbyScreen } from '../screens/LobbyScreen';
 import { GameScreen } from '../screens/GameScreen';
 import { ControllerScreen } from '../screens/ControllerScreen';
+import { QRScanScreen } from '../screens/QRScanScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -15,6 +16,7 @@ export type RootStackParamList = {
   Lobby: undefined;
   Game: { room: string };
   Controller: { room: string };
+  QRScan: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -69,6 +71,15 @@ export function AppNavigator(): React.JSX.Element {
               name="Controller"
               component={ControllerScreen}
               options={({ route }) => ({ title: `Controller: ${route.params.room}` })}
+            />
+            <Stack.Screen
+              name="QRScan"
+              component={QRScanScreen}
+              options={{
+                title: 'Scan QR Code',
+                headerShown: false,
+                presentation: 'fullScreenModal',
+              }}
             />
           </>
         )}

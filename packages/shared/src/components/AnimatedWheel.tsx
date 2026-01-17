@@ -1,0 +1,210 @@
+import React, { useEffect, useState, useRef } from 'react';
+import { View, StyleSheet } from 'react-native';
+import Svg, { Path, Text as SvgText } from 'react-native-svg';
+import type { WedgeValue } from '../types';
+
+// Wheel colors matching the TV show
+const WHEEL_COLORS = [
+  '#c41e3a', '#0047ab', '#ff8c00', '#ffcc00', '#9932cc', '#ff1493',
+  '#008b8b', '#dc143c', '#4169e1', '#ff4500', '#32cd32', '#9400d3',
+  '#ff69b4', '#1e90ff', '#ffd700', '#00ced1', '#ff6347', '#8a2be2',
+];
+
+interface AnimatedWheelProps {
+  wheelSlots: WedgeValue[];
+  lastSpinIndex: number | null;
+  size?: number;
+  onSpinComplete?: () => void;
+}
+
+export function AnimatedWheel({
+  wheelSlots,
+  lastSpinIndex,
+  size = 300,
+  onSpinComplete,
+}: AnimatedWheelProps): React.JSX.Element | null {
+  const [wheelRotation, setWheelRotation] = useState(0);
+  const prevSpinIdx = useRef<number | null>(null);
+  const animationRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Animate wheel when spin index changes
+  useEffect(() => {
+    if (lastSpinIndex !== null && lastSpinIndex !== prevSpinIdx.current && wheelSlots.length > 0) {
+      prevSpinIdx.current = lastSpinIndex;
+
+      // Calculate target rotation - center the slot under the pointer
+      const anglePerSlot = 360 / wheelSlots.length;
+      // Add half a slot width to center the slot under the pointer
+      const targetSlotAngle = lastSpinIndex * anglePerSlot + anglePerSlot / 2;
+      const spins = 3;
+      const targetRotation = wheelRotation + spins * 360 + (360 - targetSlotAngle - (wheelRotation % 360));
+
+      // Clear any existing animation
+      if (animationRef.current) {
+        clearInterval(animationRef.current);
+      }
+
+      // Animate using setInterval
+      const startRotation = wheelRotation;
+      const totalDelta = targetRotation - startRotation;
+      const duration = 2500;
+      const startTime = Date.now();
+
+      animationRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        // Ease out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const currentRotation = startRotation + totalDelta * eased;
+
+        setWheelRotation(currentRotation);
+
+        if (progress >= 1) {
+          if (animationRef.current) {
+            clearInterval(animationRef.current);
+            animationRef.current = null;
+          }
+          onSpinComplete?.();
+        }
+      }, 16);
+    }
+
+    return () => {
+      if (animationRef.current) {
+        clearInterval(animationRef.current);
+      }
+    };
+  }, [lastSpinIndex, wheelSlots.length, onSpinComplete, wheelRotation]);
+
+  if (wheelSlots.length === 0) return null;
+
+  const radius = size / 2 - 5;
+  const centerX = size / 2;
+  const centerY = size / 2;
+
+  const getWedgeLabel = (slot: WedgeValue): string => {
+    if (typeof slot === 'number') return `$${slot}`;
+    if (typeof slot === 'string') return slot;
+    if (slot?.type === 'PRIZE') return slot.name || 'PRIZE';
+    if (slot?.type) return slot.type;
+    return '';
+  };
+
+  const elements: React.ReactElement[] = [];
+
+  wheelSlots.forEach((slot, idx) => {
+    const anglePerSlot = 360 / wheelSlots.length;
+    const startAngle = idx * anglePerSlot - 90;
+    const endAngle = startAngle + anglePerSlot;
+    const startRad = (startAngle * Math.PI) / 180;
+    const endRad = (endAngle * Math.PI) / 180;
+
+    const x1 = centerX + radius * Math.cos(startRad);
+    const y1 = centerY + radius * Math.sin(startRad);
+    const x2 = centerX + radius * Math.cos(endRad);
+    const y2 = centerY + radius * Math.sin(endRad);
+
+    const largeArc = anglePerSlot > 180 ? 1 : 0;
+    const pathD = `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+
+    const color = WHEEL_COLORS[idx % WHEEL_COLORS.length];
+    const label = getWedgeLabel(slot);
+    const isBankrupt = label === 'BANKRUPT';
+    const isLoseTurn = label === 'LOSE A TURN';
+
+    // Add wedge path
+    elements.push(
+      <Path
+        key={`wedge-${idx}`}
+        d={pathD}
+        fill={isBankrupt ? '#000' : isLoseTurn ? '#fff' : color}
+        stroke="#222"
+        strokeWidth={1}
+      />
+    );
+
+    // Add text label - position near outer edge where wedge is wider
+    const midAngle = (startAngle + endAngle) / 2;
+    const midRad = (midAngle * Math.PI) / 180;
+    const textRadius = radius * 0.78;
+    const textX = centerX + textRadius * Math.cos(midRad);
+    const textY = centerY + textRadius * Math.sin(midRad);
+
+    // Rotate text to read outward from center, flip if on left side of wheel
+    // Normalize angle to 0-360 range
+    const normalizedAngle = ((midAngle % 360) + 360) % 360;
+    let rotation = midAngle;
+    // Flip text on left side of wheel (90 to 270 degrees) so it's not upside down
+    if (normalizedAngle > 90 && normalizedAngle < 270) {
+      rotation = midAngle + 180;
+    }
+
+    // Scale font size based on wheel size and label length
+    const baseSize = size / 300;
+    const displayLabel = label;
+    const textColor = isBankrupt ? '#fff' : isLoseTurn ? '#000' : '#000';
+    const fontSize = (label.length > 8 ? 6 : label.length > 5 ? 7 : 9) * baseSize;
+
+    elements.push(
+      <SvgText
+        key={`text-${idx}`}
+        x={textX}
+        y={textY}
+        fill={textColor}
+        fontSize={fontSize}
+        fontWeight="bold"
+        textAnchor="middle"
+        alignmentBaseline="middle"
+        transform={`rotate(${rotation}, ${textX}, ${textY})`}
+      >
+        {displayLabel}
+      </SvgText>
+    );
+  });
+
+  // Scale pointer size based on wheel size
+  const pointerSize = size / 300;
+
+  return (
+    <View style={styles.wheelContainer}>
+      <View
+        style={[
+          styles.wheelPointer,
+          {
+            borderLeftWidth: 12 * pointerSize,
+            borderRightWidth: 12 * pointerSize,
+            borderTopWidth: 20 * pointerSize,
+          },
+        ]}
+      />
+      <View
+        style={{
+          width: size,
+          height: size,
+          transform: [{ rotate: `${wheelRotation}deg` }],
+        }}
+      >
+        <Svg width={size} height={size}>
+          {elements}
+        </Svg>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wheelContainer: {
+    alignItems: 'center',
+    position: 'relative',
+  },
+  wheelPointer: {
+    position: 'absolute',
+    top: -10,
+    zIndex: 10,
+    width: 0,
+    height: 0,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#d4af37',
+  },
+});

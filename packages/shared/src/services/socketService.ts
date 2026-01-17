@@ -42,8 +42,6 @@ class SocketService {
   private setupListeners(): void {
     if (!this.socket) return;
 
-    const store = useGameStore.getState();
-
     this.socket.on('connect', () => {
       console.log('[Socket] Connected');
       useGameStore.getState().setConnected(true);

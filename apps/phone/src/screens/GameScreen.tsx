@@ -50,7 +50,7 @@ export function GameScreen({ route }: GameScreenProps): React.JSX.Element {
   // Wheel rotation state
   const [wheelRotation, setWheelRotation] = useState(0);
   const prevSpinIdx = useRef<number | null>(null);
-  const animationRef = useRef<NodeJS.Timeout | null>(null);
+  const animationRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Animate wheel when spin index changes
   useEffect(() => {

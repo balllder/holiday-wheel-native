@@ -1,0 +1,37 @@
+// Release Build Configuration for Holiday Wheel (tvOS)
+// Bundle ID and App Store settings
+
+// Bundle Identifier - must match App Store Connect
+PRODUCT_BUNDLE_IDENTIFIER = com.brefwiz.holidaywheel
+
+// App Version (shown in App Store)
+MARKETING_VERSION = 1.0.0
+
+// Build Number (increment for each upload)
+CURRENT_PROJECT_VERSION = 1
+
+// App Name
+PRODUCT_NAME = Holiday Wheel
+
+// Deployment Target (tvOS)
+TVOS_DEPLOYMENT_TARGET = 15.0
+
+// Architectures
+ARCHS = arm64
+
+// Code Signing (set to your team in Xcode)
+// CODE_SIGN_STYLE = Automatic
+// DEVELOPMENT_TEAM = YOUR_TEAM_ID
+
+// Release Optimizations
+SWIFT_OPTIMIZATION_LEVEL = -O
+GCC_OPTIMIZATION_LEVEL = s
+ENABLE_NS_ASSERTIONS = NO
+VALIDATE_PRODUCT = YES
+
+// Strip Debug Symbols
+COPY_PHASE_STRIP = YES
+STRIP_INSTALLED_PRODUCT = YES
+
+// Bitcode (disabled for React Native)
+ENABLE_BITCODE = NO
