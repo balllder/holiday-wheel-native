@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.85-bookworm AS builder
+FROM docker.io/library/rust:1.85-bookworm AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY src ./src
 RUN cargo build --release
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM docker.io/library/debian:bookworm-slim
 
 # Install required runtime libraries
 RUN apt-get update && apt-get install -y \
