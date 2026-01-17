@@ -112,6 +112,19 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/me", get(me))
         .route("/api/rooms", get(api_rooms))
         .route("/rooms", get(list_rooms))
+        // Admin endpoints
+        .route("/api/admin/users", get(admin_list_users))
+        .route("/api/admin/users/{id}/admin", post(admin_set_user_admin))
+        .route("/api/admin/users/{id}/verify", post(admin_verify_user))
+        .route("/api/admin/users/{id}", axum::routing::delete(admin_delete_user))
+        .route("/api/admin/packs", get(admin_list_packs))
+        .route("/api/admin/packs", post(admin_create_pack))
+        .route("/api/admin/packs/{id}", axum::routing::delete(admin_delete_pack))
+        .route("/api/admin/puzzles", get(admin_list_puzzles))
+        .route("/api/admin/puzzles", post(admin_add_puzzle))
+        .route("/api/admin/puzzles/{id}", axum::routing::delete(admin_delete_puzzle))
+        .route("/api/admin/rooms", get(admin_list_rooms))
+        .route("/api/admin/rooms/{name}", axum::routing::delete(admin_delete_room))
 }
 
 // ========== LOGIN ENDPOINTS ==========
@@ -641,4 +654,399 @@ fn verify_werkzeug_hash(password: &str, hash: &str) -> bool {
     // Compare
     let computed = hex::encode(&result);
     computed == expected_hash
+}
+
+// ========== ADMIN HELPER ==========
+
+async fn get_admin_user(state: &Arc<AppState>, headers: &HeaderMap) -> Option<crate::db::User> {
+    let token = extract_bearer_token(headers)?;
+    let user = state.db.get_user_by_token(&token).await.ok()??;
+    if user.is_admin {
+        Some(user)
+    } else {
+        None
+    }
+}
+
+// ========== ADMIN ENDPOINTS ==========
+
+#[derive(Serialize)]
+struct AdminUsersResponse {
+    ok: bool,
+    users: Option<Vec<AdminUserInfo>>,
+    error: Option<String>,
+}
+
+#[derive(Serialize)]
+struct AdminUserInfo {
+    id: i64,
+    email: String,
+    display_name: String,
+    verified: bool,
+    is_admin: bool,
+    created_at: i64,
+    last_login_at: Option<i64>,
+}
+
+async fn admin_list_users(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> (StatusCode, Json<AdminUsersResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(AdminUsersResponse {
+            ok: false, users: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    match state.db.list_all_users().await {
+        Ok(users) => (StatusCode::OK, Json(AdminUsersResponse {
+            ok: true,
+            users: Some(users.into_iter().map(|u| AdminUserInfo {
+                id: u.id,
+                email: u.email,
+                display_name: u.display_name,
+                verified: u.verified,
+                is_admin: u.is_admin,
+                created_at: u.created_at,
+                last_login_at: u.last_login_at,
+            }).collect()),
+            error: None,
+        })),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(AdminUsersResponse {
+            ok: false, users: None, error: Some("Database error".to_string())
+        })),
+    }
+}
+
+#[derive(Deserialize)]
+struct SetAdminRequest {
+    is_admin: bool,
+}
+
+async fn admin_set_user_admin(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(user_id): Path<i64>,
+    Json(req): Json<SetAdminRequest>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    match state.db.set_user_admin(user_id, req.is_admin).await {
+        Ok(()) => (StatusCode::OK, Json(SimpleResponse {
+            ok: true, message: Some("User admin status updated".to_string()), error: None
+        })),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Failed to update user".to_string())
+        })),
+    }
+}
+
+async fn admin_verify_user(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(user_id): Path<i64>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    match state.db.verify_user(user_id).await {
+        Ok(()) => (StatusCode::OK, Json(SimpleResponse {
+            ok: true, message: Some("User verified".to_string()), error: None
+        })),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Failed to verify user".to_string())
+        })),
+    }
+}
+
+async fn admin_delete_user(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(user_id): Path<i64>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    match state.db.delete_user(user_id).await {
+        Ok(true) => (StatusCode::OK, Json(SimpleResponse {
+            ok: true, message: Some("User deleted".to_string()), error: None
+        })),
+        Ok(false) => (StatusCode::NOT_FOUND, Json(SimpleResponse {
+            ok: false, message: None, error: Some("User not found".to_string())
+        })),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Failed to delete user".to_string())
+        })),
+    }
+}
+
+#[derive(Serialize)]
+struct AdminPacksResponse {
+    ok: bool,
+    packs: Option<Vec<PackInfo>>,
+    error: Option<String>,
+}
+
+#[derive(Serialize)]
+struct PackInfo {
+    id: i64,
+    name: String,
+    puzzle_count: i64,
+}
+
+async fn admin_list_packs(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> (StatusCode, Json<AdminPacksResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(AdminPacksResponse {
+            ok: false, packs: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    match state.db.get_puzzle_counts().await {
+        Ok(counts) => (StatusCode::OK, Json(AdminPacksResponse {
+            ok: true,
+            packs: Some(counts.into_iter().map(|(id, name, count)| PackInfo {
+                id, name, puzzle_count: count
+            }).collect()),
+            error: None,
+        })),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(AdminPacksResponse {
+            ok: false, packs: None, error: Some("Database error".to_string())
+        })),
+    }
+}
+
+#[derive(Deserialize)]
+struct CreatePackRequest {
+    name: String,
+}
+
+async fn admin_create_pack(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<CreatePackRequest>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    match state.db.get_or_create_pack(&req.name).await {
+        Ok(id) => (StatusCode::OK, Json(SimpleResponse {
+            ok: true, message: Some(format!("Pack created with ID {}", id)), error: None
+        })),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Failed to create pack".to_string())
+        })),
+    }
+}
+
+async fn admin_delete_pack(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(pack_id): Path<i64>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    if pack_id == 1 {
+        return (StatusCode::BAD_REQUEST, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Cannot delete default pack".to_string())
+        }));
+    }
+
+    match state.db.delete_pack(pack_id).await {
+        Ok(true) => (StatusCode::OK, Json(SimpleResponse {
+            ok: true, message: Some("Pack deleted".to_string()), error: None
+        })),
+        Ok(false) => (StatusCode::NOT_FOUND, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Pack not found".to_string())
+        })),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Failed to delete pack".to_string())
+        })),
+    }
+}
+
+#[derive(Serialize)]
+struct AdminPuzzlesResponse {
+    ok: bool,
+    puzzles: Option<Vec<PuzzleInfo>>,
+    error: Option<String>,
+}
+
+#[derive(Serialize)]
+struct PuzzleInfo {
+    id: i64,
+    category: String,
+    answer: String,
+    pack_id: i64,
+    enabled: bool,
+}
+
+#[derive(Deserialize)]
+struct ListPuzzlesQuery {
+    pack_id: Option<i64>,
+}
+
+async fn admin_list_puzzles(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<ListPuzzlesQuery>,
+) -> (StatusCode, Json<AdminPuzzlesResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(AdminPuzzlesResponse {
+            ok: false, puzzles: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    match state.db.list_all_puzzles(query.pack_id).await {
+        Ok(puzzles) => (StatusCode::OK, Json(AdminPuzzlesResponse {
+            ok: true,
+            puzzles: Some(puzzles.into_iter().map(|p| PuzzleInfo {
+                id: p.id,
+                category: p.category,
+                answer: p.answer,
+                pack_id: p.pack_id,
+                enabled: p.enabled,
+            }).collect()),
+            error: None,
+        })),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(AdminPuzzlesResponse {
+            ok: false, puzzles: None, error: Some("Database error".to_string())
+        })),
+    }
+}
+
+#[derive(Deserialize)]
+struct AddPuzzleRequest {
+    category: String,
+    answer: String,
+    pack_id: i64,
+}
+
+async fn admin_add_puzzle(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<AddPuzzleRequest>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    match state.db.add_puzzle(&req.category, &req.answer, req.pack_id).await {
+        Ok(id) => (StatusCode::OK, Json(SimpleResponse {
+            ok: true, message: Some(format!("Puzzle added with ID {}", id)), error: None
+        })),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Failed to add puzzle".to_string())
+        })),
+    }
+}
+
+async fn admin_delete_puzzle(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(puzzle_id): Path<i64>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    match state.db.delete_puzzle(puzzle_id).await {
+        Ok(true) => (StatusCode::OK, Json(SimpleResponse {
+            ok: true, message: Some("Puzzle deleted".to_string()), error: None
+        })),
+        Ok(false) => (StatusCode::NOT_FOUND, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Puzzle not found".to_string())
+        })),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Failed to delete puzzle".to_string())
+        })),
+    }
+}
+
+#[derive(Serialize)]
+struct AdminRoomsResponse {
+    ok: bool,
+    rooms: Option<Vec<AdminRoomInfo>>,
+    error: Option<String>,
+}
+
+#[derive(Serialize)]
+struct AdminRoomInfo {
+    name: String,
+    player_count: usize,
+    phase: String,
+    has_host: bool,
+}
+
+async fn admin_list_rooms(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> (StatusCode, Json<AdminRoomsResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(AdminRoomsResponse {
+            ok: false, rooms: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    let manager = state.game_manager.read().await;
+    let rooms: Vec<AdminRoomInfo> = manager.rooms.iter().map(|(name, game)| {
+        AdminRoomInfo {
+            name: name.clone(),
+            player_count: game.players.len(),
+            phase: format!("{:?}", game.phase),
+            has_host: game.host_sid.is_some(),
+        }
+    }).collect();
+
+    (StatusCode::OK, Json(AdminRoomsResponse {
+        ok: true, rooms: Some(rooms), error: None
+    }))
+}
+
+async fn admin_delete_room(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(room_name): Path<String>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    // Remove from game manager
+    {
+        let mut manager = state.game_manager.write().await;
+        manager.rooms.remove(&room_name);
+    }
+
+    // Remove from database
+    let _ = state.db.delete_room(&room_name).await;
+
+    (StatusCode::OK, Json(SimpleResponse {
+        ok: true, message: Some("Room deleted".to_string()), error: None
+    }))
 }

@@ -36,6 +36,8 @@ pub struct User {
     pub created_at: i64,
     pub last_login_at: Option<i64>,
     pub remember_token: Option<String>,
+    #[sqlx(default)]
+    pub is_admin: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -126,12 +128,19 @@ impl Database {
                 reset_token_expires INTEGER,
                 created_at INTEGER NOT NULL,
                 last_login_at INTEGER,
-                remember_token TEXT
+                remember_token TEXT,
+                is_admin INTEGER NOT NULL DEFAULT 0
             )
             "#,
         )
         .execute(&self.pool)
         .await?;
+
+        // Add is_admin column if it doesn't exist (migration for existing databases)
+        sqlx::query("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+            .execute(&self.pool)
+            .await
+            .ok(); // Ignore error if column already exists
 
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
             .execute(&self.pool)
@@ -233,6 +242,15 @@ impl Database {
         sqlx::query("INSERT OR IGNORE INTO packs (id, name) VALUES (1, 'Default')")
             .execute(&self.pool)
             .await?;
+
+        // Bootstrap admin from environment variable
+        if let Ok(admin_email) = std::env::var("ADMIN_EMAIL") {
+            sqlx::query("UPDATE users SET is_admin = 1 WHERE email = ?")
+                .bind(admin_email.to_lowercase())
+                .execute(&self.pool)
+                .await
+                .ok();
+        }
 
         // Insert some default puzzles if none exist
         let puzzle_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM puzzles")
@@ -744,5 +762,106 @@ impl Database {
             .await?;
 
         Ok(result.rows_affected() > 0)
+    }
+
+    // ========== ADMIN METHODS ==========
+
+    /// List all users (admin)
+    pub async fn list_all_users(&self) -> Result<Vec<User>, DbError> {
+        let users = sqlx::query_as::<_, User>(
+            "SELECT * FROM users ORDER BY created_at DESC"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(users)
+    }
+
+    /// Set user admin status
+    pub async fn set_user_admin(&self, user_id: i64, is_admin: bool) -> Result<(), DbError> {
+        sqlx::query("UPDATE users SET is_admin = ? WHERE id = ?")
+            .bind(is_admin)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Delete a user
+    pub async fn delete_user(&self, user_id: i64) -> Result<bool, DbError> {
+        let result = sqlx::query("DELETE FROM users WHERE id = ?")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// List all puzzles (optionally filtered by pack)
+    pub async fn list_all_puzzles(&self, pack_id: Option<i64>) -> Result<Vec<DbPuzzle>, DbError> {
+        let puzzles = if let Some(pack_id) = pack_id {
+            sqlx::query_as::<_, DbPuzzle>(
+                "SELECT * FROM puzzles WHERE pack_id = ? ORDER BY category, answer"
+            )
+            .bind(pack_id)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, DbPuzzle>(
+                "SELECT * FROM puzzles ORDER BY pack_id, category, answer"
+            )
+            .fetch_all(&self.pool)
+            .await?
+        };
+        Ok(puzzles)
+    }
+
+    /// Add a single puzzle
+    pub async fn add_puzzle(&self, category: &str, answer: &str, pack_id: i64) -> Result<i64, DbError> {
+        let result = sqlx::query(
+            "INSERT INTO puzzles (category, answer, pack_id) VALUES (?, ?, ?)"
+        )
+        .bind(category)
+        .bind(answer.to_uppercase())
+        .bind(pack_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.last_insert_rowid())
+    }
+
+    /// Delete a puzzle
+    pub async fn delete_puzzle(&self, puzzle_id: i64) -> Result<bool, DbError> {
+        let result = sqlx::query("DELETE FROM puzzles WHERE id = ?")
+            .bind(puzzle_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Toggle puzzle enabled status
+    pub async fn set_puzzle_enabled(&self, puzzle_id: i64, enabled: bool) -> Result<(), DbError> {
+        sqlx::query("UPDATE puzzles SET enabled = ? WHERE id = ?")
+            .bind(enabled)
+            .bind(puzzle_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Get puzzle count per pack
+    pub async fn get_puzzle_counts(&self) -> Result<Vec<(i64, String, i64)>, DbError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT p.id, p.name, COUNT(pz.id) as count
+            FROM packs p
+            LEFT JOIN puzzles pz ON pz.pack_id = p.id AND pz.enabled = 1
+            GROUP BY p.id
+            ORDER BY p.name
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(|r| {
+            (r.get("id"), r.get("name"), r.get("count"))
+        }).collect())
     }
 }

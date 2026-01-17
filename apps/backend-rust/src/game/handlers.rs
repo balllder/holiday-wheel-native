@@ -139,15 +139,30 @@ pub fn register_handlers(io: &SocketIo) {
                 let mut manager = state.game_manager.write().await;
                 let game = manager.get_or_create_room(&req.room);
 
-                // Check if already in game
+                // Check if already in game with this socket
                 if let Some(idx) = game.player_idx_by_socket(socket.id.as_str()) {
                     socket.emit("you", &serde_json::json!({ "player_idx": idx })).ok();
                     broadcast_state!(socket, req.room, game.get_state());
                     return;
                 }
 
-                // Add player
                 let name = req.name.unwrap_or_else(|| format!("Player {}", game.players.len() + 1));
+
+                // Check if there's a disconnected player with the same name to reconnect
+                let existing_idx = game.players.iter().position(|p| {
+                    p.name == name && p.socket_id.is_none()
+                });
+
+                if let Some(idx) = existing_idx {
+                    // Reconnect to existing player slot
+                    game.players[idx].socket_id = Some(socket.id.to_string());
+                    socket.emit("you", &serde_json::json!({ "player_idx": idx })).ok();
+                    toast!(socket, &format!("Reconnected as {}!", name));
+                    broadcast_state!(socket, req.room, game.get_state());
+                    return;
+                }
+
+                // Add new player
                 let player_idx = game.add_player(name.clone(), Some(socket.id.to_string()), None);
 
                 socket.emit("you", &serde_json::json!({ "player_idx": player_idx })).ok();
