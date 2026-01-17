@@ -1,22 +1,109 @@
 use rand::seq::SliceRandom;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Value on a wheel wedge
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum WedgeValue {
     Cash(i32),
-    #[serde(rename = "BANKRUPT")]
     Bankrupt,
-    #[serde(rename = "LOSE A TURN")]
     LoseTurn,
-    #[serde(rename = "FREE PLAY")]
     FreePlay,
-    Prize {
-        #[serde(rename = "type")]
-        wedge_type: String,
-        name: String,
-    },
+    Prize { wedge_type: String, name: String },
+}
+
+// Custom serialization to handle untagged enum properly
+impl Serialize for WedgeValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            WedgeValue::Cash(val) => serializer.serialize_i32(*val),
+            WedgeValue::Bankrupt => serializer.serialize_str("BANKRUPT"),
+            WedgeValue::LoseTurn => serializer.serialize_str("LOSE A TURN"),
+            WedgeValue::FreePlay => serializer.serialize_str("FREE PLAY"),
+            WedgeValue::Prize { wedge_type, name } => {
+                use serde::ser::SerializeMap;
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("type", wedge_type)?;
+                map.serialize_entry("name", name)?;
+                map.end()
+            }
+        }
+    }
+}
+
+// Custom deserialization
+impl<'de> Deserialize<'de> for WedgeValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        struct WedgeValueVisitor;
+
+        impl<'de> Visitor<'de> for WedgeValueVisitor {
+            type Value = WedgeValue;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a number, string, or prize object")
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<WedgeValue, E>
+            where
+                E: de::Error,
+            {
+                Ok(WedgeValue::Cash(value as i32))
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<WedgeValue, E>
+            where
+                E: de::Error,
+            {
+                Ok(WedgeValue::Cash(value as i32))
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<WedgeValue, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    "BANKRUPT" => Ok(WedgeValue::Bankrupt),
+                    "LOSE A TURN" => Ok(WedgeValue::LoseTurn),
+                    "FREE PLAY" => Ok(WedgeValue::FreePlay),
+                    _ => Err(de::Error::unknown_variant(
+                        value,
+                        &["BANKRUPT", "LOSE A TURN", "FREE PLAY"],
+                    )),
+                }
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<WedgeValue, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut wedge_type = None;
+                let mut name = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "type" => wedge_type = Some(map.next_value()?),
+                        "name" => name = Some(map.next_value()?),
+                        _ => {
+                            let _: serde::de::IgnoredAny = map.next_value()?;
+                        }
+                    }
+                }
+                Ok(WedgeValue::Prize {
+                    wedge_type: wedge_type.unwrap_or_else(|| "PRIZE".to_string()),
+                    name: name.ok_or_else(|| de::Error::missing_field("name"))?,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(WedgeValueVisitor)
+    }
 }
 
 impl WedgeValue {
@@ -44,52 +131,54 @@ impl WedgeValue {
     }
 }
 
-/// Base wheel configuration matching the Python version
-pub const BASE_WHEEL: &[WedgeValue] = &[
-    WedgeValue::Cash(500),
-    WedgeValue::Cash(550),
-    WedgeValue::Cash(600),
-    WedgeValue::Cash(650),
-    WedgeValue::Cash(700),
-    WedgeValue::Cash(800),
-    WedgeValue::Cash(900),
-    WedgeValue::Cash(300),
-    WedgeValue::Cash(350),
-    WedgeValue::Cash(400),
-    WedgeValue::Cash(450),
-    WedgeValue::Cash(1000),
-    WedgeValue::Cash(1500),
-    WedgeValue::Cash(2000),
-    WedgeValue::FreePlay,
-    WedgeValue::Bankrupt,
-    WedgeValue::LoseTurn,
-];
+/// Number of wedges on the wheel (matches real Wheel of Fortune)
+pub const WHEEL_SIZE: usize = 24;
 
-/// Default prize wedges
-pub fn default_prize_wedges() -> Vec<WedgeValue> {
+/// Create the standard wheel - exactly 24 wedges like the real Wheel of Fortune
+/// Layout inspired by the actual show's wheel configuration
+pub fn create_standard_wheel() -> Vec<WedgeValue> {
     vec![
-        WedgeValue::prize("GIFT CARD"),
-        WedgeValue::prize("HOLIDAY MUG"),
-        WedgeValue::prize("STOCKING STUFFER"),
+        WedgeValue::Cash(2500),      // 1 - Top dollar
+        WedgeValue::Cash(600),       // 2
+        WedgeValue::Cash(700),       // 3
+        WedgeValue::Cash(600),       // 4
+        WedgeValue::Cash(650),       // 5
+        WedgeValue::Cash(500),       // 6
+        WedgeValue::Bankrupt,        // 7 - Bankrupt
+        WedgeValue::Cash(900),       // 8
+        WedgeValue::Cash(500),       // 9
+        WedgeValue::Cash(300),       // 10
+        WedgeValue::Cash(500),       // 11
+        WedgeValue::prize("GIFT CARD"), // 12 - Prize
+        WedgeValue::Cash(550),       // 13
+        WedgeValue::Cash(400),       // 14
+        WedgeValue::Cash(300),       // 15
+        WedgeValue::LoseTurn,        // 16 - Lose A Turn
+        WedgeValue::Cash(800),       // 17
+        WedgeValue::Cash(350),       // 18
+        WedgeValue::Cash(450),       // 19
+        WedgeValue::Cash(700),       // 20
+        WedgeValue::FreePlay,        // 21 - Free Play
+        WedgeValue::Cash(600),       // 22
+        WedgeValue::Cash(550),       // 23
+        WedgeValue::Bankrupt,        // 24 - Bankrupt
     ]
 }
 
-/// Shuffle wheel slots ensuring special wedges are evenly distributed
+/// Shuffle wheel slots while keeping special wedges evenly distributed
 pub fn shuffle_wheel_with_spacing(slots: Vec<WedgeValue>) -> Vec<WedgeValue> {
     let mut special: Vec<WedgeValue> = slots.iter().filter(|s| s.is_special()).cloned().collect();
     let mut cash: Vec<WedgeValue> = slots.iter().filter(|s| !s.is_special()).cloned().collect();
-
-    // Add default prize wedges
-    special.extend(default_prize_wedges());
 
     let mut rng = rand::thread_rng();
     special.shuffle(&mut rng);
     cash.shuffle(&mut rng);
 
-    let total = special.len() + cash.len();
+    let total = WHEEL_SIZE;
     let n_special = special.len();
 
     if n_special == 0 {
+        cash.truncate(total);
         return cash;
     }
 
@@ -116,12 +205,10 @@ pub fn shuffle_wheel_with_spacing(slots: Vec<WedgeValue>) -> Vec<WedgeValue> {
     }
 
     // Fill remaining slots with cash values
-    let mut cash_iter = cash.into_iter();
+    let mut cash_iter = cash.into_iter().cycle();
     for slot in &mut result {
         if slot.is_none() {
-            if let Some(cash_wedge) = cash_iter.next() {
-                *slot = Some(cash_wedge);
-            }
+            *slot = Some(cash_iter.next().unwrap());
         }
     }
 
@@ -133,12 +220,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_shuffle_preserves_all_wedges() {
-        let original = BASE_WHEEL.to_vec();
-        let shuffled = shuffle_wheel_with_spacing(original.clone());
+    fn test_wheel_has_24_wedges() {
+        let wheel = create_standard_wheel();
+        assert_eq!(wheel.len(), WHEEL_SIZE);
+        assert_eq!(wheel.len(), 24);
+    }
 
-        // Should have more wedges due to added prizes
-        assert!(shuffled.len() >= original.len());
+    #[test]
+    fn test_shuffle_preserves_size() {
+        let original = create_standard_wheel();
+        let shuffled = shuffle_wheel_with_spacing(original);
+
+        // Should always have exactly 24 wedges
+        assert_eq!(shuffled.len(), WHEEL_SIZE);
 
         // Should have special wedges spread out
         let mut last_special_idx: Option<usize> = None;

@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
-use super::wheel::{shuffle_wheel_with_spacing, WedgeValue, BASE_WHEEL};
+use super::wheel::{create_standard_wheel, shuffle_wheel_with_spacing, WedgeValue};
 
 /// Default configuration values
 pub const DEFAULT_VOWEL_COST: i32 = 250;
@@ -183,7 +183,7 @@ pub struct Game {
 
 impl Game {
     pub fn new(room_name: &str) -> Self {
-        let wheel_slots = shuffle_wheel_with_spacing(BASE_WHEEL.to_vec());
+        let wheel_slots = shuffle_wheel_with_spacing(create_standard_wheel());
 
         Self {
             room_name: room_name.to_string(),
@@ -509,7 +509,7 @@ impl Game {
         }
 
         // Reshuffle wheel
-        self.wheel_slots = shuffle_wheel_with_spacing(BASE_WHEEL.to_vec());
+        self.wheel_slots = shuffle_wheel_with_spacing(create_standard_wheel());
     }
 
     /// Reveal all letters in the puzzle
@@ -540,7 +540,7 @@ impl Game {
         }
 
         self.active_idx = 0;
-        self.wheel_slots = shuffle_wheel_with_spacing(BASE_WHEEL.to_vec());
+        self.wheel_slots = shuffle_wheel_with_spacing(create_standard_wheel());
         self.revealed.clear();
         self.used_letters.clear();
         self.clear_turn_state();

@@ -465,11 +465,63 @@ pub async fn game() -> Html<String> {
             text-shadow: 0 1px 0 rgba(255,255,255,0.8);
         }}
         .category {{ color: #d4af37; text-align: center; font-size: 18px; margin-bottom: 10px; }}
-        .wheel-area {{ text-align: center; margin: 20px 0; }}
+        .game-layout {{
+            display: flex;
+            gap: 24px;
+            align-items: flex-start;
+        }}
+        .wheel-area {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex-shrink: 0;
+        }}
+        .wheel-container {{
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: min(320px, 25vw);
+            height: min(320px, 25vw);
+            min-width: 200px;
+            min-height: 200px;
+        }}
+        .wheel-pointer {{
+            position: absolute;
+            top: -8px;
+            z-index: 10;
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 25px solid #d4af37;
+            filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));
+        }}
+        .wheel-svg {{
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+        }}
         .wheel-result {{
-            font-size: 48px;
+            font-size: clamp(20px, 2vw, 32px);
             color: #d4af37;
-            margin: 20px 0;
+            margin-top: 12px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            text-align: center;
+        }}
+        .puzzle-section {{
+            flex: 1;
+            min-width: 0;
+        }}
+        @media (max-width: 900px) {{
+            .game-layout {{
+                flex-direction: column;
+                align-items: center;
+            }}
+            .wheel-container {{
+                width: min(280px, 60vw);
+                height: min(280px, 60vw);
+            }}
         }}
         .controls {{ display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 20px; }}
         .player-list {{ margin-top: 20px; }}
@@ -517,14 +569,22 @@ pub async fn game() -> Html<String> {
 
             <div class="notification" id="notification"></div>
             <div class="phase-indicator">Phase: <span id="phase">Connecting...</span></div>
-            <div class="category">Category: <span id="category">-</span></div>
 
-            <div class="puzzle-board" id="puzzleBoard">
-                <p style="color: #fff;">Connecting to game...</p>
-            </div>
+            <div class="game-layout">
+                <div class="wheel-area">
+                    <div class="wheel-container">
+                        <div class="wheel-pointer"></div>
+                        <svg id="wheelSvg" class="wheel-svg" width="280" height="280" viewBox="0 0 280 280"></svg>
+                    </div>
+                    <div class="wheel-result" id="wheelResult">Spin!</div>
+                </div>
 
-            <div class="wheel-area">
-                <div class="wheel-result" id="wheelResult">-</div>
+                <div class="puzzle-section">
+                    <div class="category">Category: <span id="category">-</span></div>
+                    <div class="puzzle-board" id="puzzleBoard">
+                        <p style="color: #fff;">Connecting to game...</p>
+                    </div>
+                </div>
             </div>
 
             <div class="controls" id="controls">
@@ -565,6 +625,193 @@ pub async fn game() -> Html<String> {
         let gameState = null;
         let myPlayerIdx = null;
 
+        // Wheel animation state - 28 unique colors for wheel wedges
+        const WHEEL_COLORS = [
+            '#c41e3a', '#0047ab', '#ff8c00', '#ffcc00', '#9932cc', '#ff1493',
+            '#008b8b', '#dc143c', '#4169e1', '#ff4500', '#32cd32', '#9400d3',
+            '#ff69b4', '#1e90ff', '#ffd700', '#00ced1', '#ff6347', '#8a2be2',
+            '#20b2aa', '#ff7f50', '#6495ed', '#daa520', '#b22222', '#228b22',
+            '#4682b4', '#cd853f', '#8b0000', '#2e8b57',
+        ];
+        let wheelRotation = 0;
+        let prevSpinIdx = null;
+        let wheelAnimationId = null;
+        let isWheelSpinning = false;
+        let pendingWheelResult = null;
+        let pendingToasts = [];
+
+        function getWedgeLabel(slot) {{
+            // Handle null/undefined
+            if (slot === null || slot === undefined) return '?';
+
+            // Direct number (Cash value)
+            if (typeof slot === 'number') return '$' + slot;
+
+            // String values (BANKRUPT, LOSE A TURN, FREE PLAY)
+            if (typeof slot === 'string') return slot;
+
+            // Object with Cash property {{ Cash: 500 }}
+            if (slot.Cash !== undefined) return '$' + slot.Cash;
+
+            // Prize object {{ type: "PRIZE", name: "..." }} or {{ Prize: {{ name: "..." }} }}
+            if (slot.Prize) return slot.Prize.name || slot.Prize || 'PRIZE';
+            if (slot.type === 'PRIZE' || slot.wedge_type === 'PRIZE') return slot.name || 'PRIZE';
+
+            // Unit variants that serialize as objects {{ Bankrupt: null }}
+            if ('Bankrupt' in slot) return 'BANKRUPT';
+            if ('LoseTurn' in slot) return 'LOSE A TURN';
+            if ('FreePlay' in slot) return 'FREE PLAY';
+
+            // Fallback: get first key
+            const keys = Object.keys(slot);
+            if (keys.length > 0) {{
+                const key = keys[0];
+                const val = slot[key];
+                if (typeof val === 'number') return '$' + val;
+                if (typeof val === 'string') return val;
+                if (val && val.name) return val.name;
+                return key.replace(/([A-Z])/g, ' $1').trim();
+            }}
+
+            console.log('Unknown wedge format:', slot);
+            return '???';
+        }}
+
+        function renderWheel(slots) {{
+            const svg = document.getElementById('wheelSvg');
+            if (!slots || slots.length === 0) {{
+                svg.innerHTML = "<text x='140' y='140' text-anchor='middle' fill='#888'>No wheel data</text>";
+                return;
+            }}
+
+            const size = 280;
+            const radius = size / 2 - 8;
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const numSlots = slots.length;
+
+            let html = '';
+
+            // Draw wedges
+            slots.forEach((slot, idx) => {{
+                const anglePerSlot = 360 / numSlots;
+                const startAngle = idx * anglePerSlot - 90;
+                const endAngle = startAngle + anglePerSlot;
+                const startRad = startAngle * Math.PI / 180;
+                const endRad = endAngle * Math.PI / 180;
+
+                const x1 = centerX + radius * Math.cos(startRad);
+                const y1 = centerY + radius * Math.sin(startRad);
+                const x2 = centerX + radius * Math.cos(endRad);
+                const y2 = centerY + radius * Math.sin(endRad);
+
+                const largeArc = anglePerSlot > 180 ? 1 : 0;
+                const pathD = "M " + centerX + " " + centerY + " L " + x1 + " " + y1 + " A " + radius + " " + radius + " 0 " + largeArc + " 1 " + x2 + " " + y2 + " Z";
+
+                const label = getWedgeLabel(slot);
+                const isBankrupt = label.includes('BANKRUPT');
+                const isLoseTurn = label.includes('LOSE');
+                const isFreePlay = label.includes('FREE');
+                const color = isBankrupt ? '#1a1a1a' : isLoseTurn ? '#f5f5f5' : isFreePlay ? '#228b22' : WHEEL_COLORS[idx % WHEEL_COLORS.length];
+
+                html += "<path d='" + pathD + "' fill='" + color + "' stroke='#111' stroke-width='2'/>";
+
+                // Text label - positioned toward outer edge
+                const midAngle = (startAngle + endAngle) / 2;
+                const midRad = midAngle * Math.PI / 180;
+                const textRadius = radius * 0.68;
+                const textX = centerX + textRadius * Math.cos(midRad);
+                const textY = centerY + textRadius * Math.sin(midRad);
+
+                const normalizedAngle = ((midAngle % 360) + 360) % 360;
+                let rotation = midAngle;
+                if (normalizedAngle > 90 && normalizedAngle < 270) rotation = midAngle + 180;
+
+                // Dynamic font size based on label length and number of slots
+                const baseSize = numSlots > 20 ? 11 : numSlots > 16 ? 12 : 14;
+                let fontSize = baseSize;
+                if (label.length > 10) fontSize = baseSize - 4;
+                else if (label.length > 7) fontSize = baseSize - 2;
+                else if (label.length > 5) fontSize = baseSize - 1;
+
+                // Use white text with black stroke for visibility on any background
+                const textFill = (isBankrupt || color === '#0047ab' || color === '#9932cc' || color === '#9400d3' || color === '#8a2be2') ? '#fff' : (isLoseTurn ? '#000' : '#fff');
+                const strokeColor = textFill === '#fff' ? '#000' : '#fff';
+
+                html += "<text x='" + textX + "' y='" + textY + "' fill='" + textFill + "' stroke='" + strokeColor + "' stroke-width='0.5' font-size='" + fontSize + "' font-weight='bold' text-anchor='middle' dominant-baseline='middle' transform='rotate(" + rotation + ", " + textX + ", " + textY + ")' style='paint-order: stroke fill'>" + label + "</text>";
+            }});
+
+            // Center hub with gradient effect
+            html += "<circle cx='" + centerX + "' cy='" + centerY + "' r='22' fill='#2a2a2a' stroke='#d4af37' stroke-width='4'/>";
+            html += "<circle cx='" + centerX + "' cy='" + centerY + "' r='12' fill='#d4af37'/>";
+            html += "<circle cx='" + centerX + "' cy='" + centerY + "' r='6' fill='#fff' opacity='0.3'/>";
+
+            svg.innerHTML = html;
+        }}
+
+        function animateWheelTo(targetIdx, slots) {{
+            if (wheelAnimationId) {{
+                cancelAnimationFrame(wheelAnimationId);
+            }}
+
+            isWheelSpinning = true;
+            document.getElementById('wheelResult').textContent = 'Spinning...';
+
+            const numSlots = slots.length;
+            const anglePerSlot = 360 / numSlots;
+
+            // Calculate the angle where the target wedge center should be at top (pointer position)
+            // Wedges are drawn starting at -90 degrees, so wedge N's center is at -90 + N*anglePerSlot + anglePerSlot/2
+            // To bring that to the pointer (top, -90 degrees), we rotate by -(N*anglePerSlot + anglePerSlot/2)
+            const wedgeCenterAngle = targetIdx * anglePerSlot + anglePerSlot / 2;
+            const finalAngle = (360 - wedgeCenterAngle) % 360;  // equivalent to -wedgeCenterAngle in positive form
+
+            const currentAngle = ((wheelRotation % 360) + 360) % 360;  // normalize to 0-360
+            let delta = (finalAngle - currentAngle + 360) % 360;
+            if (delta < 30) delta += 360;  // ensure visible rotation on last partial spin
+
+            const spins = 3;  // full spins before landing
+            const targetRotation = wheelRotation + spins * 360 + delta;
+
+            const startRotation = wheelRotation;
+            const totalDelta = targetRotation - startRotation;
+            const duration = 3000;
+            const startTime = performance.now();
+
+            function animate(currentTime) {{
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                // Ease out cubic for natural deceleration
+                const eased = 1 - Math.pow(1 - progress, 3);
+                wheelRotation = startRotation + totalDelta * eased;
+
+                document.getElementById('wheelSvg').style.transform = `rotate(${{wheelRotation}}deg)`;
+
+                if (progress < 1) {{
+                    wheelAnimationId = requestAnimationFrame(animate);
+                }} else {{
+                    wheelAnimationId = null;
+                    isWheelSpinning = false;
+                    onWheelStopped();
+                }}
+            }}
+
+            wheelAnimationId = requestAnimationFrame(animate);
+        }}
+
+        function onWheelStopped() {{
+            // Show the wheel result
+            if (pendingWheelResult !== null) {{
+                document.getElementById('wheelResult').textContent = pendingWheelResult;
+                pendingWheelResult = null;
+            }}
+            // Show any pending toasts
+            while (pendingToasts.length > 0) {{
+                const msg = pendingToasts.shift();
+                showNotification(msg);
+            }}
+        }}
+
         function connect() {{
             socket = io(window.location.origin, {{ transports: ['websocket'] }});
 
@@ -586,11 +833,20 @@ pub async fn game() -> Html<String> {
 
             socket.on('toast', (data) => {{
                 console.log('Toast:', data);
-                showNotification(data.msg || data);
+                const msg = data.msg || data;
+                if (isWheelSpinning) {{
+                    pendingToasts.push(msg);
+                }} else {{
+                    showNotification(msg);
+                }}
             }});
 
             socket.on('notification', (msg) => {{
-                showNotification(msg);
+                if (isWheelSpinning) {{
+                    pendingToasts.push(msg);
+                }} else {{
+                    showNotification(msg);
+                }}
             }});
 
             socket.on('error', (err) => {{
@@ -613,6 +869,18 @@ pub async fn game() -> Html<String> {
             // Category
             document.getElementById('category').textContent = gameState.puzzle?.category || '-';
 
+            // Render wheel
+            if (gameState.wheel_slots && gameState.wheel_slots.length > 0) {{
+                renderWheel(gameState.wheel_slots);
+
+                // Animate wheel if spin index changed
+                const spinIdx = gameState.last_spin_index;
+                if (spinIdx !== null && spinIdx !== undefined && spinIdx !== prevSpinIdx) {{
+                    prevSpinIdx = spinIdx;
+                    animateWheelTo(spinIdx, gameState.wheel_slots);
+                }}
+            }}
+
             // Puzzle board - Wheel of Fortune style with 4 rows (12, 14, 14, 12)
             const board = document.getElementById('puzzleBoard');
             const ROW_SIZES = [12, 14, 14, 12];
@@ -622,31 +890,32 @@ pub async fn game() -> Html<String> {
                 const answer = gameState.puzzle.answer.toUpperCase();
                 const words = answer.split(' ');
 
-                // Lay out words across rows, keeping words together
-                const rows = [[], [], [], []];
-                let currentRow = 0;
+                // Try to fit puzzle starting from row 1 (second row) unless too big
+                function layoutWords(startRow) {{
+                    const rows = [[], [], [], []];
+                    let currentRow = startRow;
 
-                for (const word of words) {{
-                    // Check if word fits on current row
-                    const currentLen = rows[currentRow].reduce((sum, w) => sum + w.length + 1, 0) - 1;
-                    const spaceNeeded = currentLen > 0 ? word.length + 1 : word.length;
+                    for (const word of words) {{
+                        if (currentRow >= 4) return null; // Doesn't fit
 
-                    if (currentLen + spaceNeeded <= ROW_SIZES[currentRow]) {{
-                        rows[currentRow].push(word);
-                    }} else {{
-                        // Try next row
-                        currentRow++;
-                        if (currentRow < 4) {{
+                        const currentLen = rows[currentRow].reduce((sum, w) => sum + w.length + 1, 0) - 1;
+                        const spaceNeeded = currentLen > 0 ? word.length + 1 : word.length;
+
+                        if (currentLen + spaceNeeded <= ROW_SIZES[currentRow]) {{
+                            rows[currentRow].push(word);
+                        }} else {{
+                            currentRow++;
+                            if (currentRow >= 4) return null; // Doesn't fit
                             rows[currentRow].push(word);
                         }}
                     }}
+                    return rows;
                 }}
 
-                // Center the content vertically (use middle rows first if puzzle is short)
-                const usedRows = rows.filter(r => r.length > 0).length;
-                let startRow = 0;
-                if (usedRows === 1) startRow = 1;
-                else if (usedRows === 2) startRow = 1;
+                // Try starting at row 1, fall back to row 0 if doesn't fit
+                let rows = layoutWords(1);
+                if (!rows) rows = layoutWords(0);
+                if (!rows) rows = [[], [], [], []]; // fallback empty
 
                 // Render rows
                 let html = '';
@@ -688,26 +957,31 @@ pub async fn game() -> Html<String> {
                 board.innerHTML = html;
             }}
 
-            // Wheel result - use current_wedge
+            // Wheel result - use current_wedge (delay if spinning)
             const wedge = gameState.current_wedge;
+            let resultText = '-';
             if (wedge !== null && wedge !== undefined) {{
                 if (typeof wedge === 'object') {{
                     if (wedge.Cash) {{
-                        document.getElementById('wheelResult').textContent = '$' + wedge.Cash;
+                        resultText = '$' + wedge.Cash;
                     }} else if (wedge.Prize) {{
-                        document.getElementById('wheelResult').textContent = wedge.Prize.name || 'Prize';
+                        resultText = wedge.Prize.name || 'Prize';
                     }} else {{
                         // Bankrupt, LoseTurn, FreePlay, etc.
                         const key = Object.keys(wedge)[0] || wedge;
-                        document.getElementById('wheelResult').textContent = key.replace(/([A-Z])/g, ' $1').trim();
+                        resultText = key.replace(/([A-Z])/g, ' $1').trim();
                     }}
                 }} else if (typeof wedge === 'string') {{
-                    document.getElementById('wheelResult').textContent = wedge.replace(/([A-Z])/g, ' $1').trim();
+                    resultText = wedge.replace(/([A-Z])/g, ' $1').trim();
                 }} else {{
-                    document.getElementById('wheelResult').textContent = '$' + wedge;
+                    resultText = '$' + wedge;
                 }}
+            }}
+
+            if (isWheelSpinning) {{
+                pendingWheelResult = resultText;
             }} else {{
-                document.getElementById('wheelResult').textContent = '-';
+                document.getElementById('wheelResult').textContent = resultText;
             }}
 
             // Players - use active_idx and total
@@ -736,7 +1010,19 @@ pub async fn game() -> Html<String> {
         }}
 
         function spin() {{
+            // Set spinning state immediately so incoming toasts get queued
+            isWheelSpinning = true;
+            document.getElementById('wheelResult').textContent = 'Spinning...';
             socket.emit('spin', {{ room }});
+
+            // Fallback: if no animation started within 2 seconds, reset and show pending toasts
+            setTimeout(() => {{
+                if (isWheelSpinning && !wheelAnimationId) {{
+                    isWheelSpinning = false;
+                    document.getElementById('wheelResult').textContent = '-';
+                    onWheelStopped();
+                }}
+            }}, 2000);
         }}
 
         function guessLetter() {{
