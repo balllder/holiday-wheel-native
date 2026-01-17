@@ -45,7 +45,7 @@ describe('AnimatedWheel', () => {
           <AnimatedWheel wheelSlots={mockWheelSlots} lastSpinIndex={null} />
         );
       });
-      const json = tree?.toJSON() as Record<string, unknown>;
+      const json = tree?.toJSON();
       // Check that the SVG has the default dimensions
       expect(json).toBeDefined();
     });
@@ -187,7 +187,7 @@ describe('AnimatedWheel', () => {
     });
 
     it('clears animation interval on unmount', () => {
-      const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
+      const clearIntervalSpy = jest.spyOn(globalThis, 'clearInterval');
       let tree: ReactTestRenderer | undefined;
 
       act(() => {
