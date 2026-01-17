@@ -61,9 +61,14 @@ jobs:
 
       - name: Setup Hermes compiler
         run: |
-          cd node_modules/react-native/sdks/hermesc/linux64-bin
-          chmod +x hermesc
-          ls -la
+          # Download hermesc if not present
+          cd node_modules/react-native/sdks
+          if [ ! -f hermesc/linux64-bin/hermesc ]; then
+            echo "Downloading Hermes compiler..."
+            ./hermesc/download.sh
+          fi
+          chmod +x hermesc/linux64-bin/hermesc || true
+          ls -la hermesc/linux64-bin/ || echo "hermesc directory not found"
 
       - name: Build Android APK (Phone)
         run: |
