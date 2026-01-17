@@ -7,10 +7,11 @@ import {
   StyleSheet,
   FlatList,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useAuthStore, authService } from '@holiday-wheel/shared';
+import { useAuthStore, authService, configService } from '@holiday-wheel/shared';
 import type { RoomInfo } from '@holiday-wheel/shared';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -18,24 +19,49 @@ type LobbyScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Lobby'>;
 };
 
-const API_URL = 'http://10.0.2.2:5000';
+// Default URL based on platform
+const getDefaultUrl = () => {
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:5000';
+  }
+  return 'http://localhost:5000';
+};
 
 export function LobbyScreen({ navigation }: LobbyScreenProps): React.JSX.Element {
   const [rooms, setRooms] = useState<RoomInfo[]>([]);
   const [customRoom, setCustomRoom] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [serverUrl, setServerUrl] = useState(getDefaultUrl());
+  const [showServerConfig, setShowServerConfig] = useState(false);
+  const [serverSaved, setServerSaved] = useState(false);
 
   const user = useAuthStore((state) => state.user);
   const token = useAuthStore((state) => state.token);
   const clearAuth = useAuthStore((state) => state.clearAuth);
 
+  // Load saved server URL on mount
+  useEffect(() => {
+    const loadServerUrl = async () => {
+      const savedUrl = await configService.getServerUrl();
+      if (savedUrl) {
+        setServerUrl(savedUrl);
+      }
+    };
+    loadServerUrl();
+  }, []);
+
   const loadRooms = useCallback(async () => {
     if (!token) return;
 
-    authService.setBaseUrl(API_URL);
-    const result = await authService.getRooms(token);
-    setRooms(result.rooms);
-  }, [token]);
+    try {
+      authService.setBaseUrl(serverUrl);
+      const result = await authService.getRooms(token);
+      setRooms(result.rooms);
+    } catch (error) {
+      console.error('Failed to load rooms:', error);
+      setRooms([]);
+    }
+  }, [token, serverUrl]);
 
   useEffect(() => {
     loadRooms();
@@ -52,8 +78,31 @@ export function LobbyScreen({ navigation }: LobbyScreenProps): React.JSX.Element
     clearAuth();
   };
 
+  const handleSaveServer = async () => {
+    let url = serverUrl.trim();
+    // Ensure URL has protocol
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'http://' + url;
+      setServerUrl(url);
+    }
+    // Remove trailing slash
+    if (url.endsWith('/')) {
+      url = url.slice(0, -1);
+      setServerUrl(url);
+    }
+
+    await configService.setServerUrl(url);
+    authService.setBaseUrl(url);
+    setServerSaved(true);
+    setTimeout(() => setServerSaved(false), 2000);
+    loadRooms();
+  };
+
   const joinRoom = (room: string, asController: boolean = false) => {
     const trimmedRoom = room.trim() || 'main';
+    // Ensure auth service has the current server URL
+    authService.setBaseUrl(serverUrl);
+
     if (asController) {
       navigation.navigate('Controller', { room: trimmedRoom });
     } else {
@@ -93,6 +142,49 @@ export function LobbyScreen({ navigation }: LobbyScreenProps): React.JSX.Element
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Server configuration */}
+      <TouchableOpacity
+        style={styles.serverToggle}
+        onPress={() => setShowServerConfig(!showServerConfig)}
+      >
+        <Text style={styles.serverToggleText}>
+          ⚙️ Server: {serverUrl.replace(/^https?:\/\//, '')}
+        </Text>
+        <Text style={styles.serverToggleArrow}>
+          {showServerConfig ? '▲' : '▼'}
+        </Text>
+      </TouchableOpacity>
+
+      {showServerConfig && (
+        <View style={styles.serverConfig}>
+          <Text style={styles.serverLabel}>Server URL</Text>
+          <View style={styles.serverInputRow}>
+            <TextInput
+              style={styles.serverInput}
+              placeholder="http://192.168.1.100:5000"
+              placeholderTextColor="#666"
+              value={serverUrl}
+              onChangeText={setServerUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+            />
+            <TouchableOpacity
+              style={[styles.saveButton, serverSaved && styles.saveButtonSaved]}
+              onPress={handleSaveServer}
+            >
+              <Text style={styles.saveButtonText}>
+                {serverSaved ? '✓' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.serverHint}>
+            Enter the IP address of the computer running the backend server.
+            {Platform.OS === 'android' && ' For Android emulator, use 10.0.2.2'}
+          </Text>
+        </View>
+      )}
 
       {/* Custom room input */}
       <View style={styles.customRoomContainer}>
@@ -179,6 +271,70 @@ const styles = StyleSheet.create({
     color: '#d4af37',
     fontSize: 14,
   },
+  serverToggle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#150833',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  serverToggleText: {
+    color: '#888',
+    fontSize: 14,
+  },
+  serverToggleArrow: {
+    color: '#888',
+    fontSize: 12,
+  },
+  serverConfig: {
+    backgroundColor: '#1a0a3e',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  serverLabel: {
+    color: '#d4af37',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  serverInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  serverInput: {
+    flex: 1,
+    backgroundColor: '#0d0628',
+    borderRadius: 8,
+    padding: 12,
+    color: '#ffffff',
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  saveButton: {
+    backgroundColor: '#4caf50',
+    borderRadius: 8,
+    paddingHorizontal: 20,
+    justifyContent: 'center',
+  },
+  saveButtonSaved: {
+    backgroundColor: '#2e7d32',
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  serverHint: {
+    color: '#666',
+    fontSize: 12,
+    marginTop: 8,
+    lineHeight: 18,
+  },
   customRoomContainer: {
     flexDirection: 'row',
     padding: 16,
@@ -230,7 +386,7 @@ const styles = StyleSheet.create({
   },
   modeHelp: {
     paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingVertical: 12,
   },
   modeHelpText: {
     color: '#888',

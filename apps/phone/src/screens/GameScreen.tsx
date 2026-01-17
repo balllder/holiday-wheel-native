@@ -15,6 +15,7 @@ import {
   useGameStore,
   useAuthStore,
   socketService,
+  configService,
   selectIsMyTurn,
   selectCanBuzz,
   VOWELS,
@@ -26,12 +27,11 @@ type GameScreenProps = {
   route: RouteProp<RootStackParamList, 'Game'>;
 };
 
-const API_URL = 'http://10.0.2.2:5000';
-
 export function GameScreen({ route }: GameScreenProps): React.JSX.Element {
   const { room } = route.params;
   const [letterInput, setLetterInput] = useState('');
   const [solveInput, setSolveInput] = useState('');
+  const [serverUrl, setServerUrl] = useState<string | null>(null);
 
   const token = useAuthStore((state) => state.token);
   const connected = useGameStore((state) => state.connected);
@@ -101,9 +101,21 @@ export function GameScreen({ route }: GameScreenProps): React.JSX.Element {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastSpinIdx, wheelSlots.length]);
 
+  // Load server URL on mount
   useEffect(() => {
+    const loadServerUrl = async () => {
+      const url = await configService.getServerUrl();
+      setServerUrl(url);
+    };
+    loadServerUrl();
+  }, []);
+
+  // Connect to socket when server URL is available
+  useEffect(() => {
+    if (!serverUrl) return;
+
     // Connect to socket
-    socketService.connect(API_URL, token || undefined);
+    socketService.connect(serverUrl, token || undefined);
     socketService.joinRoom(room);
 
     // Set up toast handler
@@ -115,7 +127,7 @@ export function GameScreen({ route }: GameScreenProps): React.JSX.Element {
     return () => {
       socketService.disconnect();
     };
-  }, [room, token]);
+  }, [room, token, serverUrl]);
 
   // Join game as player when connected
   useEffect(() => {
