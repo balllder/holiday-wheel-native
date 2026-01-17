@@ -12,6 +12,7 @@ import {
   useGameStore,
   useAuthStore,
   socketService,
+  configService,
   ROW_WIDTHS,
   AnimatedWheel,
 } from '@holiday-wheel/shared';
@@ -25,13 +26,13 @@ type TVGameScreenProps = {
   route: RouteProp<TVStackParamList, 'TVGame'>;
 };
 
-const API_URL = 'http://192.168.1.100:5000';
 const HOST_CODE = 'holiday'; // Default host code
 
 export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
   const { room } = route.params;
   const [controlsVisible, setControlsVisible] = useState(false);
   const [showQRCode, setShowQRCode] = useState(true);
+  const [serverUrl, setServerUrl] = useState<string | null>(null);
 
   const token = useAuthStore((state) => state.token);
   const connected = useGameStore((state) => state.connected);
@@ -64,9 +65,20 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
     return () => backHandler.remove();
   }, [controlsVisible]);
 
+  // Load server URL on mount
+  useEffect(() => {
+    const loadServerUrl = async () => {
+      const url = await configService.getServerUrl();
+      setServerUrl(url);
+    };
+    loadServerUrl();
+  }, []);
+
   // Connect to socket and auto-claim host
   useEffect(() => {
-    socketService.connect(API_URL, token || undefined);
+    if (!serverUrl) return;
+
+    socketService.connect(serverUrl, token || undefined);
     socketService.joinRoom(room);
 
     // Auto-claim host for TV display
@@ -78,7 +90,7 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
       clearTimeout(claimTimer);
       socketService.disconnect();
     };
-  }, [room, token]);
+  }, [room, token, serverUrl]);
 
   // Hide QR code when players join
   useEffect(() => {
@@ -188,9 +200,9 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
         </View>
 
         {/* Right: QR Code for joining (when no players) */}
-        {showQRCode && (
+        {showQRCode && serverUrl && (
           <View style={styles.qrSection}>
-            <RoomQRCode room={room} serverUrl={API_URL} size={180} />
+            <RoomQRCode room={room} serverUrl={serverUrl} size={180} />
           </View>
         )}
       </View>

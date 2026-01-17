@@ -2,7 +2,7 @@
  * Holiday Wheel of Fortune - React Native App
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   StatusBar,
   ActivityIndicator,
@@ -12,10 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  NavigationContainer,
-  NavigationContainerRef,
-} from '@react-navigation/native';
+import { NavigationContainerRef } from '@react-navigation/native';
 import { useAuthStore, configService } from '@holiday-wheel/shared';
 import { AppNavigator, RootStackParamList } from './src/navigation/AppNavigator';
 
@@ -74,7 +71,7 @@ function App(): React.JSX.Element {
   const user = useAuthStore((state) => state.user);
 
   // Handle incoming deep links
-  const handleDeepLink = async (url: string | null) => {
+  const handleDeepLink = useCallback(async (url: string | null) => {
     if (!url) return;
 
     const params = parseDeepLink(url);
@@ -92,7 +89,7 @@ function App(): React.JSX.Element {
         setPendingDeepLink({ room: params.room, server: params.server });
       }
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     // Check for stored auth on app start
@@ -125,7 +122,7 @@ function App(): React.JSX.Element {
     });
 
     return () => subscription.remove();
-  }, [user]);
+  }, [handleDeepLink]);
 
   // Handle pending deep link after user logs in
   useEffect(() => {

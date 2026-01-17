@@ -26,7 +26,10 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
   const [customRoom, setCustomRoom] = useState('main');
   const [focusedItem, setFocusedItem] = useState<string>('input');
   const [serverUrl, setServerUrl] = useState<string>(DEFAULT_API_URL);
+  const [serverUrlInput, setServerUrlInput] = useState<string>(DEFAULT_API_URL);
   const [showQRCode, setShowQRCode] = useState<boolean>(false);
+  const [showServerConfig, setShowServerConfig] = useState<boolean>(false);
+  const [serverSaved, setServerSaved] = useState<boolean>(false);
 
   const user = useAuthStore((state) => state.user);
   const token = useAuthStore((state) => state.token);
@@ -37,15 +40,21 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
     const loadServerUrl = async () => {
       const url = await configService.getServerUrl();
       setServerUrl(url);
+      setServerUrlInput(url);
     };
     loadServerUrl();
   }, []);
 
   const loadRooms = useCallback(async () => {
     if (!token) return;
-    authService.setBaseUrl(serverUrl);
-    const result = await authService.getRooms(token);
-    setRooms(result.rooms);
+    try {
+      authService.setBaseUrl(serverUrl);
+      const result = await authService.getRooms(token);
+      setRooms(result.rooms);
+    } catch (error) {
+      console.error('Failed to load rooms:', error);
+      setRooms([]);
+    }
   }, [token, serverUrl]);
 
   useEffect(() => {
@@ -57,6 +66,27 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
   const handleLogout = async () => {
     await AsyncStorage.multiRemove(['@auth_token', '@auth_user']);
     clearAuth();
+  };
+
+  const handleSaveServer = async () => {
+    let url = serverUrlInput.trim();
+    // Ensure URL has protocol
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'http://' + url;
+      setServerUrlInput(url);
+    }
+    // Remove trailing slash
+    if (url.endsWith('/')) {
+      url = url.slice(0, -1);
+      setServerUrlInput(url);
+    }
+
+    await configService.setServerUrl(url);
+    setServerUrl(url);
+    authService.setBaseUrl(url);
+    setServerSaved(true);
+    setTimeout(() => setServerSaved(false), 2000);
+    loadRooms();
   };
 
   const joinRoom = (room: string) => {
@@ -86,17 +116,68 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
           <Text style={styles.title}>🎡 Holiday Wheel</Text>
           <Text style={styles.welcome}>Welcome, {user?.display_name}!</Text>
         </View>
-        <TouchableOpacity
-          style={[
-            styles.logoutButton,
-            focusedItem === 'logout' && styles.buttonFocused,
-          ]}
-          onPress={handleLogout}
-          onFocus={() => setFocusedItem('logout')}
-        >
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={[
+              styles.settingsButton,
+              focusedItem === 'settings' && styles.buttonFocused,
+            ]}
+            onPress={() => setShowServerConfig(!showServerConfig)}
+            onFocus={() => setFocusedItem('settings')}
+          >
+            <Text style={styles.settingsText}>⚙️ Server</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.logoutButton,
+              focusedItem === 'logout' && styles.buttonFocused,
+            ]}
+            onPress={handleLogout}
+            onFocus={() => setFocusedItem('logout')}
+          >
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {/* Server Configuration Panel */}
+      {showServerConfig && (
+        <View style={styles.serverConfigPanel}>
+          <Text style={styles.serverConfigTitle}>Server Configuration</Text>
+          <View style={styles.serverConfigRow}>
+            <TextInput
+              style={[
+                styles.serverInput,
+                focusedItem === 'serverInput' && styles.inputFocused,
+              ]}
+              placeholder="http://192.168.1.100:5000"
+              placeholderTextColor="#666"
+              value={serverUrlInput}
+              onChangeText={setServerUrlInput}
+              onFocus={() => setFocusedItem('serverInput')}
+              onSubmitEditing={handleSaveServer}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity
+              style={[
+                styles.saveButton,
+                serverSaved && styles.saveButtonSaved,
+                focusedItem === 'saveServer' && styles.buttonFocused,
+              ]}
+              onPress={handleSaveServer}
+              onFocus={() => setFocusedItem('saveServer')}
+            >
+              <Text style={styles.saveButtonText}>
+                {serverSaved ? '✓ Saved' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.serverHint}>
+            Enter the IP address of the computer running the backend server
+          </Text>
+        </View>
+      )}
 
       <View style={styles.content}>
         <View style={styles.mainContent}>
@@ -117,7 +198,7 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
                   onChangeText={setCustomRoom}
                   onFocus={() => setFocusedItem('input')}
                   onSubmitEditing={() => joinRoom(customRoom)}
-                  hasTVPreferredFocus={true}
+                  hasTVPreferredFocus={!showServerConfig}
                 />
                 <TouchableOpacity
                   style={[
@@ -155,11 +236,11 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
             <Text style={styles.sectionTitle}>Phone Connection</Text>
             <View style={styles.serverInfo}>
               <Text style={styles.serverLabel}>Server:</Text>
-              <Text style={styles.serverUrl}>{serverUrl}</Text>
+              <Text style={styles.serverUrlText}>{serverUrl.replace(/^https?:\/\//, '')}</Text>
             </View>
             <View style={styles.serverInfo}>
               <Text style={styles.serverLabel}>Room:</Text>
-              <Text style={styles.serverUrl}>{customRoom || 'main'}</Text>
+              <Text style={styles.serverUrlText}>{customRoom || 'main'}</Text>
             </View>
 
             <TouchableOpacity
@@ -198,7 +279,7 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
       {/* Instructions */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>
-          ← → Navigate rooms • ↑ ↓ Move between sections • Select to join
+          ← → Navigate • Select to join • Menu for settings
         </Text>
       </View>
     </View>
@@ -228,6 +309,22 @@ const styles = StyleSheet.create({
     color: '#888',
     marginTop: 8,
   },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  settingsButton: {
+    backgroundColor: '#1a0a3e',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#333',
+  },
+  settingsText: {
+    color: '#888',
+    fontSize: 20,
+  },
   logoutButton: {
     backgroundColor: '#1a0a3e',
     paddingHorizontal: 32,
@@ -240,6 +337,57 @@ const styles = StyleSheet.create({
     color: '#d4af37',
     fontSize: 20,
     fontWeight: 'bold',
+  },
+  serverConfigPanel: {
+    backgroundColor: '#1a0a3e',
+    padding: 24,
+    marginHorizontal: 40,
+    marginTop: 20,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#d4af37',
+  },
+  serverConfigTitle: {
+    color: '#d4af37',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  serverConfigRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  serverInput: {
+    flex: 1,
+    backgroundColor: '#0d0628',
+    borderRadius: 8,
+    padding: 16,
+    color: '#ffffff',
+    fontSize: 22,
+    borderWidth: 2,
+    borderColor: '#333',
+  },
+  saveButton: {
+    backgroundColor: '#4caf50',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 8,
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  saveButtonSaved: {
+    backgroundColor: '#2e7d32',
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  serverHint: {
+    color: '#666',
+    fontSize: 16,
+    marginTop: 12,
   },
   content: {
     flex: 1,
@@ -271,7 +419,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginRight: 8,
   },
-  serverUrl: {
+  serverUrlText: {
     color: '#d4af37',
     fontSize: 18,
     fontWeight: 'bold',
