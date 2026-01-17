@@ -231,12 +231,24 @@ impl Database {
                 final_seconds INTEGER,
                 final_jackpot INTEGER,
                 prize_replace_csv TEXT,
+                puzzle_display_seconds INTEGER,
+                prize_wedge_names TEXT,
                 FOREIGN KEY(active_pack_id) REFERENCES packs(id)
             )
             "#,
         )
         .execute(&self.pool)
         .await?;
+
+        // Add new columns if they don't exist (migration for existing databases)
+        sqlx::query("ALTER TABLE room_config ADD COLUMN puzzle_display_seconds INTEGER")
+            .execute(&self.pool)
+            .await
+            .ok();
+        sqlx::query("ALTER TABLE room_config ADD COLUMN prize_wedge_names TEXT")
+            .execute(&self.pool)
+            .await
+            .ok();
 
         // Create default pack if none exists
         sqlx::query("INSERT OR IGNORE INTO packs (id, name) VALUES (1, 'Default')")
@@ -611,7 +623,7 @@ impl Database {
     /// Get room config
     pub async fn get_room_config(&self, room_name: &str) -> Result<RoomConfig, DbError> {
         let row = sqlx::query(
-            "SELECT active_pack_id, vowel_cost, final_seconds, final_jackpot, prize_replace_csv FROM room_config WHERE room_name = ?",
+            "SELECT active_pack_id, vowel_cost, final_seconds, final_jackpot, prize_replace_csv, puzzle_display_seconds, prize_wedge_names FROM room_config WHERE room_name = ?",
         )
         .bind(room_name)
         .fetch_optional(&self.pool)
@@ -627,11 +639,23 @@ impl Database {
                 })
                 .unwrap_or_else(|| vec![500, 1000, 1500, 2000, 2500, 3000, 3500]);
 
+            let prize_wedge_csv: Option<String> = row.get("prize_wedge_names");
+            let prize_wedge_names = prize_wedge_csv
+                .map(|csv| {
+                    csv.split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
+                .unwrap_or_else(|| vec!["GIFT CARD".to_string()]);
+
             Ok(RoomConfig {
                 vowel_cost: row.get::<Option<i32>, _>("vowel_cost").unwrap_or(250),
                 final_seconds: row.get::<Option<i32>, _>("final_seconds").unwrap_or(30),
                 final_jackpot: row.get::<Option<i32>, _>("final_jackpot").unwrap_or(10000),
                 prize_replace_cash_values: prize_values,
+                puzzle_display_seconds: row.get::<Option<i32>, _>("puzzle_display_seconds").unwrap_or(30),
+                prize_wedge_names,
             })
         } else {
             Ok(RoomConfig::default())
@@ -662,16 +686,20 @@ impl Database {
             .collect::<Vec<_>>()
             .join(",");
 
+        let prize_wedge_csv = config.prize_wedge_names.join(",");
+
         sqlx::query(
             r#"
-            INSERT INTO room_config (room_name, active_pack_id, vowel_cost, final_seconds, final_jackpot, prize_replace_csv)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO room_config (room_name, active_pack_id, vowel_cost, final_seconds, final_jackpot, prize_replace_csv, puzzle_display_seconds, prize_wedge_names)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(room_name) DO UPDATE SET
                 active_pack_id = excluded.active_pack_id,
                 vowel_cost = excluded.vowel_cost,
                 final_seconds = excluded.final_seconds,
                 final_jackpot = excluded.final_jackpot,
-                prize_replace_csv = excluded.prize_replace_csv
+                prize_replace_csv = excluded.prize_replace_csv,
+                puzzle_display_seconds = excluded.puzzle_display_seconds,
+                prize_wedge_names = excluded.prize_wedge_names
             "#,
         )
         .bind(room_name)
@@ -680,6 +708,8 @@ impl Database {
         .bind(config.final_seconds)
         .bind(config.final_jackpot)
         .bind(&prize_csv)
+        .bind(config.puzzle_display_seconds)
+        .bind(&prize_wedge_csv)
         .execute(&self.pool)
         .await?;
         Ok(())

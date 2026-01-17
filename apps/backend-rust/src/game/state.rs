@@ -103,12 +103,14 @@ impl Default for Puzzle {
 }
 
 /// Room configuration
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoomConfig {
     pub vowel_cost: i32,
     pub final_seconds: i32,
     pub final_jackpot: i32,
     pub prize_replace_cash_values: Vec<i32>,
+    pub puzzle_display_seconds: i32,
+    pub prize_wedge_names: Vec<String>,
 }
 
 impl Default for RoomConfig {
@@ -118,6 +120,8 @@ impl Default for RoomConfig {
             final_seconds: DEFAULT_FINAL_SECONDS,
             final_jackpot: DEFAULT_FINAL_JACKPOT,
             prize_replace_cash_values: vec![500, 1000, 1500, 2000, 2500, 3000, 3500],
+            puzzle_display_seconds: 30,
+            prize_wedge_names: vec!["GIFT CARD".to_string()],
         }
     }
 }
@@ -167,6 +171,9 @@ pub struct Game {
     pub last_spin_index: Option<usize>,
     pub current_wedge: Option<WedgeValue>,
 
+    // Puzzle solved state
+    pub puzzle_solved_by: Option<String>,
+
     // Host
     pub host_sid: Option<String>,
 
@@ -197,6 +204,7 @@ impl Game {
             wheel_index: None,
             last_spin_index: None,
             current_wedge: None,
+            puzzle_solved_by: None,
             host_sid: None,
             config: RoomConfig::default(),
             active_pack_id: None,
@@ -461,6 +469,11 @@ impl Game {
                 }
             }
 
+            // Record who solved it
+            if let Some(player) = self.players.get(self.active_idx) {
+                self.puzzle_solved_by = Some(player.name.clone());
+            }
+
             // Award round to active player
             self.award_round_to_active();
             true
@@ -501,6 +514,7 @@ impl Game {
         self.used_letters.clear();
         self.clear_turn_state();
         self.last_spin_index = None;
+        self.puzzle_solved_by = None;
 
         // Reset round banks
         for player in &mut self.players {
@@ -839,6 +853,7 @@ impl Game {
             wheel_index: self.wheel_index,
             wheel_slots: self.wheel_slots.clone(),
             last_spin_index: self.last_spin_index,
+            puzzle_solved_by: self.puzzle_solved_by.clone(),
             host: HostState {
                 claimed: self.host_sid.is_some(),
             },
@@ -941,6 +956,7 @@ pub struct GameState {
     pub wheel_index: Option<usize>,
     pub wheel_slots: Vec<WedgeValue>,
     pub last_spin_index: Option<usize>,
+    pub puzzle_solved_by: Option<String>,
     pub host: HostState,
     pub config: RoomConfig,
     pub active_pack_id: Option<i64>,

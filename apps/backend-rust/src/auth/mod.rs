@@ -125,6 +125,8 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/admin/puzzles/{id}", axum::routing::delete(admin_delete_puzzle))
         .route("/api/admin/rooms", get(admin_list_rooms))
         .route("/api/admin/rooms/{name}", axum::routing::delete(admin_delete_room))
+        .route("/api/admin/settings/{room}", get(admin_get_settings))
+        .route("/api/admin/settings/{room}", post(admin_save_settings))
 }
 
 // ========== LOGIN ENDPOINTS ==========
@@ -1049,4 +1051,88 @@ async fn admin_delete_room(
     (StatusCode::OK, Json(SimpleResponse {
         ok: true, message: Some("Room deleted".to_string()), error: None
     }))
+}
+
+// ========== SETTINGS ENDPOINTS ==========
+
+#[derive(Serialize)]
+struct SettingsResponse {
+    ok: bool,
+    config: Option<crate::game::RoomConfig>,
+    error: Option<String>,
+}
+
+async fn admin_get_settings(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(room_name): Path<String>,
+) -> (StatusCode, Json<SettingsResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SettingsResponse {
+            ok: false, config: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    match state.db.get_room_config(&room_name).await {
+        Ok(config) => (StatusCode::OK, Json(SettingsResponse {
+            ok: true, config: Some(config), error: None
+        })),
+        Err(_) => (StatusCode::OK, Json(SettingsResponse {
+            ok: true, config: Some(crate::game::RoomConfig::default()), error: None
+        })),
+    }
+}
+
+#[derive(Deserialize)]
+struct SaveSettingsRequest {
+    puzzle_display_seconds: Option<i32>,
+    vowel_cost: Option<i32>,
+    final_seconds: Option<i32>,
+    final_jackpot: Option<i32>,
+    prize_wedge_names: Option<Vec<String>>,
+}
+
+async fn admin_save_settings(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(room_name): Path<String>,
+    Json(req): Json<SaveSettingsRequest>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    // Get existing config and merge with new values
+    let existing = state.db.get_room_config(&room_name).await.unwrap_or_default();
+    let config = crate::game::RoomConfig {
+        vowel_cost: req.vowel_cost.unwrap_or(existing.vowel_cost),
+        final_seconds: req.final_seconds.unwrap_or(existing.final_seconds),
+        final_jackpot: req.final_jackpot.unwrap_or(existing.final_jackpot),
+        prize_replace_cash_values: existing.prize_replace_cash_values,
+        puzzle_display_seconds: req.puzzle_display_seconds.unwrap_or(existing.puzzle_display_seconds),
+        prize_wedge_names: req.prize_wedge_names.unwrap_or(existing.prize_wedge_names),
+    };
+
+    // Get existing pack ID
+    let pack_id = state.db.get_active_pack_id(&room_name).await.ok().flatten();
+
+    match state.db.set_room_config(&room_name, &config, pack_id).await {
+        Ok(_) => {
+            // Also update in-memory game state if room exists
+            {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.rooms.get_mut(&room_name) {
+                    game.config = config;
+                }
+            }
+            (StatusCode::OK, Json(SimpleResponse {
+                ok: true, message: Some("Settings saved".to_string()), error: None
+            }))
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
+            ok: false, message: None, error: Some(format!("Failed to save settings: {}", e))
+        })),
+    }
 }

@@ -639,6 +639,7 @@ pub async fn game() -> Html<String> {
         let isWheelSpinning = false;
         let pendingWheelResult = null;
         let pendingToasts = [];
+        let prevPuzzleSolvedBy = null;
 
         function getWedgeLabel(slot) {{
             // Handle null/undefined
@@ -863,6 +864,17 @@ pub async fn game() -> Html<String> {
         function renderGame() {{
             if (!gameState) return;
 
+            // Check for puzzle solved
+            const solvedBy = gameState.puzzle_solved_by;
+            if (solvedBy && solvedBy !== prevPuzzleSolvedBy) {{
+                prevPuzzleSolvedBy = solvedBy;
+                const displayTime = gameState.config?.puzzle_display_seconds || 30;
+                showNotification(`🎉 ${{solvedBy}} solved it! Answer: ${{gameState.puzzle?.answer}}`);
+            }} else if (!solvedBy && prevPuzzleSolvedBy) {{
+                prevPuzzleSolvedBy = null;
+                hideNotification();
+            }}
+
             // Phase
             document.getElementById('phase').textContent = gameState.phase || 'normal';
 
@@ -1006,10 +1018,15 @@ pub async fn game() -> Html<String> {
             const notif = document.getElementById('notification');
             notif.textContent = msg;
             notif.style.display = 'block';
-            setTimeout(() => {{ notif.style.display = 'none'; }}, 3000);
+            // Notification persists until next action or new notification
+        }}
+
+        function hideNotification() {{
+            document.getElementById('notification').style.display = 'none';
         }}
 
         function spin() {{
+            hideNotification();
             // Set spinning state immediately so incoming toasts get queued
             isWheelSpinning = true;
             document.getElementById('wheelResult').textContent = 'Spinning...';
@@ -1026,6 +1043,7 @@ pub async fn game() -> Html<String> {
         }}
 
         function guessLetter() {{
+            hideNotification();
             const input = document.getElementById('letterInput');
             const letter = input.value.toUpperCase();
             if (letter && letter.length === 1) {{
@@ -1035,6 +1053,7 @@ pub async fn game() -> Html<String> {
         }}
 
         function buyVowel() {{
+            hideNotification();
             const vowel = prompt('Enter a vowel (A, E, I, O, U):');
             if (vowel && 'AEIOU'.includes(vowel.toUpperCase())) {{
                 socket.emit('buy_vowel', {{ room, letter: vowel.toUpperCase() }});
@@ -1042,6 +1061,7 @@ pub async fn game() -> Html<String> {
         }}
 
         function promptSolve() {{
+            hideNotification();
             const solution = prompt('Enter your solution:');
             if (solution) {{
                 socket.emit('solve', {{ room, solution }});
@@ -1185,6 +1205,7 @@ pub async fn admin() -> Html<String> {
                 <button class="tab" onclick="showTab('packs')">Puzzle Packs</button>
                 <button class="tab" onclick="showTab('puzzles')">Puzzles</button>
                 <button class="tab" onclick="showTab('rooms')">Rooms</button>
+                <button class="tab" onclick="showTab('settings')">Settings</button>
             </div>
 
             <div class="error-msg" id="errorMsg"></div>
@@ -1287,6 +1308,59 @@ pub async fn admin() -> Html<String> {
                     </thead>
                     <tbody id="roomsTable"></tbody>
                 </table>
+            </div>
+
+            <!-- Settings Panel -->
+            <div class="panel" id="panel-settings">
+                <h2 style="color: #fff; margin-bottom: 16px;">Game Settings</h2>
+                <p style="color: #888; margin-bottom: 24px;">Configure default settings for game rooms. These settings will apply to new games.</p>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Room</label>
+                        <select id="settingsRoom" style="width:100%;padding:12px;background:#0d0628;color:#fff;border:2px solid #333;border-radius:8px;" onchange="loadRoomSettings()">
+                            <option value="main">main (default)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <h3 style="color: #d4af37; margin: 24px 0 16px;">Puzzle Settings</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Puzzle Display Time (seconds)</label>
+                        <input type="number" id="settingsPuzzleDisplay" value="30" min="5" max="120" placeholder="30">
+                    </div>
+                </div>
+
+                <h3 style="color: #d4af37; margin: 24px 0 16px;">Cost Settings</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Vowel Cost ($)</label>
+                        <input type="number" id="settingsVowelCost" value="250" min="0" placeholder="250">
+                    </div>
+                </div>
+
+                <h3 style="color: #d4af37; margin: 24px 0 16px;">Final Round Settings</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Final Round Timer (seconds)</label>
+                        <input type="number" id="settingsFinalSeconds" value="30" min="10" max="120" placeholder="30">
+                    </div>
+                    <div class="form-group">
+                        <label>Final Round Jackpot ($)</label>
+                        <input type="number" id="settingsFinalJackpot" value="10000" min="1000" placeholder="10000">
+                    </div>
+                </div>
+
+                <h3 style="color: #d4af37; margin: 24px 0 16px;">Prize Wedge Names</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Prize Wedge Names (comma-separated)</label>
+                        <input type="text" id="settingsPrizeWedges" value="GIFT CARD" placeholder="GIFT CARD, TRIP, CAR">
+                    </div>
+                </div>
+
+                <button class="btn" onclick="saveSettings()" style="margin-top: 24px;">Save Settings</button>
             </div>
         </div>
     </div>
@@ -1529,8 +1603,62 @@ pub async fn admin() -> Html<String> {
             else {{ showError('Failed to delete room'); }}
         }}
 
+        // Settings functions
+        async function loadRoomSettings() {{
+            const room = document.getElementById('settingsRoom').value;
+            try {{
+                const res = await fetch(`/auth/api/admin/settings/${{encodeURIComponent(room)}}`, {{
+                    headers: {{ 'Authorization': 'Bearer ' + token }}
+                }});
+                const data = await res.json();
+                if (data.ok && data.config) {{
+                    document.getElementById('settingsPuzzleDisplay').value = data.config.puzzle_display_seconds || 30;
+                    document.getElementById('settingsVowelCost').value = data.config.vowel_cost || 250;
+                    document.getElementById('settingsFinalSeconds').value = data.config.final_seconds || 30;
+                    document.getElementById('settingsFinalJackpot').value = data.config.final_jackpot || 10000;
+                    document.getElementById('settingsPrizeWedges').value = (data.config.prize_wedge_names || ['GIFT CARD']).join(', ');
+                }}
+            }} catch (e) {{
+                console.error('Failed to load settings:', e);
+            }}
+        }}
+
+        async function saveSettings() {{
+            const room = document.getElementById('settingsRoom').value;
+            const config = {{
+                puzzle_display_seconds: parseInt(document.getElementById('settingsPuzzleDisplay').value) || 30,
+                vowel_cost: parseInt(document.getElementById('settingsVowelCost').value) || 250,
+                final_seconds: parseInt(document.getElementById('settingsFinalSeconds').value) || 30,
+                final_jackpot: parseInt(document.getElementById('settingsFinalJackpot').value) || 10000,
+                prize_wedge_names: document.getElementById('settingsPrizeWedges').value.split(',').map(s => s.trim()).filter(s => s)
+            }};
+            try {{
+                const res = await fetch(`/auth/api/admin/settings/${{encodeURIComponent(room)}}`, {{
+                    method: 'POST',
+                    headers: {{ 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }},
+                    body: JSON.stringify(config)
+                }});
+                if (res.ok) {{
+                    showSuccess('Settings saved');
+                }} else {{
+                    showError('Failed to save settings');
+                }}
+            }} catch (e) {{
+                showError('Failed to save settings');
+            }}
+        }}
+
+        function updateRoomSelect() {{
+            // Update the room select with active rooms
+            const select = document.getElementById('settingsRoom');
+            const currentValue = select.value;
+            select.innerHTML = '<option value="main">main (default)</option>';
+            // Add other rooms from the rooms list if available
+        }}
+
         // Initial load
         checkAdmin();
+        loadRoomSettings();
     </script>
 </body>
 </html>"#, common_styles = COMMON_STYLES))
