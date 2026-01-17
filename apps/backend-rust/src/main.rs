@@ -70,6 +70,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Build HTTP routes
     let app = Router::new()
+        .route("/", get(routes::index))
+        .route("/register", get(routes::register))
+        .route("/lobby", get(routes::lobby))
+        .route("/game", get(routes::game))
         .route("/health", get(routes::health))
         .nest("/auth", auth::routes())
         .layer(socket_layer)
