@@ -10,31 +10,43 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useAuthStore, authService } from '@holiday-wheel/shared';
+import { useAuthStore, authService, configService } from '@holiday-wheel/shared';
 import type { RoomInfo } from '@holiday-wheel/shared';
 import type { TVStackParamList } from '../navigation/TVNavigator';
+import { RoomQRCode } from '../components/RoomQRCode';
 
 type TVLobbyScreenProps = {
   navigation: NativeStackNavigationProp<TVStackParamList, 'TVLobby'>;
 };
 
-const API_URL = 'http://192.168.1.100:5000';
+const DEFAULT_API_URL = 'http://192.168.1.100:5000';
 
 export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Element {
   const [rooms, setRooms] = useState<RoomInfo[]>([]);
   const [customRoom, setCustomRoom] = useState('main');
   const [focusedItem, setFocusedItem] = useState<string>('input');
+  const [serverUrl, setServerUrl] = useState<string>(DEFAULT_API_URL);
+  const [showQRCode, setShowQRCode] = useState<boolean>(false);
 
   const user = useAuthStore((state) => state.user);
   const token = useAuthStore((state) => state.token);
   const clearAuth = useAuthStore((state) => state.clearAuth);
 
+  // Load server URL from config
+  useEffect(() => {
+    const loadServerUrl = async () => {
+      const url = await configService.getServerUrl();
+      setServerUrl(url);
+    };
+    loadServerUrl();
+  }, []);
+
   const loadRooms = useCallback(async () => {
     if (!token) return;
-    authService.setBaseUrl(API_URL);
+    authService.setBaseUrl(serverUrl);
     const result = await authService.getRooms(token);
     setRooms(result.rooms);
-  }, [token]);
+  }, [token, serverUrl]);
 
   useEffect(() => {
     loadRooms();
@@ -87,51 +99,99 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
       </View>
 
       <View style={styles.content}>
-        {/* Join Room Section */}
-        <TVFocusGuideView style={styles.joinSection} autoFocus>
-          <Text style={styles.sectionTitle}>Join a Room</Text>
-          <View style={styles.joinRow}>
-            <TextInput
-              style={[
-                styles.input,
-                focusedItem === 'input' && styles.inputFocused,
-              ]}
-              placeholder="Room name"
-              placeholderTextColor="#666"
-              value={customRoom}
-              onChangeText={setCustomRoom}
-              onFocus={() => setFocusedItem('input')}
-              onSubmitEditing={() => joinRoom(customRoom)}
-              hasTVPreferredFocus={true}
-            />
+        <View style={styles.mainContent}>
+          {/* Left side - Room controls */}
+          <View style={styles.leftPanel}>
+            {/* Join Room Section */}
+            <TVFocusGuideView style={styles.joinSection} autoFocus>
+              <Text style={styles.sectionTitle}>Join a Room</Text>
+              <View style={styles.joinRow}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    focusedItem === 'input' && styles.inputFocused,
+                  ]}
+                  placeholder="Room name"
+                  placeholderTextColor="#666"
+                  value={customRoom}
+                  onChangeText={setCustomRoom}
+                  onFocus={() => setFocusedItem('input')}
+                  onSubmitEditing={() => joinRoom(customRoom)}
+                  hasTVPreferredFocus={true}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.joinButton,
+                    focusedItem === 'join' && styles.buttonFocused,
+                  ]}
+                  onPress={() => joinRoom(customRoom)}
+                  onFocus={() => setFocusedItem('join')}
+                >
+                  <Text style={styles.joinButtonText}>JOIN</Text>
+                </TouchableOpacity>
+              </View>
+            </TVFocusGuideView>
+
+            {/* Active Rooms */}
+            <View style={styles.roomsSection}>
+              <Text style={styles.sectionTitle}>Active Rooms</Text>
+              {rooms.length > 0 ? (
+                <FlatList
+                  data={rooms}
+                  renderItem={renderRoomItem}
+                  keyExtractor={(item) => item.name}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.roomsList}
+                />
+              ) : (
+                <Text style={styles.emptyText}>No active rooms. Join one above!</Text>
+              )}
+            </View>
+          </View>
+
+          {/* Right side - Connection info */}
+          <View style={styles.rightPanel}>
+            <Text style={styles.sectionTitle}>Phone Connection</Text>
+            <View style={styles.serverInfo}>
+              <Text style={styles.serverLabel}>Server:</Text>
+              <Text style={styles.serverUrl}>{serverUrl}</Text>
+            </View>
+            <View style={styles.serverInfo}>
+              <Text style={styles.serverLabel}>Room:</Text>
+              <Text style={styles.serverUrl}>{customRoom || 'main'}</Text>
+            </View>
+
             <TouchableOpacity
               style={[
-                styles.joinButton,
-                focusedItem === 'join' && styles.buttonFocused,
+                styles.qrButton,
+                focusedItem === 'qr' && styles.buttonFocused,
               ]}
-              onPress={() => joinRoom(customRoom)}
-              onFocus={() => setFocusedItem('join')}
+              onPress={() => setShowQRCode(!showQRCode)}
+              onFocus={() => setFocusedItem('qr')}
             >
-              <Text style={styles.joinButtonText}>JOIN</Text>
+              <Text style={styles.qrButtonText}>
+                {showQRCode ? 'Hide QR Code' : 'Show QR Code'}
+              </Text>
             </TouchableOpacity>
-          </View>
-        </TVFocusGuideView>
 
-        {/* Active Rooms */}
-        <View style={styles.roomsSection}>
-          <Text style={styles.sectionTitle}>Active Rooms</Text>
-          {rooms.length > 0 ? (
-            <FlatList
-              data={rooms}
-              renderItem={renderRoomItem}
-              keyExtractor={(item) => item.name}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.roomsList}
-            />
-          ) : (
-            <Text style={styles.emptyText}>No active rooms. Join one above!</Text>
-          )}
+            {showQRCode && (
+              <View style={styles.qrContainer}>
+                <RoomQRCode
+                  room={customRoom || 'main'}
+                  serverUrl={serverUrl}
+                  size={180}
+                />
+                <Text style={styles.qrHint}>
+                  Scan with phone to join
+                </Text>
+              </View>
+            )}
+
+            <Text style={styles.manualHint}>
+              Or enter server URL manually on phone
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -184,6 +244,72 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 40,
+  },
+  mainContent: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 40,
+  },
+  leftPanel: {
+    flex: 1,
+  },
+  rightPanel: {
+    width: 320,
+    backgroundColor: '#1a0a3e',
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 2,
+    borderColor: '#333',
+  },
+  serverInfo: {
+    flexDirection: 'row',
+    marginBottom: 12,
+    flexWrap: 'wrap',
+  },
+  serverLabel: {
+    color: '#888',
+    fontSize: 18,
+    marginRight: 8,
+  },
+  serverUrl: {
+    color: '#d4af37',
+    fontSize: 18,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  qrButton: {
+    backgroundColor: '#2a1a4e',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginTop: 16,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#333',
+  },
+  qrButtonText: {
+    color: '#d4af37',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  qrContainer: {
+    alignItems: 'center',
+    marginTop: 20,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+  },
+  qrHint: {
+    color: '#333',
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  manualHint: {
+    color: '#666',
+    fontSize: 14,
+    marginTop: 16,
+    textAlign: 'center',
   },
   joinSection: {
     marginBottom: 48,

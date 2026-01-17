@@ -1,5 +1,9 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  NavigationContainerRef,
+  LinkingOptions,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuthStore } from '@holiday-wheel/shared';
 
@@ -21,11 +25,19 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-export function AppNavigator(): React.JSX.Element {
+interface AppNavigatorProps {
+  navigationRef?: React.RefObject<NavigationContainerRef<RootStackParamList> | null>;
+  linking?: LinkingOptions<RootStackParamList>;
+}
+
+export function AppNavigator({
+  navigationRef,
+  linking,
+}: AppNavigatorProps): React.JSX.Element {
   const user = useAuthStore((state) => state.user);
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef} linking={linking}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: {

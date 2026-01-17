@@ -48,12 +48,14 @@ npm run test           # Run Jest tests
 
 ## Key Files
 
-- `apps/phone/src/App.tsx` - Phone app entry point
+- `apps/phone/App.tsx` - Phone app entry point with deep linking
 - `apps/tv/src/App.tsx` - TV app entry point
 - `packages/shared/src/stores/authStore.ts` - Authentication state
 - `packages/shared/src/stores/gameStore.ts` - Game state with selectors
 - `packages/shared/src/services/socketService.ts` - Socket.IO singleton
 - `packages/shared/src/services/authService.ts` - Auth API service
+- `packages/shared/src/services/configService.ts` - Server URL configuration
+- `packages/shared/src/components/AnimatedWheel.tsx` - Shared wheel animation
 
 ## State Management Pattern
 
@@ -80,11 +82,13 @@ selectActivePlayer(state) // Returns active player
 ## Navigation Structure
 
 **Phone** (`apps/phone/src/navigation/AppNavigator.tsx`):
-- Login → Register → Lobby → Game/Controller
+- Login → Register → Lobby → Game/Controller/QRScan
+- Supports deep linking via `holidaywheel://` URL scheme
 
 **TV** (`apps/tv/src/navigation/TVNavigator.tsx`):
 - TVLogin → TVLobby → TVGame
 - No headers, fade animations, full-screen
+- Lobby includes QR code display for phone joining
 
 ## API Configuration
 
@@ -142,3 +146,33 @@ Tests located in `__tests__/` directories.
 **Two Mobile Modes**:
 - Play Mode: Full game on phone
 - Controller Mode: Phone as remote for TV display
+
+## Phone-TV Connection
+
+Players can join games hosted on TV in multiple ways:
+
+**QR Code Scanning**:
+1. TV lobby displays QR code with room and server info
+2. Phone scans QR code using `QRScanScreen`
+3. Deep link opens: `holidaywheel://join?room=ROOM&server=URL`
+4. Phone auto-configures and joins the room
+
+**Deep Linking**:
+- URL scheme: `holidaywheel://`
+- Join format: `holidaywheel://join?room=ROOM&server=URL`
+- Handled in `apps/phone/App.tsx`
+- Saves server URL via `configService`
+
+**Manual Connection**:
+1. TV lobby shows server URL
+2. User enters URL in phone's lobby screen
+3. Phone connects to specified server
+
+## TV Host Controls
+
+The TV app includes host controls (`HostControlPanel.tsx`):
+- **Game Flow**: New Puzzle, Spin, Reveal All, New Game
+- **Phase Control**: Start/End Toss-up, Start/End Final
+- **Player Management**: Set active player, view scores
+
+Toggle with Menu button during gameplay.
