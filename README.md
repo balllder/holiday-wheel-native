@@ -1,135 +1,326 @@
-# Turborepo starter
+# Holiday Wheel
 
-This Turborepo starter is maintained by the Turborepo core team.
+A multiplayer "Wheel of Fortune" style game built with React Native for mobile/TV and a Rust backend. Play with friends using your phones as controllers while displaying the game on an Apple TV or Android TV.
 
-## Using this example
+## Features
 
-Run the following command:
+### Game Modes
+- **Normal Round**: Players take turns spinning the wheel, guessing consonants, buying vowels, and solving puzzles
+- **Toss-Up Round**: All players can buzz in to solve - fastest finger wins
+- **Final Round**: Championship round with hidden letters and a time limit
 
-```sh
-npx create-turbo@latest
-```
+### Wheel Mechanics
+- 24 wedges with authentic Wheel of Fortune values
+- Cash values from $300 to $5000
+- Special wedges: Bankrupt, Lose a Turn, Free Play
+- Configurable prize wedges
+- Animated spinning wheel with smooth physics
 
-## What's inside?
+### Multiplayer Setup
+- **TV App (Host)**: Displays the game board, animated wheel, and scores
+- **Phone App (Controller)**: Players use their phones to spin, guess, and solve
+- **QR Code Join**: TV displays QR code for easy room joining
+- Real-time synchronization via Socket.IO
 
-This Turborepo includes the following packages/apps:
+### Additional Features
+- User authentication with email registration
+- Puzzle database with categories
+- Admin panel for game configuration
+- Persistent scores across rounds
+- Host controls for game management
 
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
+## Architecture
 
 ```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build
-yarn dlx turbo build
-pnpm exec turbo build
+holiday-wheel-native/
+├── apps/
+│   ├── phone/              # React Native phone/tablet app
+│   ├── tv/                 # React Native tvOS/Android TV app
+│   └── backend-rust/       # Rust backend server
+├── packages/
+│   └── shared/             # Shared types, stores, services
+├── package.json            # Root monorepo config
+└── turbo.json              # Turbo build configuration
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+## Prerequisites
 
-```
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build --filter=docs
+- **Node.js** 18+ and npm
+- **Rust** (for backend)
+- **Xcode 15+** (for iOS/tvOS builds)
+- **Android Studio** (for Android/Android TV builds)
+- **CocoaPods** (for iOS dependencies)
 
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build --filter=docs
-yarn exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-```
+## Setup
 
-### Develop
+### 1. Clone and Install Dependencies
 
-To develop all apps and packages, run the following command:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev
-yarn exec turbo dev
-pnpm exec turbo dev
+```bash
+git clone https://github.com/balllder/holiday-wheel-native.git
+cd holiday-wheel-native
+npm install
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+### 2. Build Shared Package
 
-```
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev --filter=web
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev --filter=web
-yarn exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
+```bash
+cd packages/shared
+npm run build
+cd ../..
 ```
 
-### Remote Caching
+## Running the Backend
 
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
+The backend is a Rust server that handles game state, authentication, and real-time communication.
 
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
+### Setup
 
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
+```bash
+cd apps/backend-rust
 
-```
-cd my-turborepo
+# Copy environment file
+cp .env.example .env
 
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo login
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo login
-yarn exec turbo login
-pnpm exec turbo login
+# Edit .env if needed (defaults work for local development)
 ```
 
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
+### Build and Run
 
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
+```bash
+# Build
+cargo build
 
-```
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo link
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo link
-yarn exec turbo link
-pnpm exec turbo link
+# Run (starts on http://localhost:5000)
+cargo run
 ```
 
-## Useful Links
+### Environment Variables
 
-Learn more about the power of Turborepo:
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABASE_URL` | SQLite database path | `sqlite:puzzles.db` |
+| `PORT` | Server port | `5000` |
+| `HOST_CODE` | Code to claim host privileges | `holiday` |
+| `RUST_LOG` | Log level | `info` |
 
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+### Web Admin Panel
+
+Access the admin panel at `http://localhost:5000/admin` to:
+- Manage puzzles (add, edit, delete)
+- Configure game settings (vowel cost, final round time, etc.)
+- Monitor active rooms
+
+## Running the Phone App
+
+The phone app can run in two modes:
+- **Play Mode**: Full game experience on the phone
+- **Controller Mode**: Use phone as a controller for TV display
+
+### iOS
+
+```bash
+cd apps/phone
+
+# Install pods
+cd ios && pod install && cd ..
+
+# Run on iOS simulator
+npm run ios
+
+# Or run on specific device
+npx react-native run-ios --device "iPhone 15"
+```
+
+### Android
+
+```bash
+cd apps/phone
+
+# Start Metro bundler
+npm start
+
+# In another terminal, run on Android
+npm run android
+```
+
+### Configuration
+
+Update the API URL in `src/screens/ControllerScreen.tsx` and other screens to point to your backend:
+
+```typescript
+const API_URL = 'http://YOUR_SERVER_IP:5000';
+```
+
+For Android emulator, use `http://10.0.2.2:5000` to access localhost.
+
+## Running the TV App
+
+The TV app displays the game board, animated wheel, and serves as the host display.
+
+### Apple TV (tvOS)
+
+```bash
+cd apps/tv/ios
+
+# Install pods
+pod install
+
+# Open in Xcode
+open tv.xcodeproj
+```
+
+In Xcode:
+1. Select the `tv-tvOS` scheme
+2. Choose an Apple TV simulator or connected device
+3. Build and run (Cmd+R)
+
+Or from command line:
+```bash
+npm run tvos
+```
+
+### Android TV
+
+```bash
+cd apps/tv
+
+# Start Metro bundler
+npm start
+
+# In another terminal
+npm run android
+```
+
+Ensure your Android TV emulator or device is connected via ADB.
+
+### TV App Controls
+
+- **Menu/Play-Pause button**: Toggle host control panel
+- **Back button**: Close overlays
+- Remote navigation for all menu items
+
+## How to Play
+
+### Starting a Game
+
+1. **Start the Backend**
+   ```bash
+   cd apps/backend-rust && cargo run
+   ```
+
+2. **Launch TV App (Host)**
+   - Open the TV app
+   - Log in or continue as guest
+   - Select or create a room
+   - The TV displays a QR code for players to join
+
+3. **Players Join with Phone App**
+   - Open the phone app
+   - Log in or register
+   - Scan the QR code on TV, or manually enter the room name
+   - Select "Controller Mode" to use phone as controller
+
+### Game Flow
+
+#### Normal Round
+1. **Spin**: Active player taps SPIN button on their phone
+2. **Guess a Letter**:
+   - Enter a consonant and tap GUESS
+   - If correct, earn money for each occurrence
+   - If wrong, turn passes to next player
+3. **Buy a Vowel**:
+   - Enter a vowel (A, E, I, O, U)
+   - Costs $250, no money earned
+4. **Solve**:
+   - Enter the full puzzle answer
+   - If correct, win the round and keep your money!
+
+#### Toss-Up Round
+1. Host starts toss-up from control panel
+2. Letters reveal one at a time
+3. Any player can tap BUZZ to attempt solving
+4. First correct answer wins $1000
+5. Wrong answer locks that player out
+
+#### Final Round
+1. Host starts final round
+2. Standard letters (R, S, T, L, N, E) are revealed
+3. Player picks 3 consonants and 1 vowel
+4. Timer starts - solve before time runs out!
+
+### Host Controls (TV App)
+
+Press Menu button on Apple TV remote to access:
+- **NEW PUZZLE**: Load a new puzzle
+- **SPIN**: Spin on behalf of current player
+- **REVEAL ALL**: Show all letters
+- **START TOSS-UP**: Begin toss-up round
+- **START FINAL**: Begin final round
+- **NEW GAME**: Reset scores and start over
+- **Set Active Player**: Change whose turn it is
+
+## Development
+
+### Commands (from root directory)
+
+```bash
+# Build all packages
+npm run build
+
+# Run linting
+npm run lint
+
+# Format code
+npm run format
+
+# Type check
+npm run check-types
+```
+
+### Package-specific Commands
+
+```bash
+# Phone app
+cd apps/phone
+npm start          # Start Metro bundler
+npm run ios        # Run on iOS
+npm run android    # Run on Android
+npm test           # Run tests
+
+# TV app
+cd apps/tv
+npm start          # Start Metro bundler
+npm run ios        # Run on iOS simulator
+npm run tvos       # Run on Apple TV simulator
+npm run android    # Run on Android TV
+
+# Backend
+cd apps/backend-rust
+cargo build        # Build
+cargo run          # Run server
+cargo test         # Run tests
+```
+
+### Project Structure
+
+| Path | Description |
+|------|-------------|
+| `apps/phone/src/screens/` | Phone app screens |
+| `apps/tv/src/screens/` | TV app screens |
+| `apps/tv/src/components/` | TV-specific components |
+| `packages/shared/src/stores/` | Zustand state stores |
+| `packages/shared/src/services/` | API and Socket services |
+| `apps/backend-rust/src/game/` | Game logic (Rust) |
+| `apps/backend-rust/src/routes/` | HTTP routes and web pages |
+
+## Tech Stack
+
+- **Frontend**: React Native 0.83, TypeScript, Zustand
+- **TV**: react-native-tvos for Apple TV/Android TV support
+- **Backend**: Rust, Axum, Socket.IO (socketioxide), SQLite
+- **Monorepo**: npm workspaces + Turborepo
+- **Real-time**: Socket.IO for WebSocket communication
+
+## License
+
+MIT
