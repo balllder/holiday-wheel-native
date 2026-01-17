@@ -11,6 +11,10 @@
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		TVOS000000070000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = TVOS000000020000000001 /* AppDelegate.swift */; };
+		TVOS000000080000000001 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = TVOS000000040000000001 /* Images.xcassets */; };
+		TVOS000000090000000001 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = TVOS000000050000000001 /* LaunchScreen.storyboard */; };
+		TVOS000000180000000001 /* libPods-tv-tvOS.a in Frameworks */ = {isa = PBXBuildFile; fileRef = TVOS000000150000000001 /* libPods-tv-tvOS.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,6 +28,14 @@
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = tv/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = tv/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		TVOS000000010000000001 /* tv-tvOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "tv-tvOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		TVOS000000020000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = "tv-tvOS/AppDelegate.swift"; sourceTree = "<group>"; };
+		TVOS000000030000000001 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = "tv-tvOS/Info.plist"; sourceTree = "<group>"; };
+		TVOS000000040000000001 /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = "tv-tvOS/Images.xcassets"; sourceTree = "<group>"; };
+		TVOS000000050000000001 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = "tv-tvOS/LaunchScreen.storyboard"; sourceTree = "<group>"; };
+		TVOS000000150000000001 /* libPods-tv-tvOS.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-tv-tvOS.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		TVOS000000160000000001 /* Pods-tv-tvOS.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tv-tvOS.debug.xcconfig"; path = "Target Support Files/Pods-tv-tvOS/Pods-tv-tvOS.debug.xcconfig"; sourceTree = "<group>"; };
+		TVOS000000170000000001 /* Pods-tv-tvOS.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tv-tvOS.release.xcconfig"; path = "Target Support Files/Pods-tv-tvOS/Pods-tv-tvOS.release.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -32,6 +44,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				0C80B921A6F3F58F76C31292 /* libPods-tv.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TVOS00000000C0000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TVOS000000180000000001 /* libPods-tv-tvOS.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -55,6 +75,7 @@
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				5DCACB8F33CDC322A6C60F78 /* libPods-tv.a */,
+				TVOS000000150000000001 /* libPods-tv-tvOS.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -70,6 +91,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07FAE1A68108700A75B9A /* tv */,
+				TVOS000000060000000001 /* tv-tvOS */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
@@ -84,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* tv.app */,
+				TVOS000000010000000001 /* tv-tvOS.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -93,8 +116,21 @@
 			children = (
 				3B4392A12AC88292D35C810B /* Pods-tv.debug.xcconfig */,
 				5709B34CF0A7D63546082F79 /* Pods-tv.release.xcconfig */,
+				TVOS000000160000000001 /* Pods-tv-tvOS.debug.xcconfig */,
+				TVOS000000170000000001 /* Pods-tv-tvOS.release.xcconfig */,
 			);
 			path = Pods;
+			sourceTree = "<group>";
+		};
+		TVOS000000060000000001 /* tv-tvOS */ = {
+			isa = PBXGroup;
+			children = (
+				TVOS000000020000000001 /* AppDelegate.swift */,
+				TVOS000000040000000001 /* Images.xcassets */,
+				TVOS000000030000000001 /* Info.plist */,
+				TVOS000000050000000001 /* LaunchScreen.storyboard */,
+			);
+			name = "tv-tvOS";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -121,6 +157,27 @@
 			productReference = 13B07F961A680F5B00A75B9A /* tv.app */;
 			productType = "com.apple.product-type.application";
 		};
+		TVOS00000000D0000000001 /* tv-tvOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = TVOS000000100000000001 /* Build configuration list for PBXNativeTarget "tv-tvOS" */;
+			buildPhases = (
+				TVOS000000120000000001 /* [CP] Check Pods Manifest.lock */,
+				TVOS00000000A0000000001 /* Sources */,
+				TVOS00000000C0000000001 /* Frameworks */,
+				TVOS00000000B0000000001 /* Resources */,
+				TVOS000000110000000001 /* Bundle React Native code and images */,
+				TVOS000000130000000001 /* [CP] Embed Pods Frameworks */,
+				TVOS000000140000000001 /* [CP] Copy Pods Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "tv-tvOS";
+			productName = "tv-tvOS";
+			productReference = TVOS000000010000000001 /* tv-tvOS.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -130,6 +187,9 @@
 				LastUpgradeCheck = 1210;
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
+						LastSwiftMigration = 1120;
+					};
+					TVOS00000000D0000000001 = {
 						LastSwiftMigration = 1120;
 					};
 				};
@@ -148,6 +208,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* tv */,
+				TVOS00000000D0000000001 /* tv-tvOS */,
 			);
 		};
 /* End PBXProject section */
@@ -159,6 +220,15 @@
 			files = (
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TVOS00000000B0000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TVOS000000090000000001 /* LaunchScreen.storyboard in Resources */,
+				TVOS000000080000000001 /* Images.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -237,6 +307,78 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-tv/Pods-tv-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		TVOS000000110000000001 /* Bundle React Native code and images */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/.xcode.env.local",
+				"$(SRCROOT)/.xcode.env",
+			);
+			name = "Bundle React Native code and images";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\n\nWITH_ENVIRONMENT=\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"\\\"$WITH_ENVIRONMENT\\\" \\\"$REACT_NATIVE_XCODE\\\"\"\n";
+		};
+		TVOS000000120000000001 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-tv-tvOS-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		TVOS000000130000000001 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-tv-tvOS/Pods-tv-tvOS-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-tv-tvOS/Pods-tv-tvOS-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-tv-tvOS/Pods-tv-tvOS-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		TVOS000000140000000001 /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-tv-tvOS/Pods-tv-tvOS-resources-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-tv-tvOS/Pods-tv-tvOS-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-tv-tvOS/Pods-tv-tvOS-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -245,6 +387,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TVOS00000000A0000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TVOS000000070000000001 /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -444,6 +594,64 @@
 			};
 			name = Release;
 		};
+		TVOS00000000E0000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = TVOS000000160000000001 /* Pods-tv-tvOS.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				CLANG_ENABLE_MODULES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_BITCODE = NO;
+				INFOPLIST_FILE = "tv-tvOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+					"-lc++",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.tv-tvOS";
+				PRODUCT_NAME = "tv-tvOS";
+				SDKROOT = appletvos;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 15.0;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		TVOS00000000F0000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = TVOS000000170000000001 /* Pods-tv-tvOS.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				CLANG_ENABLE_MODULES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = "tv-tvOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+					"-lc++",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.tv-tvOS";
+				PRODUCT_NAME = "tv-tvOS";
+				SDKROOT = appletvos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 15.0;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -461,6 +669,15 @@
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,
 				83CBBA211A601CBA00E9B192 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		TVOS000000100000000001 /* Build configuration list for PBXNativeTarget "tv-tvOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				TVOS00000000E0000000001 /* Debug */,
+				TVOS00000000F0000000001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
