@@ -143,15 +143,18 @@ npm start
 npm run android
 ```
 
-### Configuration
+### Server Configuration
 
-Update the API URL in `src/screens/ControllerScreen.tsx` and other screens to point to your backend:
+The server URL can be configured in-app:
+1. Open the app and log in
+2. Tap the **⚙️ Server** toggle on the lobby screen
+3. Enter your backend server IP (e.g., `http://192.168.1.100:5000`)
+4. Tap **Save**
 
-```typescript
-const API_URL = 'http://YOUR_SERVER_IP:5000';
-```
-
-For Android emulator, use `http://10.0.2.2:5000` to access localhost.
+Default URLs:
+- **iOS Simulator**: `http://localhost:5000`
+- **Android Emulator**: `http://10.0.2.2:5000`
+- **Physical Device**: Use your computer's local IP address
 
 ## Running the TV App
 
@@ -159,25 +162,42 @@ The TV app displays the game board, animated wheel, and serves as the host displ
 
 ### Apple TV (tvOS)
 
+**Requirements:** macOS with Xcode 15+ and CocoaPods installed.
+
 ```bash
 cd apps/tv/ios
 
-# Install pods
+# Install CocoaPods dependencies
 pod install
 
-# Open in Xcode
-open tv.xcodeproj
+# Open the workspace (not .xcodeproj) in Xcode
+open tv.xcworkspace
 ```
 
-In Xcode:
-1. Select the `tv-tvOS` scheme
-2. Choose an Apple TV simulator or connected device
+**In Xcode:**
+1. Select the `tv-tvOS` scheme from the scheme selector
+2. Choose an Apple TV simulator (e.g., "Apple TV 4K (3rd generation)")
 3. Build and run (Cmd+R)
 
-Or from command line:
+**Or from command line:**
 ```bash
+cd apps/tv
+
+# Run on Apple TV simulator
+npx react-native run-ios --scheme tv-tvOS --simulator "Apple TV"
+
+# Or use the npm script
 npm run tvos
 ```
+
+### TV Server Configuration
+
+Like the phone app, the TV app supports in-app server configuration:
+1. On the lobby screen, tap **⚙️ Server** in the header
+2. Enter your backend server IP address
+3. Tap **Save**
+
+The TV will use this URL for socket connections and display it in the QR code for phone connections.
 
 ### Android TV
 
