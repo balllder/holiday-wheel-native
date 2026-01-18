@@ -26,7 +26,7 @@ pub struct Database {
 pub struct User {
     pub id: i64,
     pub email: String,
-    pub password_hash: String,
+    pub password_hash: Option<String>, // Optional for OAuth-only users
     pub display_name: String,
     pub verified: bool,
     pub verification_token: Option<String>,
@@ -47,6 +47,40 @@ pub struct NewUser {
     pub display_name: String,
     pub verification_token: String,
     pub verification_token_expires: i64,
+}
+
+// ========== PASSKEY & OAUTH TYPES ==========
+
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct PasskeyCredential {
+    pub id: String,           // credential ID (base64url)
+    pub user_id: i64,
+    pub public_key: Vec<u8>,  // COSE public key
+    pub counter: i64,         // signature counter
+    pub transports: Option<String>, // JSON array of transports
+    pub created_at: i64,
+    pub last_used_at: Option<i64>,
+    pub device_name: Option<String>,
+}
+
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct OAuthAccount {
+    pub id: i64,
+    pub user_id: i64,
+    pub provider: String,     // 'google' or 'apple'
+    pub provider_user_id: String, // sub claim from ID token
+    pub email: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct WebAuthnChallenge {
+    pub challenge: String,
+    pub user_id: Option<i64>,
+    pub email: Option<String>,
+    pub challenge_type: String, // 'registration' or 'authentication'
+    pub created_at: i64,
+    pub expires_at: i64,
 }
 
 // ========== PUZZLE PACK TYPES ==========
@@ -249,6 +283,70 @@ impl Database {
             .execute(&self.pool)
             .await
             .ok();
+
+        // Passkey credentials table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS passkey_credentials (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                public_key BLOB NOT NULL,
+                counter INTEGER NOT NULL DEFAULT 0,
+                transports TEXT,
+                created_at INTEGER NOT NULL,
+                last_used_at INTEGER,
+                device_name TEXT,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_passkey_user_id ON passkey_credentials(user_id)")
+            .execute(&self.pool)
+            .await?;
+
+        // OAuth accounts table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS oauth_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                provider TEXT NOT NULL,
+                provider_user_id TEXT NOT NULL,
+                email TEXT,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE(provider, provider_user_id)
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_oauth_user_id ON oauth_accounts(user_id)")
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_oauth_provider ON oauth_accounts(provider, provider_user_id)")
+            .execute(&self.pool)
+            .await?;
+
+        // WebAuthn challenges table (ephemeral)
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS webauthn_challenges (
+                challenge TEXT PRIMARY KEY,
+                user_id INTEGER,
+                email TEXT,
+                type TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
 
         // Create default pack if none exists
         sqlx::query("INSERT OR IGNORE INTO packs (id, name) VALUES (1, 'Default')")
@@ -910,5 +1008,272 @@ impl Database {
             count += 1;
         }
         Ok(count)
+    }
+
+    // ========== PASSKEY METHODS ==========
+
+    /// Create a passkey credential
+    pub async fn create_passkey(
+        &self,
+        id: &str,
+        user_id: i64,
+        public_key: &[u8],
+        counter: i64,
+        transports: Option<&str>,
+        device_name: Option<&str>,
+    ) -> Result<(), DbError> {
+        sqlx::query(
+            r#"
+            INSERT INTO passkey_credentials (id, user_id, public_key, counter, transports, created_at, device_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(public_key)
+        .bind(counter)
+        .bind(transports)
+        .bind(now_secs())
+        .bind(device_name)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Get passkey credential by ID
+    pub async fn get_passkey(&self, credential_id: &str) -> Result<Option<PasskeyCredential>, DbError> {
+        let cred = sqlx::query_as::<_, PasskeyCredential>(
+            "SELECT * FROM passkey_credentials WHERE id = ?",
+        )
+        .bind(credential_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(cred)
+    }
+
+    /// Get all passkeys for a user
+    pub async fn get_user_passkeys(&self, user_id: i64) -> Result<Vec<PasskeyCredential>, DbError> {
+        let creds = sqlx::query_as::<_, PasskeyCredential>(
+            "SELECT * FROM passkey_credentials WHERE user_id = ? ORDER BY created_at DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(creds)
+    }
+
+    /// Update passkey counter and last_used
+    pub async fn update_passkey_counter(
+        &self,
+        credential_id: &str,
+        counter: i64,
+    ) -> Result<(), DbError> {
+        sqlx::query(
+            "UPDATE passkey_credentials SET counter = ?, last_used_at = ? WHERE id = ?",
+        )
+        .bind(counter)
+        .bind(now_secs())
+        .bind(credential_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Delete a passkey credential
+    pub async fn delete_passkey(&self, credential_id: &str, user_id: i64) -> Result<bool, DbError> {
+        let result = sqlx::query(
+            "DELETE FROM passkey_credentials WHERE id = ? AND user_id = ?",
+        )
+        .bind(credential_id)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    // ========== OAUTH ACCOUNT METHODS ==========
+
+    /// Create or link an OAuth account
+    pub async fn create_oauth_account(
+        &self,
+        user_id: i64,
+        provider: &str,
+        provider_user_id: &str,
+        email: Option<&str>,
+    ) -> Result<i64, DbError> {
+        let result = sqlx::query(
+            r#"
+            INSERT INTO oauth_accounts (user_id, provider, provider_user_id, email, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(user_id)
+        .bind(provider)
+        .bind(provider_user_id)
+        .bind(email)
+        .bind(now_secs())
+        .execute(&self.pool)
+        .await?;
+        Ok(result.last_insert_rowid())
+    }
+
+    /// Get OAuth account by provider and provider user ID
+    pub async fn get_oauth_account(
+        &self,
+        provider: &str,
+        provider_user_id: &str,
+    ) -> Result<Option<OAuthAccount>, DbError> {
+        let account = sqlx::query_as::<_, OAuthAccount>(
+            "SELECT * FROM oauth_accounts WHERE provider = ? AND provider_user_id = ?",
+        )
+        .bind(provider)
+        .bind(provider_user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(account)
+    }
+
+    /// Get all OAuth accounts for a user
+    pub async fn get_user_oauth_accounts(&self, user_id: i64) -> Result<Vec<OAuthAccount>, DbError> {
+        let accounts = sqlx::query_as::<_, OAuthAccount>(
+            "SELECT * FROM oauth_accounts WHERE user_id = ? ORDER BY created_at DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(accounts)
+    }
+
+    /// Delete an OAuth account link
+    pub async fn delete_oauth_account(&self, id: i64, user_id: i64) -> Result<bool, DbError> {
+        let result = sqlx::query(
+            "DELETE FROM oauth_accounts WHERE id = ? AND user_id = ?",
+        )
+        .bind(id)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    // ========== WEBAUTHN CHALLENGE METHODS ==========
+
+    /// Store a WebAuthn challenge
+    pub async fn store_challenge(
+        &self,
+        challenge: &str,
+        user_id: Option<i64>,
+        email: Option<&str>,
+        challenge_type: &str,
+        expires_secs: i64,
+    ) -> Result<(), DbError> {
+        let now = now_secs();
+        sqlx::query(
+            r#"
+            INSERT INTO webauthn_challenges (challenge, user_id, email, type, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(challenge)
+        .bind(user_id)
+        .bind(email)
+        .bind(challenge_type)
+        .bind(now)
+        .bind(now + expires_secs)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Get and delete a challenge (one-time use)
+    pub async fn consume_challenge(&self, challenge: &str) -> Result<Option<WebAuthnChallenge>, DbError> {
+        // First get the challenge
+        let row = sqlx::query(
+            "SELECT challenge, user_id, email, type, created_at, expires_at FROM webauthn_challenges WHERE challenge = ?",
+        )
+        .bind(challenge)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(row) = row {
+            let challenge_data = WebAuthnChallenge {
+                challenge: row.get("challenge"),
+                user_id: row.get("user_id"),
+                email: row.get("email"),
+                challenge_type: row.get("type"),
+                created_at: row.get("created_at"),
+                expires_at: row.get("expires_at"),
+            };
+
+            // Delete it (one-time use)
+            sqlx::query("DELETE FROM webauthn_challenges WHERE challenge = ?")
+                .bind(&challenge_data.challenge)
+                .execute(&self.pool)
+                .await?;
+
+            // Check if expired
+            if challenge_data.expires_at < now_secs() {
+                return Ok(None);
+            }
+
+            Ok(Some(challenge_data))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Clean up expired challenges
+    pub async fn cleanup_expired_challenges(&self) -> Result<u64, DbError> {
+        let result = sqlx::query("DELETE FROM webauthn_challenges WHERE expires_at < ?")
+            .bind(now_secs())
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected())
+    }
+
+    // ========== USER METHODS (OAUTH ADDITIONS) ==========
+
+    /// Create user from OAuth (no password)
+    pub async fn create_oauth_user(
+        &self,
+        email: &str,
+        display_name: &str,
+        verified: bool,
+    ) -> Result<i64, DbError> {
+        let result = sqlx::query(
+            r#"
+            INSERT INTO users (email, password_hash, display_name, verified, created_at)
+            VALUES (?, NULL, ?, ?, ?)
+            "#,
+        )
+        .bind(email.to_lowercase())
+        .bind(display_name)
+        .bind(verified)
+        .bind(now_secs())
+        .execute(&self.pool)
+        .await?;
+        Ok(result.last_insert_rowid())
+    }
+
+    /// Check if user has a password set
+    pub async fn user_has_password(&self, user_id: i64) -> Result<bool, DbError> {
+        let row = sqlx::query("SELECT password_hash FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        Ok(row
+            .and_then(|r| r.get::<Option<String>, _>("password_hash"))
+            .is_some())
+    }
+
+    /// Set password for user (for OAuth users adding password)
+    pub async fn set_user_password(&self, user_id: i64, password_hash: &str) -> Result<(), DbError> {
+        sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
+            .bind(password_hash)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 }

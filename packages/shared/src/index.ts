@@ -27,3 +27,5 @@ export {
 export { socketService } from './services/socketService';
 export { authService } from './services/authService';
 export { configService } from './services/configService';
+export { passkeyService } from './services/passkeyService';
+export { oauthService } from './services/oauthService';

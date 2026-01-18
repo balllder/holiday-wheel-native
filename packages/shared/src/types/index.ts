@@ -106,3 +106,76 @@ export interface RoomInfo {
   player_count: number;
   last_activity: string;
 }
+
+// Passkey types
+export interface PasskeyInfo {
+  id: string;
+  device_name: string | null;
+  created_at: number;
+  last_used_at: number | null;
+}
+
+export interface PasskeyStartResponse {
+  ok: boolean;
+  options?: PublicKeyCredentialCreationOptionsJSON | PublicKeyCredentialRequestOptionsJSON;
+  error?: string;
+}
+
+export interface PasskeyFinishResponse {
+  ok: boolean;
+  token?: string;
+  user?: User;
+  error?: string;
+}
+
+export interface PasskeyListResponse {
+  ok: boolean;
+  passkeys?: PasskeyInfo[];
+  error?: string;
+}
+
+// WebAuthn JSON types (matching the browser API)
+export interface PublicKeyCredentialCreationOptionsJSON {
+  rp: {
+    name: string;
+    id?: string;
+  };
+  user: {
+    id: string;
+    name: string;
+    displayName: string;
+  };
+  challenge: string;
+  pubKeyCredParams: { type: string; alg: number }[];
+  timeout?: number;
+  excludeCredentials?: { type: string; id: string; transports?: string[] }[];
+  authenticatorSelection?: {
+    authenticatorAttachment?: string;
+    residentKey?: string;
+    requireResidentKey?: boolean;
+    userVerification?: string;
+  };
+  attestation?: string;
+}
+
+export interface PublicKeyCredentialRequestOptionsJSON {
+  challenge: string;
+  timeout?: number;
+  rpId?: string;
+  allowCredentials?: { type: string; id: string; transports?: string[] }[];
+  userVerification?: string;
+}
+
+// OAuth types
+export interface OAuthResponse {
+  ok: boolean;
+  token?: string;
+  user?: User;
+  is_new_user?: boolean;
+  error?: string;
+}
+
+export interface AppleFullName {
+  givenName?: string;
+  familyName?: string;
+}

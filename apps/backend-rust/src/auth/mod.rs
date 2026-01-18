@@ -18,6 +18,9 @@ use serde::{Deserialize, Serialize};
 use crate::db::NewUser;
 use crate::AppState;
 
+pub mod oauth;
+pub mod passkey;
+
 // ========== REQUEST/RESPONSE TYPES ==========
 
 #[derive(Debug, Deserialize)]
@@ -37,12 +40,15 @@ pub struct LoginResponse {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct UserInfo {
     pub id: i64,
     pub email: String,
     pub display_name: String,
 }
+
+// Re-export for submodules
+pub use self::UserInfo as UserInfoExport;
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
@@ -112,6 +118,10 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/me", get(me))
         .route("/api/rooms", get(api_rooms))
         .route("/rooms", get(list_rooms))
+        // Passkey endpoints
+        .nest("/api/passkey", passkey::routes())
+        // OAuth endpoints
+        .nest("/api/oauth", oauth::routes())
         // Admin endpoints
         .route("/api/admin/users", get(admin_list_users))
         .route("/api/admin/users/{id}/admin", post(admin_set_user_admin))
@@ -158,7 +168,12 @@ async fn api_login(
     };
 
     // Verify password
-    if !verify_password(&req.password, &user.password_hash) {
+    let password_valid = match &user.password_hash {
+        Some(hash) => verify_password(&req.password, hash),
+        None => false, // OAuth-only user has no password
+    };
+
+    if !password_valid {
         return Json(LoginResponse {
             ok: false,
             token: None,
@@ -581,7 +596,7 @@ async fn list_rooms(
 
 // ========== HELPER FUNCTIONS ==========
 
-fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
+pub fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
     headers
         .get("Authorization")
         .and_then(|v| v.to_str().ok())

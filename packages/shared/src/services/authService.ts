@@ -1,13 +1,26 @@
 import type { AuthResponse, RoomInfo, User } from '../types';
+import { passkeyService } from './passkeyService';
+import { oauthService } from './oauthService';
 
 class AuthService {
   private baseUrl: string = '';
 
   /**
    * Set the base URL for API calls
+   * Also syncs the URL to passkey and oauth services
    */
   setBaseUrl(url: string): void {
     this.baseUrl = url.replace(/\/$/, ''); // Remove trailing slash
+    // Sync to related services
+    passkeyService.setBaseUrl(this.baseUrl);
+    oauthService.setBaseUrl(this.baseUrl);
+  }
+
+  /**
+   * Get the current base URL
+   */
+  getBaseUrl(): string {
+    return this.baseUrl;
   }
 
   /**
