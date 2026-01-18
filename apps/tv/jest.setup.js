@@ -1,4 +1,5 @@
 /* eslint-env jest */
+
 // Mock AsyncStorage
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -38,3 +39,40 @@ jest.mock('react-native-qrcode-svg', () => {
 
 // Mock tvOS-specific APIs via global
 global.useTVEventHandler = jest.fn();
+
+// Mock Google Sign-In
+jest.mock('@react-native-google-signin/google-signin', () => ({
+  GoogleSignin: {
+    configure: jest.fn(),
+    hasPlayServices: jest.fn(() => Promise.resolve(true)),
+    signIn: jest.fn(() =>
+      Promise.resolve({ data: { idToken: 'google-id-token' } })
+    ),
+  },
+  statusCodes: {
+    SIGN_IN_CANCELLED: 'SIGN_IN_CANCELLED',
+    IN_PROGRESS: 'IN_PROGRESS',
+    PLAY_SERVICES_NOT_AVAILABLE: 'PLAY_SERVICES_NOT_AVAILABLE',
+  },
+  isErrorWithCode: jest.fn(() => false),
+}));
+
+// Mock Apple Auth
+jest.mock('@invertase/react-native-apple-authentication', () => ({
+  __esModule: true,
+  default: {
+    performRequest: jest.fn(() =>
+      Promise.resolve({
+        user: 'apple-user-id',
+        identityToken: 'apple-identity-token',
+        email: 'apple@example.com',
+        fullName: { givenName: 'Apple', familyName: 'User' },
+      })
+    ),
+    getCredentialStateForUser: jest.fn(() => Promise.resolve(1)),
+    Operation: { LOGIN: 0 },
+    Scope: { EMAIL: 0, FULL_NAME: 1 },
+    State: { AUTHORIZED: 1 },
+    Error: { CANCELED: '1001' },
+  },
+}));
