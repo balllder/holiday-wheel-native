@@ -284,8 +284,9 @@ pub async fn index() -> Html<String> {
                 }}
 
                 // Convert base64url to ArrayBuffer
-                const challenge = base64urlToBuffer(startData.options.challenge);
-                const allowCredentials = (startData.options.allowCredentials || []).map(c => ({{
+                const pubKey = startData.options.publicKey;
+                const challenge = base64urlToBuffer(pubKey.challenge);
+                const allowCredentials = (pubKey.allowCredentials || []).map(c => ({{
                     id: base64urlToBuffer(c.id),
                     type: c.type,
                     transports: c.transports
@@ -295,9 +296,9 @@ pub async fn index() -> Html<String> {
                     publicKey: {{
                         challenge,
                         allowCredentials,
-                        userVerification: startData.options.userVerification || 'preferred',
-                        timeout: startData.options.timeout || 60000,
-                        rpId: startData.options.rpId
+                        userVerification: pubKey.userVerification || 'preferred',
+                        timeout: pubKey.timeout || 60000,
+                        rpId: pubKey.rpId
                     }}
                 }});
 
@@ -306,15 +307,17 @@ pub async fn index() -> Html<String> {
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{
-                        id: credential.id,
-                        rawId: bufferToBase64url(credential.rawId),
-                        response: {{
-                            clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
-                            authenticatorData: bufferToBase64url(credential.response.authenticatorData),
-                            signature: bufferToBase64url(credential.response.signature),
-                            userHandle: credential.response.userHandle ? bufferToBase64url(credential.response.userHandle) : null
-                        }},
-                        type: credential.type
+                        credential: {{
+                            id: credential.id,
+                            rawId: bufferToBase64url(credential.rawId),
+                            response: {{
+                                clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                                authenticatorData: bufferToBase64url(credential.response.authenticatorData),
+                                signature: bufferToBase64url(credential.response.signature),
+                                userHandle: credential.response.userHandle ? bufferToBase64url(credential.response.userHandle) : null
+                            }},
+                            type: credential.type
+                        }}
                     }}),
                     credentials: 'include'
                 }});
