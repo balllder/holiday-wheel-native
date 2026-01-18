@@ -356,6 +356,34 @@ describe('socketService', () => {
         expect(mockSocket.emit).toHaveBeenCalledWith('set_active_player', { room: 'room', idx: 2 });
       });
     });
+
+    describe('mysteryChoice', () => {
+      it('emits mystery_choice event with keep choice', () => {
+        socketService.mysteryChoice('room', 'keep');
+
+        expect(mockSocket.emit).toHaveBeenCalledWith('mystery_choice', { room: 'room', choice: 'keep' });
+      });
+
+      it('emits mystery_choice event with flip choice', () => {
+        socketService.mysteryChoice('room', 'flip');
+
+        expect(mockSocket.emit).toHaveBeenCalledWith('mystery_choice', { room: 'room', choice: 'flip' });
+      });
+    });
+
+    describe('useWildCard', () => {
+      it('emits use_wild_card event with uppercase letter', () => {
+        socketService.useWildCard('room', 't');
+
+        expect(mockSocket.emit).toHaveBeenCalledWith('use_wild_card', { room: 'room', letter: 'T' });
+      });
+
+      it('handles already uppercase letter', () => {
+        socketService.useWildCard('room', 'R');
+
+        expect(mockSocket.emit).toHaveBeenCalledWith('use_wild_card', { room: 'room', letter: 'R' });
+      });
+    });
   });
 
   describe('isConnected', () => {

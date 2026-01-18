@@ -7,6 +7,8 @@ import type {
   GamePhase,
   TossupState,
   FinalState,
+  MysteryState,
+  ExpressState,
 } from '../types';
 
 interface GameStore {
@@ -27,6 +29,10 @@ interface GameStore {
   currentWedge: WedgeValue | null;
   tossup: TossupState;
   final: FinalState;
+
+  // New mechanics state
+  mystery: MysteryState;
+  express: ExpressState;
 
   // Player state
   myPlayerIdx: number | null;
@@ -66,6 +72,18 @@ const initialState = {
     pick_vowel: null,
     remaining_seconds: null,
   },
+  mystery: {
+    stage: 'off' as const,
+    player_idx: null,
+    choice: null,
+    flip_result: null,
+  },
+  express: {
+    active: false,
+    player_idx: null,
+    correct_count: 0,
+    value_per_consonant: 1000,
+  },
   myPlayerIdx: null,
   isHost: false,
 };
@@ -95,6 +113,18 @@ export const useGameStore = create<GameStore>((set) => ({
       currentWedge: state.current_wedge,
       tossup: state.tossup,
       final: state.final,
+      mystery: state.mystery ?? {
+        stage: 'off',
+        player_idx: null,
+        choice: null,
+        flip_result: null,
+      },
+      express: state.express ?? {
+        active: false,
+        player_idx: null,
+        correct_count: 0,
+        value_per_consonant: 1000,
+      },
     }),
 
   reset: () => set(initialState),
@@ -136,4 +166,38 @@ export const selectActivePlayer = (state: GameStore): Player | null => {
 export const selectMyPlayer = (state: GameStore): Player | null => {
   if (state.myPlayerIdx === null) return null;
   return state.players[state.myPlayerIdx] ?? null;
+};
+
+// Mystery wedge selectors
+export const selectIsMysteryAwaitingChoice = (state: GameStore): boolean => {
+  return (
+    state.mystery.stage === 'awaiting_choice' &&
+    state.mystery.player_idx === state.myPlayerIdx
+  );
+};
+
+export const selectIsMysteryRevealing = (state: GameStore): boolean => {
+  return state.mystery.stage === 'revealing';
+};
+
+// Express mode selectors
+export const selectIsExpressActive = (state: GameStore): boolean => {
+  return state.express.active && state.express.player_idx === state.myPlayerIdx;
+};
+
+export const selectExpressCorrectCount = (state: GameStore): number => {
+  return state.express.correct_count;
+};
+
+// Wild card selectors
+export const selectMyWildCards = (state: GameStore): number => {
+  if (state.myPlayerIdx === null) return 0;
+  const player = state.players[state.myPlayerIdx];
+  return player?.wild_cards ?? 0;
+};
+
+export const selectCanUseWildCard = (state: GameStore): boolean => {
+  if (state.phase !== 'normal') return false;
+  if (state.activeIdx !== state.myPlayerIdx) return false;
+  return selectMyWildCards(state) > 0;
 };

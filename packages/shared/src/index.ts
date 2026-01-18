@@ -18,6 +18,12 @@ export { Confetti, useConfetti } from './components/Confetti';
 export type { ConfettiProps } from './components/Confetti';
 export { PhaseTransition, usePhaseTransition } from './components/PhaseTransition';
 export type { PhaseTransitionProps, GamePhase } from './components/PhaseTransition';
+export { MysteryWedgeModal } from './components/MysteryWedgeModal';
+export type { MysteryWedgeModalProps } from './components/MysteryWedgeModal';
+export { ExpressModeIndicator } from './components/ExpressModeIndicator';
+export type { ExpressModeIndicatorProps } from './components/ExpressModeIndicator';
+export { WildCardButton } from './components/WildCardButton';
+export type { WildCardButtonProps } from './components/WildCardButton';
 
 // Stores
 export {
@@ -28,6 +34,12 @@ export {
   selectCanBuzz,
   selectActivePlayer,
   selectMyPlayer,
+  selectIsMysteryAwaitingChoice,
+  selectIsMysteryRevealing,
+  selectIsExpressActive,
+  selectExpressCorrectCount,
+  selectMyWildCards,
+  selectCanUseWildCard,
 } from './stores/gameStore';
 
 export {

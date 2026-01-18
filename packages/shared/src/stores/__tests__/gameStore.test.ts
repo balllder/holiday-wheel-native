@@ -6,6 +6,12 @@ import {
   selectCanBuzz,
   selectActivePlayer,
   selectMyPlayer,
+  selectIsMysteryAwaitingChoice,
+  selectIsMysteryRevealing,
+  selectIsExpressActive,
+  selectExpressCorrectCount,
+  selectMyWildCards,
+  selectCanUseWildCard,
 } from '../gameStore';
 import type { ServerGameState, Player, GamePhase } from '../../types';
 
@@ -577,6 +583,367 @@ describe('gameStore', () => {
         picks_consonants: [],
         pick_vowel: null,
         remaining_seconds: null,
+      });
+    });
+
+    it('has correct default mystery state', () => {
+      const state = useGameStore.getState();
+
+      expect(state.mystery).toEqual({
+        stage: 'off',
+        player_idx: null,
+        choice: null,
+        flip_result: null,
+      });
+    });
+
+    it('has correct default express state', () => {
+      const state = useGameStore.getState();
+
+      expect(state.express).toEqual({
+        active: false,
+        player_idx: null,
+        correct_count: 0,
+        value_per_consonant: 1000,
+      });
+    });
+  });
+
+  describe('mystery and express state', () => {
+    describe('updateFromServer with mystery', () => {
+      it('updates mystery state from server', () => {
+        const serverState = createServerState({
+          mystery: {
+            stage: 'awaiting_choice',
+            player_idx: 1,
+            choice: null,
+            flip_result: null,
+          },
+        });
+
+        useGameStore.getState().updateFromServer(serverState);
+        const state = useGameStore.getState();
+
+        expect(state.mystery.stage).toBe('awaiting_choice');
+        expect(state.mystery.player_idx).toBe(1);
+      });
+
+      it('uses default mystery state when server state is missing mystery', () => {
+        const serverState = createServerState({});
+        // Explicitly remove mystery to simulate old server
+        delete (serverState as Partial<ServerGameState>).mystery;
+
+        useGameStore.getState().updateFromServer(serverState);
+        const state = useGameStore.getState();
+
+        expect(state.mystery).toEqual({
+          stage: 'off',
+          player_idx: null,
+          choice: null,
+          flip_result: null,
+        });
+      });
+    });
+
+    describe('updateFromServer with express', () => {
+      it('updates express state from server', () => {
+        const serverState = createServerState({
+          express: {
+            active: true,
+            player_idx: 2,
+            correct_count: 3,
+            value_per_consonant: 1000,
+          },
+        });
+
+        useGameStore.getState().updateFromServer(serverState);
+        const state = useGameStore.getState();
+
+        expect(state.express.active).toBe(true);
+        expect(state.express.player_idx).toBe(2);
+        expect(state.express.correct_count).toBe(3);
+      });
+
+      it('uses default express state when server state is missing express', () => {
+        const serverState = createServerState({});
+        delete (serverState as Partial<ServerGameState>).express;
+
+        useGameStore.getState().updateFromServer(serverState);
+        const state = useGameStore.getState();
+
+        expect(state.express).toEqual({
+          active: false,
+          player_idx: null,
+          correct_count: 0,
+          value_per_consonant: 1000,
+        });
+      });
+    });
+  });
+
+  describe('mystery selectors', () => {
+    describe('selectIsMysteryAwaitingChoice', () => {
+      it('returns true when mystery is awaiting choice for current player', () => {
+        useGameStore.getState().updateFromServer(
+          createServerState({
+            mystery: {
+              stage: 'awaiting_choice',
+              player_idx: 1,
+              choice: null,
+              flip_result: null,
+            },
+          })
+        );
+        useGameStore.getState().setMyPlayerIdx(1);
+
+        expect(selectIsMysteryAwaitingChoice(useGameStore.getState())).toBe(true);
+      });
+
+      it('returns false when mystery is awaiting choice for different player', () => {
+        useGameStore.getState().updateFromServer(
+          createServerState({
+            mystery: {
+              stage: 'awaiting_choice',
+              player_idx: 2,
+              choice: null,
+              flip_result: null,
+            },
+          })
+        );
+        useGameStore.getState().setMyPlayerIdx(1);
+
+        expect(selectIsMysteryAwaitingChoice(useGameStore.getState())).toBe(false);
+      });
+
+      it('returns false when mystery stage is not awaiting_choice', () => {
+        useGameStore.getState().updateFromServer(
+          createServerState({
+            mystery: {
+              stage: 'revealing',
+              player_idx: 1,
+              choice: 'flip',
+              flip_result: true,
+            },
+          })
+        );
+        useGameStore.getState().setMyPlayerIdx(1);
+
+        expect(selectIsMysteryAwaitingChoice(useGameStore.getState())).toBe(false);
+      });
+    });
+
+    describe('selectIsMysteryRevealing', () => {
+      it('returns true when mystery stage is revealing', () => {
+        useGameStore.getState().updateFromServer(
+          createServerState({
+            mystery: {
+              stage: 'revealing',
+              player_idx: 1,
+              choice: 'flip',
+              flip_result: true,
+            },
+          })
+        );
+
+        expect(selectIsMysteryRevealing(useGameStore.getState())).toBe(true);
+      });
+
+      it('returns false when mystery stage is not revealing', () => {
+        useGameStore.getState().updateFromServer(
+          createServerState({
+            mystery: {
+              stage: 'off',
+              player_idx: null,
+              choice: null,
+              flip_result: null,
+            },
+          })
+        );
+
+        expect(selectIsMysteryRevealing(useGameStore.getState())).toBe(false);
+      });
+    });
+  });
+
+  describe('express selectors', () => {
+    describe('selectIsExpressActive', () => {
+      it('returns true when express is active for current player', () => {
+        useGameStore.getState().updateFromServer(
+          createServerState({
+            express: {
+              active: true,
+              player_idx: 1,
+              correct_count: 0,
+              value_per_consonant: 1000,
+            },
+          })
+        );
+        useGameStore.getState().setMyPlayerIdx(1);
+
+        expect(selectIsExpressActive(useGameStore.getState())).toBe(true);
+      });
+
+      it('returns false when express is active for different player', () => {
+        useGameStore.getState().updateFromServer(
+          createServerState({
+            express: {
+              active: true,
+              player_idx: 2,
+              correct_count: 0,
+              value_per_consonant: 1000,
+            },
+          })
+        );
+        useGameStore.getState().setMyPlayerIdx(1);
+
+        expect(selectIsExpressActive(useGameStore.getState())).toBe(false);
+      });
+
+      it('returns false when express is not active', () => {
+        useGameStore.getState().updateFromServer(
+          createServerState({
+            express: {
+              active: false,
+              player_idx: null,
+              correct_count: 0,
+              value_per_consonant: 1000,
+            },
+          })
+        );
+        useGameStore.getState().setMyPlayerIdx(1);
+
+        expect(selectIsExpressActive(useGameStore.getState())).toBe(false);
+      });
+    });
+
+    describe('selectExpressCorrectCount', () => {
+      it('returns the correct count', () => {
+        useGameStore.getState().updateFromServer(
+          createServerState({
+            express: {
+              active: true,
+              player_idx: 1,
+              correct_count: 5,
+              value_per_consonant: 1000,
+            },
+          })
+        );
+
+        expect(selectExpressCorrectCount(useGameStore.getState())).toBe(5);
+      });
+    });
+  });
+
+  describe('wild card selectors', () => {
+    describe('selectMyWildCards', () => {
+      it('returns wild card count for current player', () => {
+        const players = [
+          createPlayer({ id: 1, name: 'Alice', wild_cards: 2 }),
+          createPlayer({ id: 2, name: 'Bob', wild_cards: 1 }),
+        ];
+
+        useGameStore.getState().updateFromServer(
+          createServerState({ players })
+        );
+        useGameStore.getState().setMyPlayerIdx(0);
+
+        expect(selectMyWildCards(useGameStore.getState())).toBe(2);
+      });
+
+      it('returns 0 when myPlayerIdx is null', () => {
+        const players = [
+          createPlayer({ id: 1, name: 'Alice', wild_cards: 2 }),
+        ];
+
+        useGameStore.getState().updateFromServer(
+          createServerState({ players })
+        );
+
+        expect(selectMyWildCards(useGameStore.getState())).toBe(0);
+      });
+
+      it('returns 0 when player has no wild_cards property', () => {
+        const players = [
+          createPlayer({ id: 1, name: 'Alice' }), // no wild_cards
+        ];
+
+        useGameStore.getState().updateFromServer(
+          createServerState({ players })
+        );
+        useGameStore.getState().setMyPlayerIdx(0);
+
+        expect(selectMyWildCards(useGameStore.getState())).toBe(0);
+      });
+    });
+
+    describe('selectCanUseWildCard', () => {
+      it('returns true when in normal phase, is active player, and has wild cards', () => {
+        const players = [
+          createPlayer({ id: 1, name: 'Alice', wild_cards: 1 }),
+        ];
+
+        useGameStore.getState().updateFromServer(
+          createServerState({
+            phase: 'normal',
+            players,
+            active_idx: 0,
+          })
+        );
+        useGameStore.getState().setMyPlayerIdx(0);
+
+        expect(selectCanUseWildCard(useGameStore.getState())).toBe(true);
+      });
+
+      it('returns false when not in normal phase', () => {
+        const players = [
+          createPlayer({ id: 1, name: 'Alice', wild_cards: 1 }),
+        ];
+
+        useGameStore.getState().updateFromServer(
+          createServerState({
+            phase: 'tossup',
+            players,
+            active_idx: 0,
+          })
+        );
+        useGameStore.getState().setMyPlayerIdx(0);
+
+        expect(selectCanUseWildCard(useGameStore.getState())).toBe(false);
+      });
+
+      it('returns false when not active player', () => {
+        const players = [
+          createPlayer({ id: 1, name: 'Alice', wild_cards: 1 }),
+          createPlayer({ id: 2, name: 'Bob', wild_cards: 0 }),
+        ];
+
+        useGameStore.getState().updateFromServer(
+          createServerState({
+            phase: 'normal',
+            players,
+            active_idx: 1,
+          })
+        );
+        useGameStore.getState().setMyPlayerIdx(0);
+
+        expect(selectCanUseWildCard(useGameStore.getState())).toBe(false);
+      });
+
+      it('returns false when no wild cards', () => {
+        const players = [
+          createPlayer({ id: 1, name: 'Alice', wild_cards: 0 }),
+        ];
+
+        useGameStore.getState().updateFromServer(
+          createServerState({
+            phase: 'normal',
+            players,
+            active_idx: 0,
+          })
+        );
+        useGameStore.getState().setMyPlayerIdx(0);
+
+        expect(selectCanUseWildCard(useGameStore.getState())).toBe(false);
       });
     });
   });

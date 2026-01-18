@@ -9,12 +9,29 @@ export interface Player {
   round_prizes: Prize[];
   claimed_sid: string | null;
   claimed_user_id: number | null;
+  /** Number of wild cards the player has collected */
+  wild_cards?: number;
 }
 
 export interface Prize {
   type: 'PRIZE';
   name: string;
   value?: number;
+}
+
+/** Mystery wedge - player can keep $1,000 or flip for $10,000/Bankrupt */
+export interface MysteryWedge {
+  type: 'MYSTERY';
+}
+
+/** Express wedge - rapid-fire consonant guessing at $1,000 each */
+export interface ExpressWedge {
+  type: 'EXPRESS';
+}
+
+/** Wild Card wedge - collectible token for extra consonant guess */
+export interface WildCardWedge {
+  type: 'WILD_CARD';
 }
 
 export interface Puzzle {
@@ -28,7 +45,10 @@ export type WedgeValue =
   | 'BANKRUPT'
   | 'LOSE A TURN'
   | 'FREE PLAY'
-  | Prize;
+  | Prize
+  | MysteryWedge
+  | ExpressWedge
+  | WildCardWedge;
 
 export type GamePhase = 'normal' | 'tossup' | 'final';
 
@@ -46,6 +66,32 @@ export interface FinalState {
   picks_consonants: string[];
   pick_vowel: string | null;
   remaining_seconds: number | null;
+}
+
+/** Mystery wedge state - tracks when player needs to make a choice */
+export type MysteryStage = 'off' | 'pending_guess' | 'awaiting_choice' | 'revealing';
+
+export interface MysteryState {
+  /** Current stage of mystery wedge interaction */
+  stage: MysteryStage;
+  /** Player index who landed on mystery */
+  player_idx: number | null;
+  /** The choice made by player: 'keep' ($1,000) or 'flip' ($10,000/Bankrupt) */
+  choice: 'keep' | 'flip' | null;
+  /** Result of flip: true = $10,000, false = Bankrupt */
+  flip_result: boolean | null;
+}
+
+/** Express mode state - tracks rapid-fire guessing */
+export interface ExpressState {
+  /** Whether express mode is currently active */
+  active: boolean;
+  /** Player index in express mode */
+  player_idx: number | null;
+  /** Number of correct guesses made in express mode */
+  correct_count: number;
+  /** Per-consonant value in express mode (default $1,000) */
+  value_per_consonant: number;
 }
 
 export interface HostState {
@@ -83,6 +129,10 @@ export interface ServerGameState {
   host: HostState;
   tossup: TossupState;
   final: FinalState;
+  /** Mystery wedge state (optional for backwards compatibility) */
+  mystery?: MysteryState;
+  /** Express mode state (optional for backwards compatibility) */
+  express?: ExpressState;
 }
 
 // User from auth system

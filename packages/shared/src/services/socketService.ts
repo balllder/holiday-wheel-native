@@ -221,6 +221,20 @@ class SocketService {
   }
 
   /**
+   * Make mystery wedge choice (keep $1,000 or flip for $10,000/Bankrupt)
+   */
+  mysteryChoice(room: string, choice: 'keep' | 'flip'): void {
+    this.socket?.emit('mystery_choice', { room, choice });
+  }
+
+  /**
+   * Use a wild card to guess another consonant
+   */
+  useWildCard(room: string, letter: string): void {
+    this.socket?.emit('use_wild_card', { room, letter: letter.toUpperCase() });
+  }
+
+  /**
    * Check if connected
    */
   isConnected(): boolean {

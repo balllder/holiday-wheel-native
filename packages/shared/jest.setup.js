@@ -44,6 +44,8 @@ jest.mock('react-native', () => {
     View: mockComponent('View'),
     Text: mockComponent('Text'),
     TouchableOpacity: mockComponent('TouchableOpacity'),
+    Modal: mockComponent('Modal'),
+    Pressable: mockComponent('Pressable'),
     StyleSheet: mockStyleSheet,
     Animated: {
       View: mockComponent('Animated.View'),
@@ -70,6 +72,13 @@ jest.mock('react-native', () => {
       })),
       delay: jest.fn(() => ({
         start: jest.fn((cb) => cb && cb()),
+        stop: jest.fn(),
+      })),
+      loop: jest.fn((animation) => ({
+        start: jest.fn((cb) => {
+          animation.start && animation.start();
+          cb && cb();
+        }),
         stop: jest.fn(),
       })),
       createAnimatedComponent: jest.fn((component) => component),
