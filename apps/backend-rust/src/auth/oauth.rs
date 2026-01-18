@@ -19,7 +19,8 @@ use super::{set_cookie_header, UserInfo};
 
 #[derive(Debug, Deserialize)]
 pub struct GoogleAuthRequest {
-    pub id_token: String,
+    pub id_token: Option<String>,      // For mobile apps (JWT)
+    pub access_token: Option<String>,  // For web (OAuth access token)
 }
 
 #[derive(Debug, Deserialize)]
@@ -105,6 +106,16 @@ pub fn routes() -> Router<Arc<AppState>> {
 
 // ========== GOOGLE AUTH ==========
 
+// Response from Google's userinfo endpoint (for access token flow)
+#[derive(Debug, Deserialize)]
+struct GoogleUserInfo {
+    sub: String,
+    email: Option<String>,
+    email_verified: Option<bool>,
+    name: Option<String>,
+    picture: Option<String>,
+}
+
 async fn google_auth(
     State(state): State<Arc<AppState>>,
     Json(req): Json<GoogleAuthRequest>,
@@ -127,43 +138,111 @@ async fn google_auth(
         ).into_response();
     }
 
-    // Verify token
-    let claims = match verify_google_token(&req.id_token, &[&client_id, &client_id_ios, &client_id_android]).await {
-        Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(OAuthResponse {
-                    ok: false,
-                    token: None,
-                    user: None,
-                    is_new_user: None,
-                    error: Some(format!("Invalid token: {}", e)),
-                }),
-            ).into_response();
+    // Determine which token type we have and verify accordingly
+    let (sub, email, name) = if let Some(id_token) = &req.id_token {
+        // Mobile app flow: verify JWT ID token
+        match verify_google_token(id_token, &[&client_id, &client_id_ios, &client_id_android]).await {
+            Ok(claims) => {
+                let email = match claims.email {
+                    Some(e) => e.to_lowercase(),
+                    None => {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Json(OAuthResponse {
+                                ok: false,
+                                token: None,
+                                user: None,
+                                is_new_user: None,
+                                error: Some("Email not provided by Google".to_string()),
+                            }),
+                        ).into_response();
+                    }
+                };
+                (claims.sub, email, claims.name)
+            }
+            Err(e) => {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(OAuthResponse {
+                        ok: false,
+                        token: None,
+                        user: None,
+                        is_new_user: None,
+                        error: Some(format!("Invalid ID token: {}", e)),
+                    }),
+                ).into_response();
+            }
         }
+    } else if let Some(access_token) = &req.access_token {
+        // Web flow: verify access token via Google's userinfo endpoint
+        match verify_google_access_token(access_token).await {
+            Ok(user_info) => {
+                let email = match user_info.email {
+                    Some(e) => e.to_lowercase(),
+                    None => {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Json(OAuthResponse {
+                                ok: false,
+                                token: None,
+                                user: None,
+                                is_new_user: None,
+                                error: Some("Email not provided by Google".to_string()),
+                            }),
+                        ).into_response();
+                    }
+                };
+                (user_info.sub, email, user_info.name)
+            }
+            Err(e) => {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(OAuthResponse {
+                        ok: false,
+                        token: None,
+                        user: None,
+                        is_new_user: None,
+                        error: Some(format!("Invalid access token: {}", e)),
+                    }),
+                ).into_response();
+            }
+        }
+    } else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(OAuthResponse {
+                ok: false,
+                token: None,
+                user: None,
+                is_new_user: None,
+                error: Some("No token provided. Send id_token or access_token".to_string()),
+            }),
+        ).into_response();
     };
 
-    let email = match claims.email {
-        Some(e) => e.to_lowercase(),
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(OAuthResponse {
-                    ok: false,
-                    token: None,
-                    user: None,
-                    is_new_user: None,
-                    error: Some("Email not provided by Google".to_string()),
-                }),
-            ).into_response();
-        }
-    };
-
-    let display_name = claims.name.unwrap_or_else(|| email.split('@').next().unwrap_or(&email).to_string());
+    let display_name = name.unwrap_or_else(|| email.split('@').next().unwrap_or(&email).to_string());
 
     // Handle login/registration
-    handle_oauth_user(&state, "google", &claims.sub, &email, &display_name).await
+    handle_oauth_user(&state, "google", &sub, &email, &display_name).await
+}
+
+async fn verify_google_access_token(access_token: &str) -> Result<GoogleUserInfo, String> {
+    let client = reqwest::Client::new();
+    let response = client
+        .get("https://www.googleapis.com/oauth2/v3/userinfo")
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to verify token: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Google API error: {}", response.status()));
+    }
+
+    response
+        .json::<GoogleUserInfo>()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
 }
 
 async fn verify_google_token(token: &str, valid_client_ids: &[&str]) -> Result<GoogleClaims, String> {
