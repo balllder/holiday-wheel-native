@@ -87,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/register", get(routes::register))
         .route("/lobby", get(routes::lobby))
         .route("/game", get(routes::game))
+        .route("/join", get(routes::join))
         .route("/admin", get(routes::admin))
         .route("/health", get(routes::health))
         .nest("/auth", auth::routes())

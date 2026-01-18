@@ -1,6 +1,7 @@
+use axum::extract::Query;
 use axum::response::Html;
 use axum::Json;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Health check response
 #[derive(Serialize)]
@@ -15,6 +16,166 @@ pub async fn health() -> Json<HealthResponse> {
         status: "ok",
         version: env!("CARGO_PKG_VERSION"),
     })
+}
+
+/// Join query parameters
+#[derive(Deserialize)]
+pub struct JoinQuery {
+    room: Option<String>,
+}
+
+/// Universal link join page - tries app first, falls back to web
+pub async fn join(Query(query): Query<JoinQuery>) -> Html<String> {
+    let room = query.room.unwrap_or_else(|| "main".to_string());
+    let room_escaped = room.replace('\"', "&quot;").replace('<', "&lt;").replace('>', "&gt;");
+
+    Html(format!(r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join Holiday Wheel</title>
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0d0628 0%, #1a0a3e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }}
+        .container {{
+            background: rgba(26, 10, 62, 0.8);
+            padding: 40px;
+            border-radius: 16px;
+            border: 2px solid #333;
+            text-align: center;
+            max-width: 400px;
+        }}
+        h1 {{
+            color: #d4af37;
+            margin-bottom: 16px;
+            font-size: 28px;
+        }}
+        p {{
+            color: #ccc;
+            margin-bottom: 24px;
+            line-height: 1.5;
+        }}
+        .room-name {{
+            color: #d4af37;
+            font-weight: bold;
+        }}
+        .btn {{
+            display: inline-block;
+            background: linear-gradient(135deg, #d4af37 0%, #b8962e 100%);
+            color: #000;
+            padding: 14px 32px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 16px;
+            margin: 8px;
+            border: none;
+            cursor: pointer;
+        }}
+        .btn:hover {{
+            opacity: 0.9;
+        }}
+        .btn-secondary {{
+            background: #333;
+            color: #fff;
+        }}
+        .spinner {{
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #d4af37;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }}
+        @keyframes spin {{
+            to {{ transform: rotate(360deg); }}
+        }}
+        #status {{
+            margin-top: 16px;
+            color: #888;
+            font-size: 14px;
+        }}
+        .hidden {{ display: none; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎡 Holiday Wheel</h1>
+        <p>Joining room: <span class="room-name">{room_escaped}</span></p>
+
+        <div id="loading">
+            <span class="spinner"></span>
+            <span>Opening app...</span>
+        </div>
+
+        <div id="fallback" class="hidden">
+            <p>App not installed? Play in your browser instead!</p>
+            <a href="/game?room={room_escaped}" class="btn">Play in Browser</a>
+            <br>
+            <a href="holidaywheel://join?room={room_escaped}&server={server}" class="btn btn-secondary">Try App Again</a>
+        </div>
+
+        <p id="status"></p>
+    </div>
+
+    <script>
+        const room = "{room_escaped}";
+        const server = window.location.origin;
+        const deepLink = `holidaywheel://join?room=${{encodeURIComponent(room)}}&server=${{encodeURIComponent(server)}}`;
+
+        let appOpened = false;
+
+        // Try to open the app
+        function tryOpenApp() {{
+            const start = Date.now();
+
+            // Create hidden iframe to try deep link (works on some platforms)
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = deepLink;
+            document.body.appendChild(iframe);
+
+            // Also try direct location change
+            window.location.href = deepLink;
+
+            // Check if we're still here after a delay
+            setTimeout(() => {{
+                // If more than 2.5 seconds passed and page is still visible, app didn't open
+                if (Date.now() - start > 2000 && document.visibilityState !== 'hidden') {{
+                    showFallback();
+                }}
+            }}, 2500);
+        }}
+
+        function showFallback() {{
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('fallback').classList.remove('hidden');
+            document.getElementById('status').textContent = 'App not detected - use browser instead';
+        }}
+
+        // Listen for visibility change (app opened successfully)
+        document.addEventListener('visibilitychange', () => {{
+            if (document.visibilityState === 'hidden') {{
+                appOpened = true;
+            }}
+        }});
+
+        // Start the process
+        tryOpenApp();
+    </script>
+</body>
+</html>"#, room_escaped = room_escaped, server = "{server}"))
 }
 
 /// Common styles for all pages
@@ -1036,7 +1197,8 @@ pub async fn lobby() -> Html<String> {
         function updateQRCode() {{
             const roomName = document.getElementById('qrRoomName').value || 'main';
             const serverUrl = window.location.origin;
-            const deepLink = `holidaywheel://join?room=${{encodeURIComponent(roomName)}}&server=${{encodeURIComponent(serverUrl)}}`;
+            // Use web URL with fallback to app - works whether app is installed or not
+            const joinUrl = `${{serverUrl}}/join?room=${{encodeURIComponent(roomName)}}`;
 
             document.getElementById('qrRoomDisplay').textContent = roomName;
             document.getElementById('roomName').value = roomName;
@@ -1046,7 +1208,7 @@ pub async fn lobby() -> Html<String> {
 
             try {{
                 qrCodeInstance = new QRCode(qrContainer, {{
-                    text: deepLink,
+                    text: joinUrl,
                     width: 160,
                     height: 160,
                     colorDark: '#1a0a3e',
