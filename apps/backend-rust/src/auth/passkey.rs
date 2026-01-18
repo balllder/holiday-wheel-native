@@ -858,6 +858,15 @@ async fn login_finish(
         }
     };
 
+    // Check if user should be admin based on ADMIN_EMAIL env var
+    let mut user = user;
+    if let Ok(admin_email) = std::env::var("ADMIN_EMAIL") {
+        if user.email.to_lowercase() == admin_email.to_lowercase() && !user.is_admin {
+            let _ = state.db.set_user_admin(user.id, true).await;
+            user.is_admin = true;
+        }
+    }
+
     // Generate auth token
     let token = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
     if let Err(e) = state.db.set_remember_token(user.id, &token).await {
