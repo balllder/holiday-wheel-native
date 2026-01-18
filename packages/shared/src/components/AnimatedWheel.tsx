@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet } from 'react-native';
-import Svg, { Path, Text as SvgText } from 'react-native-svg';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { View, StyleSheet, Animated } from 'react-native';
+import Svg, { Path, Text as SvgText, G, Defs, RadialGradient, Stop } from 'react-native-svg';
 import type { WedgeValue } from '../types';
 
 // Wheel colors matching the TV show
@@ -10,11 +10,23 @@ const WHEEL_COLORS = [
   '#ff69b4', '#1e90ff', '#ffd700', '#00ced1', '#ff6347', '#8a2be2',
 ];
 
+// Highlight colors for winning wedge
+const HIGHLIGHT_COLOR = 'rgba(255, 255, 255, 0.6)';
+const HIGHLIGHT_GLOW_COLOR = '#ffd700';
+
 interface AnimatedWheelProps {
   wheelSlots: WedgeValue[];
   lastSpinIndex: number | null;
   size?: number;
   onSpinComplete?: () => void;
+  /** Called when spin starts */
+  onSpinStart?: () => void;
+  /** Whether to show highlight on the winning wedge */
+  showWinningHighlight?: boolean;
+  /** Duration of highlight animation in ms (default: 1500) */
+  highlightDuration?: number;
+  /** Number of highlight flashes (default: 3) */
+  highlightFlashes?: number;
 }
 
 export function AnimatedWheel({
@@ -22,15 +34,57 @@ export function AnimatedWheel({
   lastSpinIndex,
   size = 300,
   onSpinComplete,
+  onSpinStart,
+  showWinningHighlight = true,
+  highlightDuration = 1500,
+  highlightFlashes = 3,
 }: AnimatedWheelProps): React.JSX.Element | null {
   const [wheelRotation, setWheelRotation] = useState(0);
+  const [isSpinning, setIsSpinning] = useState(false);
+  const [showHighlight, setShowHighlight] = useState(false);
+  const [highlightOpacity, setHighlightOpacity] = useState(0);
   const prevSpinIdx = useRef<number | null>(null);
   const animationRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const highlightRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Highlight animation when spin completes
+  const startHighlightAnimation = useCallback(() => {
+    if (!showWinningHighlight) return;
+
+    setShowHighlight(true);
+    const flashDuration = highlightDuration / (highlightFlashes * 2);
+    let flashCount = 0;
+
+    // Clear any existing highlight animation
+    if (highlightRef.current) {
+      clearInterval(highlightRef.current);
+    }
+
+    highlightRef.current = setInterval(() => {
+      flashCount++;
+      const isOn = flashCount % 2 === 1;
+      setHighlightOpacity(isOn ? 1 : 0);
+
+      if (flashCount >= highlightFlashes * 2) {
+        if (highlightRef.current) {
+          clearInterval(highlightRef.current);
+          highlightRef.current = null;
+        }
+        setShowHighlight(false);
+        setHighlightOpacity(0);
+      }
+    }, flashDuration);
+  }, [showWinningHighlight, highlightDuration, highlightFlashes]);
 
   // Animate wheel when spin index changes
   useEffect(() => {
     if (lastSpinIndex !== null && lastSpinIndex !== prevSpinIdx.current && wheelSlots.length > 0) {
       prevSpinIdx.current = lastSpinIndex;
+
+      // Notify spin start
+      setIsSpinning(true);
+      setShowHighlight(false);
+      onSpinStart?.();
 
       // Calculate target rotation - center the slot under the pointer
       const anglePerSlot = 360 / wheelSlots.length;
@@ -64,6 +118,8 @@ export function AnimatedWheel({
             clearInterval(animationRef.current);
             animationRef.current = null;
           }
+          setIsSpinning(false);
+          startHighlightAnimation();
           onSpinComplete?.();
         }
       }, 16);
@@ -73,8 +129,11 @@ export function AnimatedWheel({
       if (animationRef.current) {
         clearInterval(animationRef.current);
       }
+      if (highlightRef.current) {
+        clearInterval(highlightRef.current);
+      }
     };
-  }, [lastSpinIndex, wheelSlots.length, onSpinComplete, wheelRotation]);
+  }, [lastSpinIndex, wheelSlots.length, onSpinComplete, onSpinStart, wheelRotation, startHighlightAnimation]);
 
   if (wheelSlots.length === 0) return null;
 
@@ -160,6 +219,18 @@ export function AnimatedWheel({
         {displayLabel}
       </SvgText>
     );
+
+    // Add highlight overlay for winning wedge
+    if (showHighlight && lastSpinIndex === idx && highlightOpacity > 0) {
+      elements.push(
+        <Path
+          key={`highlight-${idx}`}
+          d={pathD}
+          fill={HIGHLIGHT_COLOR}
+          opacity={highlightOpacity}
+        />
+      );
+    }
   });
 
   // Scale pointer size based on wheel size

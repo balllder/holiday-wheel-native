@@ -236,4 +236,145 @@ describe('AnimatedWheel', () => {
       expect(tree?.toJSON()).not.toBeNull();
     });
   });
+
+  describe('highlight feature', () => {
+    it('calls onSpinStart when spin begins', () => {
+      const onSpinStart = jest.fn();
+      let tree: ReactTestRenderer | undefined;
+
+      act(() => {
+        tree = create(
+          <AnimatedWheel
+            wheelSlots={mockWheelSlots}
+            lastSpinIndex={null}
+            onSpinStart={onSpinStart}
+          />
+        );
+      });
+
+      // Trigger spin
+      act(() => {
+        tree?.update(
+          <AnimatedWheel
+            wheelSlots={mockWheelSlots}
+            lastSpinIndex={2}
+            onSpinStart={onSpinStart}
+          />
+        );
+      });
+
+      expect(onSpinStart).toHaveBeenCalledTimes(1);
+    });
+
+    it('accepts showWinningHighlight prop', () => {
+      let tree: ReactTestRenderer | undefined;
+
+      act(() => {
+        tree = create(
+          <AnimatedWheel
+            wheelSlots={mockWheelSlots}
+            lastSpinIndex={null}
+            showWinningHighlight={true}
+          />
+        );
+      });
+
+      expect(tree?.toJSON()).not.toBeNull();
+    });
+
+    it('accepts showWinningHighlight=false prop', () => {
+      let tree: ReactTestRenderer | undefined;
+
+      act(() => {
+        tree = create(
+          <AnimatedWheel
+            wheelSlots={mockWheelSlots}
+            lastSpinIndex={null}
+            showWinningHighlight={false}
+          />
+        );
+      });
+
+      expect(tree?.toJSON()).not.toBeNull();
+    });
+
+    it('accepts highlightDuration prop', () => {
+      let tree: ReactTestRenderer | undefined;
+
+      act(() => {
+        tree = create(
+          <AnimatedWheel
+            wheelSlots={mockWheelSlots}
+            lastSpinIndex={null}
+            highlightDuration={2000}
+          />
+        );
+      });
+
+      expect(tree?.toJSON()).not.toBeNull();
+    });
+
+    it('accepts highlightFlashes prop', () => {
+      let tree: ReactTestRenderer | undefined;
+
+      act(() => {
+        tree = create(
+          <AnimatedWheel
+            wheelSlots={mockWheelSlots}
+            lastSpinIndex={null}
+            highlightFlashes={5}
+          />
+        );
+      });
+
+      expect(tree?.toJSON()).not.toBeNull();
+    });
+
+    it('triggers highlight animation after spin completes', () => {
+      const onSpinComplete = jest.fn();
+      let tree: ReactTestRenderer | undefined;
+
+      act(() => {
+        tree = create(
+          <AnimatedWheel
+            wheelSlots={mockWheelSlots}
+            lastSpinIndex={null}
+            onSpinComplete={onSpinComplete}
+            showWinningHighlight={true}
+            highlightDuration={500}
+            highlightFlashes={2}
+          />
+        );
+      });
+
+      // Trigger spin
+      act(() => {
+        tree?.update(
+          <AnimatedWheel
+            wheelSlots={mockWheelSlots}
+            lastSpinIndex={3}
+            onSpinComplete={onSpinComplete}
+            showWinningHighlight={true}
+            highlightDuration={500}
+            highlightFlashes={2}
+          />
+        );
+      });
+
+      // Fast forward through spin animation
+      act(() => {
+        jest.advanceTimersByTime(3000);
+      });
+
+      expect(onSpinComplete).toHaveBeenCalled();
+
+      // Fast forward through highlight animation
+      act(() => {
+        jest.advanceTimersByTime(600);
+      });
+
+      // Component should still render after highlight
+      expect(tree?.toJSON()).not.toBeNull();
+    });
+  });
 });

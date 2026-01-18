@@ -58,6 +58,12 @@ jest.mock('react-native', () => {
       spring: jest.fn(() => ({
         start: jest.fn((cb) => cb && cb()),
       })),
+      sequence: jest.fn(() => ({
+        start: jest.fn((cb) => cb && cb()),
+      })),
+      parallel: jest.fn(() => ({
+        start: jest.fn((cb) => cb && cb()),
+      })),
       createAnimatedComponent: jest.fn((component) => component),
     },
     Easing: {
