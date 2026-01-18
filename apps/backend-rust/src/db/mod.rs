@@ -122,11 +122,19 @@ fn now_secs() -> i64 {
 impl Database {
     /// Create a new database connection
     pub async fn new(db_path: &str) -> Result<Self, DbError> {
-        let db_url = format!("sqlite:{}", db_path);
+        // Handle both "sqlite:/path" and "/path" formats
+        let db_url = if db_path.starts_with("sqlite:") {
+            db_path.to_string()
+        } else {
+            format!("sqlite:{}", db_path)
+        };
+
+        // Extract file path for logging
+        let file_path = db_url.strip_prefix("sqlite:").unwrap_or(&db_url);
 
         // Create database if it doesn't exist
         if !Sqlite::database_exists(&db_url).await.unwrap_or(false) {
-            info!("Creating database at {}", db_path);
+            info!("Creating database at {}", file_path);
             Sqlite::create_database(&db_url).await?;
         }
 
