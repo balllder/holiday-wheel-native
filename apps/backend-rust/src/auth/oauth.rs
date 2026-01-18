@@ -1,19 +1,32 @@
 use std::sync::Arc;
+use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::{
-    extract::State,
+    extract::{Query, State},
     http::{header, StatusCode},
-    response::{IntoResponse, Response},
-    routing::post,
-    Json, Router,
+    response::{IntoResponse, Redirect, Response},
+    routing::{get, post},
+    Form, Json, Router,
 };
 use jsonwebtoken::{decode, decode_header, DecodingKey, Validation, Algorithm};
 use rand::distributions::{Alphanumeric, DistString};
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
+use once_cell::sync::Lazy;
 
 use crate::AppState;
 
-use super::{set_cookie_header, UserInfo};
+use super::{build_auth_cookie, set_cookie_header, UserInfo};
+
+// In-memory store for OAuth state tokens (expires after 10 minutes)
+static OAUTH_STATES: Lazy<RwLock<HashMap<String, OAuthState>>> = Lazy::new(|| RwLock::new(HashMap::new()));
+
+#[derive(Clone)]
+struct OAuthState {
+    created_at: u64,
+    redirect_uri: String,
+}
 
 // ========== REQUEST/RESPONSE TYPES ==========
 
@@ -102,6 +115,9 @@ pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/google", post(google_auth))
         .route("/apple", post(apple_auth))
+        // Apple web flow (redirect-based)
+        .route("/apple/authorize", get(apple_authorize))
+        .route("/apple/callback", post(apple_callback))
 }
 
 // ========== GOOGLE AUTH ==========
@@ -530,4 +546,297 @@ async fn handle_oauth_user(
     let mut res = (StatusCode::OK, Json(response)).into_response();
     res.headers_mut().insert(header::SET_COOKIE, set_cookie_header(&token));
     res
+}
+
+// ========== APPLE WEB FLOW ==========
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+/// Clean up expired OAuth states (older than 10 minutes)
+async fn cleanup_expired_states() {
+    let now = now_secs();
+    let mut states = OAUTH_STATES.write().await;
+    states.retain(|_, state| now - state.created_at < 600);
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AppleAuthorizeQuery {
+    /// Where to redirect after successful auth (default: /lobby)
+    redirect: Option<String>,
+}
+
+/// Initiates Apple Sign-In by redirecting to Apple's authorization page
+async fn apple_authorize(
+    Query(query): Query<AppleAuthorizeQuery>,
+) -> Response {
+    // Get client ID for web (Services ID, not bundle ID)
+    let client_id = std::env::var("APPLE_CLIENT_ID_WEB")
+        .or_else(|_| std::env::var("APPLE_CLIENT_ID"))
+        .unwrap_or_default();
+
+    let redirect_uri = std::env::var("APPLE_REDIRECT_URI").unwrap_or_default();
+
+    if client_id.is_empty() || redirect_uri.is_empty() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Apple Sign-In not configured. Set APPLE_CLIENT_ID_WEB and APPLE_REDIRECT_URI environment variables."
+        ).into_response();
+    }
+
+    // Generate state token for CSRF protection
+    let state_token = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
+
+    // Store state with redirect destination
+    let final_redirect = query.redirect.unwrap_or_else(|| "/lobby".to_string());
+    {
+        // Clean up old states first
+        cleanup_expired_states().await;
+
+        let mut states = OAUTH_STATES.write().await;
+        states.insert(state_token.clone(), OAuthState {
+            created_at: now_secs(),
+            redirect_uri: final_redirect,
+        });
+    }
+
+    // Build Apple authorization URL
+    // response_mode=form_post means Apple will POST the response to our callback
+    let auth_url = format!(
+        "https://appleid.apple.com/auth/authorize?\
+         client_id={}&\
+         redirect_uri={}&\
+         response_type=code%20id_token&\
+         response_mode=form_post&\
+         scope=name%20email&\
+         state={}",
+        urlencoding::encode(&client_id),
+        urlencoding::encode(&redirect_uri),
+        urlencoding::encode(&state_token)
+    );
+
+    Redirect::to(&auth_url).into_response()
+}
+
+/// Apple callback form data (Apple POSTs to this endpoint)
+#[derive(Debug, Deserialize)]
+pub struct AppleCallbackForm {
+    /// Authorization code (not used directly, we use id_token)
+    #[allow(dead_code)]
+    code: Option<String>,
+    /// The ID token (JWT) containing user info
+    id_token: Option<String>,
+    /// State parameter for CSRF verification
+    state: Option<String>,
+    /// User info (only provided on first authorization, as JSON string)
+    user: Option<String>,
+    /// Error from Apple
+    error: Option<String>,
+}
+
+/// User info from Apple (only on first auth)
+#[derive(Debug, Deserialize)]
+struct AppleUserData {
+    name: Option<AppleNameData>,
+    email: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AppleNameData {
+    #[serde(rename = "firstName")]
+    first_name: Option<String>,
+    #[serde(rename = "lastName")]
+    last_name: Option<String>,
+}
+
+/// Handles Apple's callback (form POST with id_token)
+async fn apple_callback(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<AppleCallbackForm>,
+) -> Response {
+    // Check for errors from Apple
+    if let Some(error) = form.error {
+        tracing::warn!("Apple auth error: {}", error);
+        return Redirect::to(&format!("/?error={}", urlencoding::encode(&error))).into_response();
+    }
+
+    // Verify state parameter
+    let state_token = match form.state {
+        Some(s) => s,
+        None => {
+            return Redirect::to("/?error=missing_state").into_response();
+        }
+    };
+
+    let final_redirect = {
+        let mut states = OAUTH_STATES.write().await;
+        match states.remove(&state_token) {
+            Some(oauth_state) => {
+                // Check if state is expired (10 minutes)
+                if now_secs() - oauth_state.created_at > 600 {
+                    return Redirect::to("/?error=state_expired").into_response();
+                }
+                oauth_state.redirect_uri
+            }
+            None => {
+                return Redirect::to("/?error=invalid_state").into_response();
+            }
+        }
+    };
+
+    // Get and verify the id_token
+    let id_token = match form.id_token {
+        Some(t) => t,
+        None => {
+            return Redirect::to("/?error=missing_token").into_response();
+        }
+    };
+
+    // Get client ID for verification
+    let client_id = std::env::var("APPLE_CLIENT_ID_WEB")
+        .or_else(|_| std::env::var("APPLE_CLIENT_ID"))
+        .unwrap_or_default();
+
+    // Verify the token
+    let claims = match verify_apple_token(&id_token, &client_id).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Apple token verification failed: {}", e);
+            return Redirect::to(&format!("/?error={}", urlencoding::encode(&e))).into_response();
+        }
+    };
+
+    // Parse user data if provided (only on first authorization)
+    let user_data: Option<AppleUserData> = form.user.and_then(|u| {
+        serde_json::from_str(&u).ok()
+    });
+
+    // Build email and display name
+    let email = claims.email
+        .or_else(|| user_data.as_ref().and_then(|u| u.email.clone()))
+        .map(|e| e.to_lowercase())
+        .unwrap_or_else(|| format!("{}@privaterelay.appleid.com", claims.sub));
+
+    let display_name = user_data
+        .and_then(|u| u.name)
+        .map(|n| {
+            let parts: Vec<&str> = [n.first_name.as_deref(), n.last_name.as_deref()]
+                .into_iter()
+                .flatten()
+                .collect();
+            if parts.is_empty() {
+                email.split('@').next().unwrap_or(&email).to_string()
+            } else {
+                parts.join(" ")
+            }
+        })
+        .unwrap_or_else(|| email.split('@').next().unwrap_or(&email).to_string());
+
+    // Handle user creation/login using the common handler
+    // But we need to handle it differently since we want to redirect, not return JSON
+    let (user_id, _is_new_user) = match handle_apple_web_user(&state, &claims.sub, &email, &display_name).await {
+        Ok(result) => result,
+        Err(e) => {
+            return Redirect::to(&format!("/?error={}", urlencoding::encode(&e))).into_response();
+        }
+    };
+
+    // Get user info for the response
+    let user = match state.db.get_user_by_id(user_id).await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            return Redirect::to("/?error=user_not_found").into_response();
+        }
+        Err(_) => {
+            return Redirect::to("/?error=database_error").into_response();
+        }
+    };
+
+    // Check if user should be admin based on ADMIN_EMAIL env var
+    let mut user = user;
+    if let Ok(admin_email) = std::env::var("ADMIN_EMAIL") {
+        if user.email.to_lowercase() == admin_email.to_lowercase() && !user.is_admin {
+            let _ = state.db.set_user_admin(user.id, true).await;
+            user.is_admin = true;
+        }
+    }
+
+    // Generate auth token
+    let token = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
+    if let Err(_) = state.db.set_remember_token(user_id, &token).await {
+        return Redirect::to("/?error=session_error").into_response();
+    }
+    let _ = state.db.update_last_login(user_id).await;
+
+    // Build redirect response with auth cookie
+    // Also include user info in URL fragment for client-side storage
+    let user_json = serde_json::json!({
+        "id": user.id,
+        "email": user.email,
+        "display_name": user.display_name,
+        "is_admin": user.is_admin
+    });
+    let user_json_str = user_json.to_string();
+    let user_encoded = urlencoding::encode(&user_json_str);
+
+    let redirect_url = format!("{}#auth_token={}&user={}", final_redirect, token, user_encoded);
+
+    let secure = std::env::var("SSL_ENABLED")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false);
+    let cookie = build_auth_cookie(&token, secure);
+
+    let mut response = Redirect::to(&redirect_url).into_response();
+    if let Ok(cookie_value) = cookie.to_string().parse() {
+        response.headers_mut().insert(header::SET_COOKIE, cookie_value);
+    }
+
+    response
+}
+
+/// Handle Apple web user - similar to handle_oauth_user but returns Result
+async fn handle_apple_web_user(
+    state: &Arc<AppState>,
+    provider_user_id: &str,
+    email: &str,
+    display_name: &str,
+) -> Result<(i64, bool), String> {
+    let provider = "apple";
+
+    // Check if OAuth account already exists
+    let existing_oauth = state.db.get_oauth_account(provider, provider_user_id).await.ok().flatten();
+
+    if let Some(oauth) = existing_oauth {
+        // Existing OAuth link - get the user
+        return Ok((oauth.user_id, false));
+    }
+
+    // Check if user exists with this email
+    match state.db.get_user_by_email(email).await {
+        Ok(Some(existing_user)) => {
+            // Link OAuth to existing account
+            if let Err(e) = state.db.create_oauth_account(existing_user.id, provider, provider_user_id, Some(email)).await {
+                tracing::warn!("Failed to link OAuth account: {}", e);
+            }
+            Ok((existing_user.id, false))
+        }
+        Ok(None) => {
+            // Create new user (auto-verified for OAuth)
+            match state.db.create_oauth_user(email, display_name, true).await {
+                Ok(new_user_id) => {
+                    // Link OAuth account
+                    if let Err(e) = state.db.create_oauth_account(new_user_id, provider, provider_user_id, Some(email)).await {
+                        tracing::warn!("Failed to create OAuth link: {}", e);
+                    }
+                    Ok((new_user_id, true))
+                }
+                Err(e) => Err(format!("Failed to create user: {}", e)),
+            }
+        }
+        Err(e) => Err(format!("Database error: {}", e)),
+    }
 }

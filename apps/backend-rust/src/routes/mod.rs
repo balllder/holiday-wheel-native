@@ -420,6 +420,42 @@ pub async fn index() -> Html<String> {
             window.location.href = '/lobby';
         }}
 
+        // Handle OAuth callback (Apple Sign-In returns with hash fragment)
+        if (window.location.hash) {{
+            const params = new URLSearchParams(window.location.hash.substring(1));
+            const authToken = params.get('auth_token');
+            const userEncoded = params.get('user');
+            if (authToken && userEncoded) {{
+                try {{
+                    const user = JSON.parse(decodeURIComponent(userEncoded));
+                    localStorage.setItem('user', JSON.stringify(user));
+                    // Clear the hash and redirect to lobby
+                    window.location.href = '/lobby';
+                }} catch (e) {{
+                    console.error('Failed to parse user data:', e);
+                }}
+            }}
+            // Check for error in hash
+            const error = params.get('error');
+            if (error) {{
+                const errorDiv = document.getElementById('error');
+                errorDiv.textContent = decodeURIComponent(error).replace(/_/g, ' ');
+                errorDiv.style.display = 'block';
+                // Clear the hash
+                history.replaceState(null, '', window.location.pathname);
+            }}
+        }}
+
+        // Check for error in query string (from Apple callback redirect)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('error')) {{
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = urlParams.get('error').replace(/_/g, ' ');
+            errorDiv.style.display = 'block';
+            // Clear the query string
+            history.replaceState(null, '', window.location.pathname);
+        }}
+
         // Check passkey support
         if (window.PublicKeyCredential && PublicKeyCredential.isConditionalMediationAvailable) {{
             PublicKeyCredential.isConditionalMediationAvailable().then(available => {{
@@ -548,19 +584,8 @@ pub async fn index() -> Html<String> {
         }}
 
         async function loginWithApple() {{
-            const errorDiv = document.getElementById('error');
-            errorDiv.style.display = 'none';
-            try {{
-                // Apple Sign In requires redirect flow for web
-                // For now, show message that Apple Sign In is available on iOS/tvOS apps
-                errorDiv.style.background = '#333';
-                errorDiv.textContent = 'Apple Sign In is available in the iOS and tvOS apps. Use email/password or passkey on web.';
-                errorDiv.style.display = 'block';
-            }} catch (err) {{
-                console.error('Apple error:', err);
-                errorDiv.textContent = 'Apple sign-in failed';
-                errorDiv.style.display = 'block';
-            }}
+            // Redirect to Apple Sign In authorization endpoint
+            window.location.href = '/auth/api/oauth/apple/authorize';
         }}
 
         // Base64URL utilities
@@ -1171,6 +1196,23 @@ pub async fn lobby() -> Html<String> {
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script>
+        // Handle OAuth callback (Apple Sign-In returns with hash fragment)
+        if (window.location.hash) {{
+            const params = new URLSearchParams(window.location.hash.substring(1));
+            const authToken = params.get('auth_token');
+            const userEncoded = params.get('user');
+            if (authToken && userEncoded) {{
+                try {{
+                    const user = JSON.parse(decodeURIComponent(userEncoded));
+                    localStorage.setItem('user', JSON.stringify(user));
+                    // Clear the hash
+                    history.replaceState(null, '', window.location.pathname);
+                }} catch (e) {{
+                    console.error('Failed to parse user data:', e);
+                }}
+            }}
+        }}
+
         // Check auth - user info stored in localStorage
         const user = JSON.parse(localStorage.getItem('user') || 'null');
 
