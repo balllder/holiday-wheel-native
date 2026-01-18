@@ -24,6 +24,7 @@ pub struct GoogleAuthRequest {
 #[derive(Debug, Deserialize)]
 pub struct AppleAuthRequest {
     pub identity_token: String,
+    #[allow(dead_code)]
     pub user_identifier: Option<String>,
     pub email: Option<String>,
     pub full_name: Option<AppleFullName>,
@@ -51,25 +52,27 @@ pub struct OAuthResponse {
 // ========== JWT CLAIMS ==========
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct GoogleClaims {
     sub: String,           // Google user ID
     email: Option<String>,
     email_verified: Option<bool>,
     name: Option<String>,
     picture: Option<String>,
-    aud: String,           // Client ID
-    iss: String,           // Issuer
-    exp: i64,              // Expiration
+    aud: String,           // Client ID (validated by jsonwebtoken)
+    iss: String,           // Issuer (validated by jsonwebtoken)
+    exp: i64,              // Expiration (validated by jsonwebtoken)
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AppleClaims {
     sub: String,           // Apple user ID
     email: Option<String>,
     email_verified: Option<String>, // Apple returns this as a string "true"/"false"
-    aud: String,           // Client ID
-    iss: String,           // Issuer
-    exp: i64,              // Expiration
+    aud: String,           // Client ID (validated by jsonwebtoken)
+    iss: String,           // Issuer (validated by jsonwebtoken)
+    exp: i64,              // Expiration (validated by jsonwebtoken)
 }
 
 // ========== JWKS TYPES ==========
@@ -80,14 +83,15 @@ struct JwkSet {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct Jwk {
-    kty: String,
+    kty: String,           // Key type (required by JWKS spec)
     kid: String,
     #[serde(rename = "use")]
-    use_: Option<String>,
-    alg: Option<String>,
-    n: Option<String>,    // RSA modulus
-    e: Option<String>,    // RSA exponent
+    use_: Option<String>,  // Key usage
+    alg: Option<String>,   // Algorithm
+    n: Option<String>,     // RSA modulus
+    e: Option<String>,     // RSA exponent
 }
 
 // ========== ROUTES ==========

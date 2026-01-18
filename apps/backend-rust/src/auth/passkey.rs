@@ -773,8 +773,8 @@ async fn login_finish(
         }
     };
 
-    // Deserialize the passkey
-    let passkey: Passkey = match serde_json::from_slice(&stored_cred.public_key) {
+    // Deserialize the passkey (validates the stored format)
+    let _passkey: Passkey = match serde_json::from_slice(&stored_cred.public_key) {
         Ok(p) => p,
         Err(e) => {
             return (
