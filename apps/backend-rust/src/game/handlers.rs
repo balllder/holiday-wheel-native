@@ -330,6 +330,23 @@ pub fn register_handlers(io: &SocketIo) {
         socket.on(
             "new_game",
             |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
+                // Get the pack_id from room config first (needs read lock)
+                let pack_id = {
+                    let manager = state.game_manager.read().await;
+                    manager.get_room(&req.room)
+                        .map(|game| game.config.pack_id)
+                        .unwrap_or(None)
+                };
+
+                // Get a new puzzle from database
+                let puzzle = match state.db.get_random_puzzle(&req.room, pack_id).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        toast!(socket, &format!("Failed to get puzzle: {}", e));
+                        return;
+                    }
+                };
+
                 let mut manager = state.game_manager.write().await;
                 if let Some(game) = manager.get_room_mut(&req.room) {
                     if !game.is_host(socket.id.as_str()) {
@@ -337,6 +354,7 @@ pub fn register_handlers(io: &SocketIo) {
                         return;
                     }
                     game.reset_game();
+                    game.new_puzzle(puzzle);
                     toast!(socket, "New game started.");
                     broadcast_state!(socket, req.room, game.get_state());
                 }
