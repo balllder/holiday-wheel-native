@@ -110,6 +110,43 @@ Access the admin panel at `http://localhost:5000/admin` to:
 - Configure game settings (vowel cost, final round time, etc.)
 - Monitor active rooms
 
+### Importing Puzzles
+
+The backend includes sample puzzle packs that can be imported via the API:
+
+```bash
+# First, get an admin token (set ADMIN_EMAIL env var to your email)
+TOKEN="your-auth-token"
+
+# Import general puzzles
+curl -X POST http://localhost:5000/auth/api/admin/puzzles/import \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @apps/backend-rust/sample-puzzles.json
+
+# Import holiday-themed puzzles
+curl -X POST http://localhost:5000/auth/api/admin/puzzles/import \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @apps/backend-rust/holiday-puzzles.json
+```
+
+**JSON Import Format:**
+```json
+{
+  "puzzles": [
+    { "category": "Phrase", "answer": "HELLO WORLD" },
+    { "category": "Thing", "answer": "SMARTPHONE" }
+  ],
+  "pack_name": "My Custom Pack"
+}
+```
+
+Options:
+- `pack_name`: Creates a new pack or uses existing one by name
+- `pack_id`: Use a specific pack ID (overrides pack_name)
+- If neither is provided, puzzles go to the Default pack
+
 ## Running the Phone App
 
 The phone app can run in two modes:

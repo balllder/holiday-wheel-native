@@ -894,4 +894,21 @@ impl Database {
             (r.get("id"), r.get("name"), r.get("count"))
         }).collect())
     }
+
+    /// Bulk import puzzles from a list
+    pub async fn import_puzzles(&self, puzzles: Vec<(String, String)>, pack_id: i64) -> Result<usize, DbError> {
+        let mut count = 0;
+        for (category, answer) in puzzles {
+            sqlx::query(
+                "INSERT INTO puzzles (category, answer, pack_id) VALUES (?, ?, ?)"
+            )
+            .bind(&category)
+            .bind(answer.to_uppercase())
+            .bind(pack_id)
+            .execute(&self.pool)
+            .await?;
+            count += 1;
+        }
+        Ok(count)
+    }
 }

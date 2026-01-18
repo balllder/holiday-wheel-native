@@ -122,6 +122,7 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/admin/packs/{id}", axum::routing::delete(admin_delete_pack))
         .route("/api/admin/puzzles", get(admin_list_puzzles))
         .route("/api/admin/puzzles", post(admin_add_puzzle))
+        .route("/api/admin/puzzles/import", post(admin_import_puzzles))
         .route("/api/admin/puzzles/{id}", axum::routing::delete(admin_delete_puzzle))
         .route("/api/admin/rooms", get(admin_list_rooms))
         .route("/api/admin/rooms/{name}", axum::routing::delete(admin_delete_room))
@@ -960,6 +961,65 @@ async fn admin_add_puzzle(
         })),
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
             ok: false, message: None, error: Some("Failed to add puzzle".to_string())
+        })),
+    }
+}
+
+#[derive(Deserialize)]
+struct ImportPuzzleItem {
+    category: String,
+    answer: String,
+}
+
+#[derive(Deserialize)]
+struct ImportPuzzlesRequest {
+    puzzles: Vec<ImportPuzzleItem>,
+    pack_id: Option<i64>,
+    pack_name: Option<String>,
+}
+
+async fn admin_import_puzzles(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<ImportPuzzlesRequest>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    // Determine pack_id: use provided pack_id, or create/get pack by name, or default to 1
+    let pack_id = if let Some(id) = req.pack_id {
+        id
+    } else if let Some(name) = req.pack_name {
+        match state.db.get_or_create_pack(&name).await {
+            Ok(id) => id,
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
+                ok: false, message: None, error: Some("Failed to create pack".to_string())
+            })),
+        }
+    } else {
+        1 // Default pack
+    };
+
+    // Convert to tuple format for import
+    let puzzles: Vec<(String, String)> = req.puzzles
+        .into_iter()
+        .map(|p| (p.category, p.answer))
+        .collect();
+
+    let count = puzzles.len();
+    match state.db.import_puzzles(puzzles, pack_id).await {
+        Ok(imported) => (StatusCode::OK, Json(SimpleResponse {
+            ok: true,
+            message: Some(format!("Imported {} puzzles into pack {}", imported, pack_id)),
+            error: None
+        })),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
+            ok: false,
+            message: Some(format!("Failed after importing some of {} puzzles", count)),
+            error: Some("Import failed".to_string())
         })),
     }
 }
