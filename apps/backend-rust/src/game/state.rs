@@ -967,3 +967,772 @@ pub struct GameState {
     #[serde(rename = "final")]
     pub final_round: FinalStateClient,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Create a test game with a simple puzzle
+    fn create_test_game() -> Game {
+        let mut game = Game::new("test-room");
+        game.puzzle = Puzzle {
+            id: 1,
+            category: "Phrase".to_string(),
+            answer: "HELLO WORLD".to_string(),
+        };
+        game
+    }
+
+    /// Create a test game with players
+    fn create_test_game_with_players() -> Game {
+        let mut game = create_test_game();
+        game.add_player("Player 1".to_string(), Some("socket1".to_string()), None);
+        game.add_player("Player 2".to_string(), Some("socket2".to_string()), None);
+        game.add_player("Player 3".to_string(), Some("socket3".to_string()), None);
+        game
+    }
+
+    // ========== is_vowel tests ==========
+
+    #[test]
+    fn test_is_vowel_lowercase() {
+        assert!(Game::is_vowel('a'));
+        assert!(Game::is_vowel('e'));
+        assert!(Game::is_vowel('i'));
+        assert!(Game::is_vowel('o'));
+        assert!(Game::is_vowel('u'));
+    }
+
+    #[test]
+    fn test_is_vowel_uppercase() {
+        assert!(Game::is_vowel('A'));
+        assert!(Game::is_vowel('E'));
+        assert!(Game::is_vowel('I'));
+        assert!(Game::is_vowel('O'));
+        assert!(Game::is_vowel('U'));
+    }
+
+    #[test]
+    fn test_is_consonant() {
+        assert!(!Game::is_vowel('B'));
+        assert!(!Game::is_vowel('C'));
+        assert!(!Game::is_vowel('D'));
+        assert!(!Game::is_vowel('X'));
+        assert!(!Game::is_vowel('Z'));
+    }
+
+    // ========== solve tests ==========
+
+    #[test]
+    fn test_solve_exact_match() {
+        let mut game = create_test_game_with_players();
+        assert!(game.solve("HELLO WORLD"));
+        assert!(game.is_solved());
+    }
+
+    #[test]
+    fn test_solve_case_insensitive() {
+        let mut game = create_test_game_with_players();
+        assert!(game.solve("hello world"));
+        assert!(game.is_solved());
+    }
+
+    #[test]
+    fn test_solve_mixed_case() {
+        let mut game = create_test_game_with_players();
+        assert!(game.solve("HeLLo WoRLd"));
+        assert!(game.is_solved());
+    }
+
+    #[test]
+    fn test_solve_ignores_punctuation() {
+        let mut game = create_test_game_with_players();
+        // Should match even with extra punctuation
+        assert!(game.solve("HELLO, WORLD!"));
+        assert!(game.is_solved());
+    }
+
+    #[test]
+    fn test_solve_ignores_spaces() {
+        let mut game = create_test_game_with_players();
+        // Should match without spaces
+        assert!(game.solve("HELLOWORLD"));
+        assert!(game.is_solved());
+    }
+
+    #[test]
+    fn test_solve_wrong_answer() {
+        let mut game = create_test_game_with_players();
+        let initial_active = game.active_idx;
+        assert!(!game.solve("WRONG ANSWER"));
+        assert!(!game.is_solved());
+        // Turn should advance on wrong solve
+        assert_ne!(game.active_idx, initial_active);
+    }
+
+    #[test]
+    fn test_solve_partial_answer() {
+        let mut game = create_test_game_with_players();
+        assert!(!game.solve("HELLO"));
+        assert!(!game.is_solved());
+    }
+
+    #[test]
+    fn test_solve_awards_round_bank() {
+        let mut game = create_test_game_with_players();
+        // Give player some round bank
+        game.players[0].round_bank = 500;
+        game.active_idx = 0;
+
+        assert!(game.solve("HELLO WORLD"));
+
+        // Round bank should transfer to total
+        assert_eq!(game.players[0].total, 500);
+        assert_eq!(game.players[0].round_bank, 0);
+    }
+
+    #[test]
+    fn test_solve_records_solver_name() {
+        let mut game = create_test_game_with_players();
+        game.active_idx = 1; // Player 2
+        assert!(game.solve("HELLO WORLD"));
+        assert_eq!(game.puzzle_solved_by, Some("Player 2".to_string()));
+    }
+
+    // ========== guess_consonant tests ==========
+
+    #[test]
+    fn test_guess_consonant_correct() {
+        let mut game = create_test_game_with_players();
+        game.current_wedge = Some(WedgeValue::Cash(500));
+
+        let result = game.guess_consonant('H');
+        assert!(matches!(result, GuessResult::Correct(1)));
+        assert!(game.revealed.contains(&'H'));
+        assert!(game.used_letters.contains(&'H'));
+    }
+
+    #[test]
+    fn test_guess_consonant_correct_multiple() {
+        let mut game = create_test_game_with_players();
+        game.current_wedge = Some(WedgeValue::Cash(500));
+
+        let result = game.guess_consonant('L');
+        assert!(matches!(result, GuessResult::Correct(3))); // 3 L's in HELLO WORLD
+        assert!(game.revealed.contains(&'L'));
+    }
+
+    #[test]
+    fn test_guess_consonant_awards_money() {
+        let mut game = create_test_game_with_players();
+        game.current_wedge = Some(WedgeValue::Cash(500));
+        game.active_idx = 0;
+
+        game.guess_consonant('L'); // 3 L's
+        assert_eq!(game.players[0].round_bank, 1500); // 500 * 3
+    }
+
+    #[test]
+    fn test_guess_consonant_incorrect() {
+        let mut game = create_test_game_with_players();
+        game.current_wedge = Some(WedgeValue::Cash(500));
+        let initial_active = game.active_idx;
+
+        let result = game.guess_consonant('X');
+        assert!(matches!(result, GuessResult::Incorrect));
+        assert!(!game.revealed.contains(&'X'));
+        assert!(game.used_letters.contains(&'X'));
+        // Turn should advance
+        assert_ne!(game.active_idx, initial_active);
+    }
+
+    #[test]
+    fn test_guess_consonant_already_used() {
+        let mut game = create_test_game_with_players();
+        game.current_wedge = Some(WedgeValue::Cash(500));
+        game.used_letters.insert('H');
+
+        let result = game.guess_consonant('H');
+        assert!(matches!(result, GuessResult::AlreadyUsed));
+    }
+
+    #[test]
+    fn test_guess_consonant_vowel_rejected() {
+        let mut game = create_test_game_with_players();
+        game.current_wedge = Some(WedgeValue::Cash(500));
+
+        let result = game.guess_consonant('A');
+        assert!(matches!(result, GuessResult::InvalidLetter));
+    }
+
+    #[test]
+    fn test_guess_consonant_need_to_spin() {
+        let mut game = create_test_game_with_players();
+        // No current wedge (hasn't spun)
+
+        let result = game.guess_consonant('H');
+        assert!(matches!(result, GuessResult::NeedToSpin));
+    }
+
+    #[test]
+    fn test_guess_consonant_lowercase_normalized() {
+        let mut game = create_test_game_with_players();
+        game.current_wedge = Some(WedgeValue::Cash(500));
+
+        let result = game.guess_consonant('h');
+        assert!(matches!(result, GuessResult::Correct(1)));
+        assert!(game.revealed.contains(&'H'));
+    }
+
+    #[test]
+    fn test_guess_consonant_free_play_wrong_keeps_turn() {
+        let mut game = create_test_game_with_players();
+        game.current_wedge = Some(WedgeValue::FreePlay);
+        let initial_active = game.active_idx;
+
+        let result = game.guess_consonant('X');
+        assert!(matches!(result, GuessResult::Incorrect));
+        // Turn should NOT advance on Free Play
+        assert_eq!(game.active_idx, initial_active);
+    }
+
+    // ========== buy_vowel tests ==========
+
+    #[test]
+    fn test_buy_vowel_correct() {
+        let mut game = create_test_game_with_players();
+        game.players[0].round_bank = 500;
+        game.active_idx = 0;
+
+        let result = game.buy_vowel('O');
+        assert!(matches!(result, GuessResult::Correct(2))); // 2 O's in HELLO WORLD
+        assert!(game.revealed.contains(&'O'));
+        assert_eq!(game.players[0].round_bank, 250); // 500 - 250
+    }
+
+    #[test]
+    fn test_buy_vowel_incorrect() {
+        let mut game = create_test_game_with_players();
+        game.players[0].round_bank = 500;
+        game.active_idx = 0;
+        let initial_active = game.active_idx;
+
+        // Change puzzle to not have 'U'
+        let result = game.buy_vowel('U');
+        assert!(matches!(result, GuessResult::Incorrect));
+        assert_eq!(game.players[0].round_bank, 250); // Still charged
+        // Turn should advance
+        assert_ne!(game.active_idx, initial_active);
+    }
+
+    #[test]
+    fn test_buy_vowel_not_enough_money() {
+        let mut game = create_test_game_with_players();
+        game.players[0].round_bank = 100; // Less than 250
+        game.active_idx = 0;
+
+        let result = game.buy_vowel('E');
+        assert!(matches!(result, GuessResult::NotEnoughMoney));
+        assert!(!game.revealed.contains(&'E'));
+        assert_eq!(game.players[0].round_bank, 100); // Not charged
+    }
+
+    #[test]
+    fn test_buy_vowel_consonant_rejected() {
+        let mut game = create_test_game_with_players();
+        game.players[0].round_bank = 500;
+        game.active_idx = 0;
+
+        let result = game.buy_vowel('H');
+        assert!(matches!(result, GuessResult::InvalidLetter));
+    }
+
+    #[test]
+    fn test_buy_vowel_already_used() {
+        let mut game = create_test_game_with_players();
+        game.players[0].round_bank = 500;
+        game.active_idx = 0;
+        game.used_letters.insert('E');
+
+        let result = game.buy_vowel('E');
+        assert!(matches!(result, GuessResult::AlreadyUsed));
+    }
+
+    #[test]
+    fn test_buy_vowel_lowercase_normalized() {
+        let mut game = create_test_game_with_players();
+        game.players[0].round_bank = 500;
+        game.active_idx = 0;
+
+        let result = game.buy_vowel('e');
+        assert!(matches!(result, GuessResult::Correct(1))); // 1 E in HELLO
+        assert!(game.revealed.contains(&'E'));
+    }
+
+    // ========== turn management tests ==========
+
+    #[test]
+    fn test_advance_turn() {
+        let mut game = create_test_game_with_players();
+        assert_eq!(game.active_idx, 0);
+
+        game.advance_turn();
+        assert_eq!(game.active_idx, 1);
+
+        game.advance_turn();
+        assert_eq!(game.active_idx, 2);
+
+        game.advance_turn();
+        assert_eq!(game.active_idx, 0); // Wraps around
+    }
+
+    #[test]
+    fn test_advance_turn_clears_wedge() {
+        let mut game = create_test_game_with_players();
+        game.current_wedge = Some(WedgeValue::Cash(500));
+        game.wheel_index = Some(5);
+
+        game.advance_turn();
+
+        assert!(game.current_wedge.is_none());
+        assert!(game.wheel_index.is_none());
+    }
+
+    #[test]
+    fn test_advance_turn_single_player() {
+        let mut game = create_test_game();
+        game.add_player("Solo".to_string(), None, None);
+        assert_eq!(game.active_idx, 0);
+
+        game.advance_turn();
+        assert_eq!(game.active_idx, 0); // Stays at 0
+    }
+
+    // ========== player management tests ==========
+
+    #[test]
+    fn test_add_player() {
+        let mut game = create_test_game();
+        let idx = game.add_player("Test Player".to_string(), Some("socket123".to_string()), Some(42));
+
+        assert_eq!(idx, 0);
+        assert_eq!(game.players.len(), 1);
+        assert_eq!(game.players[0].name, "Test Player");
+        assert_eq!(game.players[0].socket_id, Some("socket123".to_string()));
+        assert_eq!(game.players[0].user_id, Some(42));
+    }
+
+    #[test]
+    fn test_remove_player_renumbers() {
+        let mut game = create_test_game_with_players();
+        // Remove player 1 (middle)
+        game.remove_player(1);
+
+        assert_eq!(game.players.len(), 2);
+        assert_eq!(game.players[0].id, 0);
+        assert_eq!(game.players[0].name, "Player 1");
+        assert_eq!(game.players[1].id, 1);
+        assert_eq!(game.players[1].name, "Player 3");
+    }
+
+    #[test]
+    fn test_remove_player_adjusts_active_idx() {
+        let mut game = create_test_game_with_players();
+        game.active_idx = 1; // Player 2 is active
+
+        // Remove player before active (at index 0)
+        game.remove_player(0);
+
+        // After removal: 2 players remain (P2, P3), active_idx should decrease from 1 to 0
+        assert_eq!(game.active_idx, 0); // Adjusted down
+    }
+
+    #[test]
+    fn test_remove_player_wraps_active_idx() {
+        let mut game = create_test_game_with_players();
+        game.active_idx = 2; // Last player
+
+        // Remove last player
+        game.remove_player(2);
+
+        // active_idx was 2, now >= len (2), so wraps to 0
+        assert_eq!(game.active_idx, 0);
+    }
+
+    #[test]
+    fn test_remove_player_by_socket() {
+        let mut game = create_test_game_with_players();
+
+        let removed = game.remove_player_by_socket("socket2");
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().name, "Player 2");
+        assert_eq!(game.players.len(), 2);
+    }
+
+    // ========== scoring tests ==========
+
+    #[test]
+    fn test_award_round_to_active() {
+        let mut game = create_test_game_with_players();
+        game.active_idx = 0;
+        game.players[0].round_bank = 5000;
+        game.players[0].round_prizes.push(Prize {
+            name: "Car".to_string(),
+            value: 25000,
+        });
+
+        game.award_round_to_active();
+
+        assert_eq!(game.players[0].total, 5000);
+        assert_eq!(game.players[0].round_bank, 0);
+        assert_eq!(game.players[0].prizes.len(), 1);
+        assert_eq!(game.players[0].round_prizes.len(), 0);
+    }
+
+    #[test]
+    fn test_player_prize_value_total() {
+        let mut player = Player::new(0, "Test".to_string());
+        player.prizes.push(Prize {
+            name: "Prize 1".to_string(),
+            value: 1000,
+        });
+        player.prizes.push(Prize {
+            name: "Prize 2".to_string(),
+            value: 2000,
+        });
+
+        assert_eq!(player.prize_value_total(), 3000);
+    }
+
+    #[test]
+    fn test_player_tv_total() {
+        let mut player = Player::new(0, "Test".to_string());
+        player.total = 5000;
+        player.prizes.push(Prize {
+            name: "Prize".to_string(),
+            value: 2000,
+        });
+
+        assert_eq!(player.tv_total(), 7000);
+    }
+
+    // ========== new_puzzle tests ==========
+
+    #[test]
+    fn test_new_puzzle_resets_state() {
+        let mut game = create_test_game_with_players();
+        game.revealed.insert('H');
+        game.used_letters.insert('H');
+        game.players[0].round_bank = 1000;
+        game.puzzle_solved_by = Some("Player 1".to_string());
+
+        game.new_puzzle(Puzzle {
+            id: 2,
+            category: "Thing".to_string(),
+            answer: "BICYCLE".to_string(),
+        });
+
+        assert!(game.revealed.is_empty());
+        assert!(game.used_letters.is_empty());
+        assert_eq!(game.players[0].round_bank, 0);
+        assert!(game.puzzle_solved_by.is_none());
+        assert_eq!(game.puzzle.answer, "BICYCLE");
+    }
+
+    // ========== is_solved tests ==========
+
+    #[test]
+    fn test_is_solved_all_revealed() {
+        let mut game = create_test_game();
+        // Reveal all letters
+        for c in ['H', 'E', 'L', 'O', 'W', 'R', 'D'] {
+            game.revealed.insert(c);
+        }
+
+        assert!(game.is_solved());
+    }
+
+    #[test]
+    fn test_is_solved_partial() {
+        let mut game = create_test_game();
+        game.revealed.insert('H');
+        game.revealed.insert('E');
+
+        assert!(!game.is_solved());
+    }
+
+    // ========== reveal_all tests ==========
+
+    #[test]
+    fn test_reveal_all() {
+        let mut game = create_test_game();
+
+        game.reveal_all();
+
+        assert!(game.revealed.contains(&'H'));
+        assert!(game.revealed.contains(&'E'));
+        assert!(game.revealed.contains(&'L'));
+        assert!(game.revealed.contains(&'O'));
+        assert!(game.revealed.contains(&'W'));
+        assert!(game.revealed.contains(&'R'));
+        assert!(game.revealed.contains(&'D'));
+    }
+
+    // ========== host tests ==========
+
+    #[test]
+    fn test_is_host() {
+        let mut game = create_test_game();
+        game.host_sid = Some("host123".to_string());
+
+        assert!(game.is_host("host123"));
+        assert!(!game.is_host("other"));
+    }
+
+    #[test]
+    fn test_is_active_player() {
+        let mut game = create_test_game_with_players();
+        game.active_idx = 1;
+
+        assert!(game.is_active_player("socket2", false));
+        assert!(!game.is_active_player("socket1", false));
+    }
+
+    #[test]
+    fn test_is_active_player_host_allowed() {
+        let mut game = create_test_game_with_players();
+        game.active_idx = 0;
+        game.host_sid = Some("host123".to_string());
+
+        assert!(game.is_active_player("host123", true));
+        assert!(!game.is_active_player("host123", false));
+    }
+
+    // ========== tossup tests ==========
+
+    #[test]
+    fn test_start_tossup() {
+        let mut game = create_test_game();
+
+        game.start_tossup();
+
+        assert_eq!(game.phase, GamePhase::Tossup);
+        assert!(game.revealed.is_empty());
+        assert!(!game.tossup.reveal_order.is_empty());
+    }
+
+    #[test]
+    fn test_tossup_buzz() {
+        let mut game = create_test_game_with_players();
+        game.start_tossup();
+
+        let result = game.tossup_buzz("socket2");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1); // Player index 1
+        assert_eq!(game.active_idx, 1);
+        assert_eq!(
+            game.tossup.controller_sid,
+            Some("socket2".to_string())
+        );
+    }
+
+    #[test]
+    fn test_tossup_buzz_locked_out() {
+        let mut game = create_test_game_with_players();
+        game.start_tossup();
+        game.tossup.locked_sids.insert("socket1".to_string());
+
+        let result = game.tossup_buzz("socket1");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "You are locked out for this toss-up");
+    }
+
+    #[test]
+    fn test_tossup_buzz_already_buzzed() {
+        let mut game = create_test_game_with_players();
+        game.start_tossup();
+        game.tossup.controller_sid = Some("socket1".to_string());
+
+        let result = game.tossup_buzz("socket2");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Someone else already buzzed in");
+    }
+
+    #[test]
+    fn test_tossup_wrong_answer_locks() {
+        let mut game = create_test_game_with_players();
+        game.start_tossup();
+        game.tossup.controller_sid = Some("socket1".to_string());
+
+        game.tossup_wrong_answer();
+
+        assert!(game.tossup.controller_sid.is_none());
+        assert!(game.tossup.locked_sids.contains("socket1"));
+    }
+
+    #[test]
+    fn test_tossup_correct_answer_awards() {
+        let mut game = create_test_game_with_players();
+        game.start_tossup();
+        game.active_idx = 1;
+
+        game.tossup_correct_answer();
+
+        assert_eq!(game.players[1].total, TOSSUP_AWARD);
+        assert!(game.is_solved()); // reveal_all called
+    }
+
+    // ========== final round tests ==========
+
+    #[test]
+    fn test_start_final() {
+        let mut game = create_test_game_with_players();
+
+        game.start_final();
+
+        assert_eq!(game.phase, GamePhase::Final);
+        assert_eq!(game.final_state.stage, FinalStage::Pick);
+        // RSTLNE should be revealed
+        for c in ['R', 'S', 'T', 'L', 'N', 'E'] {
+            assert!(game.revealed.contains(&c));
+            assert!(game.used_letters.contains(&c));
+        }
+    }
+
+    #[test]
+    fn test_final_pick_consonant() {
+        let mut game = create_test_game_with_players();
+        game.start_final();
+
+        let result = game.final_pick_consonant('B');
+        assert!(result.is_ok());
+        assert!(game.final_state.picks_consonants.contains(&'B'));
+    }
+
+    #[test]
+    fn test_final_pick_consonant_vowel_rejected() {
+        let mut game = create_test_game_with_players();
+        game.start_final();
+
+        let result = game.final_pick_consonant('A');
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "That's a vowel");
+    }
+
+    #[test]
+    fn test_final_pick_consonant_already_used() {
+        let mut game = create_test_game_with_players();
+        game.start_final();
+        // R is already used (RSTLNE)
+
+        let result = game.final_pick_consonant('R');
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Letter already used");
+    }
+
+    #[test]
+    fn test_final_pick_vowel() {
+        let mut game = create_test_game_with_players();
+        game.start_final();
+
+        let result = game.final_pick_vowel('I');
+        assert!(result.is_ok());
+        assert_eq!(game.final_state.pick_vowel, Some('I'));
+    }
+
+    #[test]
+    fn test_final_all_picks_starts_running() {
+        let mut game = create_test_game_with_players();
+        game.start_final();
+
+        game.final_pick_consonant('B').unwrap();
+        game.final_pick_consonant('C').unwrap();
+        game.final_pick_consonant('D').unwrap();
+        game.final_pick_vowel('I').unwrap();
+
+        assert_eq!(game.final_state.stage, FinalStage::Running);
+        assert!(game.final_state.end_ts.is_some());
+    }
+
+    #[test]
+    fn test_final_solve_awards_jackpot() {
+        let mut game = create_test_game_with_players();
+        game.start_final();
+        game.final_state.stage = FinalStage::Running;
+        game.active_idx = 0;
+
+        assert!(game.final_solve("HELLO WORLD"));
+
+        assert_eq!(game.players[0].total, game.config.final_jackpot);
+        assert_eq!(game.final_state.stage, FinalStage::Done);
+    }
+
+    // ========== reset_game tests ==========
+
+    #[test]
+    fn test_reset_game() {
+        let mut game = create_test_game_with_players();
+        game.players[0].total = 5000;
+        game.players[0].round_bank = 1000;
+        game.active_idx = 2;
+        game.phase = GamePhase::Final;
+        game.revealed.insert('H');
+
+        game.reset_game();
+
+        assert_eq!(game.players[0].total, 0);
+        assert_eq!(game.players[0].round_bank, 0);
+        assert_eq!(game.active_idx, 0);
+        assert_eq!(game.phase, GamePhase::Normal);
+        assert!(game.revealed.is_empty());
+    }
+
+    // ========== edge cases ==========
+
+    #[test]
+    fn test_solve_puzzle_with_numbers() {
+        let mut game = create_test_game_with_players();
+        game.puzzle = Puzzle {
+            id: 1,
+            category: "Phrase".to_string(),
+            answer: "21ST CENTURY".to_string(),
+        };
+
+        assert!(game.solve("21st century"));
+        assert!(game.is_solved());
+    }
+
+    #[test]
+    fn test_solve_puzzle_with_apostrophe() {
+        let mut game = create_test_game_with_players();
+        game.puzzle = Puzzle {
+            id: 1,
+            category: "Phrase".to_string(),
+            answer: "IT'S A WRAP".to_string(),
+        };
+
+        assert!(game.solve("its a wrap"));
+        assert!(game.is_solved());
+    }
+
+    #[test]
+    fn test_guess_consonant_on_prize_wedge() {
+        let mut game = create_test_game_with_players();
+        game.current_wedge = Some(WedgeValue::prize("GIFT CARD"));
+        game.last_spin_index = Some(0);
+        game.active_idx = 0;
+
+        let result = game.guess_consonant('H');
+        assert!(matches!(result, GuessResult::Correct(1)));
+        assert!(!game.players[0].round_prizes.is_empty());
+    }
+
+    #[test]
+    fn test_empty_game_advance_turn() {
+        let mut game = create_test_game();
+        // No players
+
+        game.advance_turn(); // Should not panic
+        assert_eq!(game.active_idx, 0);
+    }
+}
