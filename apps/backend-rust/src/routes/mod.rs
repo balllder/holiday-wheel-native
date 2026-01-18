@@ -655,7 +655,7 @@ pub async fn lobby() -> Html<String> {
                     <button class="btn btn-secondary" onclick="updateQRCode()">Update</button>
                 </div>
                 <div class="qr-container">
-                    <canvas id="qrCanvas" width="180" height="180"></canvas>
+                    <div id="qrCode"></div>
                 </div>
                 <div class="qr-room-name">Room: <span id="qrRoomDisplay">main</span></div>
                 <div class="qr-hint">Scan with phone app to join as controller</div>
@@ -663,7 +663,7 @@ pub async fn lobby() -> Html<String> {
         </div>
     </div>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script>
         // Check auth
         const token = localStorage.getItem('token');
@@ -692,6 +692,7 @@ pub async fn lobby() -> Html<String> {
         checkAdmin();
 
         // QR Code generation
+        let qrCodeInstance = null;
         function updateQRCode() {{
             const roomName = document.getElementById('qrRoomName').value || 'main';
             const serverUrl = window.location.origin;
@@ -700,17 +701,22 @@ pub async fn lobby() -> Html<String> {
             document.getElementById('qrRoomDisplay').textContent = roomName;
             document.getElementById('roomName').value = roomName;
 
-            const canvas = document.getElementById('qrCanvas');
-            QRCode.toCanvas(canvas, deepLink, {{
-                width: 180,
-                margin: 0,
-                color: {{
-                    dark: '#1a0a3e',
-                    light: '#ffffff'
-                }}
-            }}, function(error) {{
-                if (error) console.error('QR generation error:', error);
-            }});
+            const qrContainer = document.getElementById('qrCode');
+            qrContainer.innerHTML = '';
+
+            try {{
+                qrCodeInstance = new QRCode(qrContainer, {{
+                    text: deepLink,
+                    width: 160,
+                    height: 160,
+                    colorDark: '#1a0a3e',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.M
+                }});
+            }} catch (e) {{
+                console.error('QR Code error:', e);
+                qrContainer.innerHTML = '<p style="color:#666;font-size:12px;">QR generation failed</p>';
+            }}
         }}
 
         // Sync room name inputs
