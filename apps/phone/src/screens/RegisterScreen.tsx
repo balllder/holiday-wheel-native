@@ -18,6 +18,7 @@ import {
   statusCodes,
   isErrorWithCode,
 } from '@react-native-google-signin/google-signin';
+import appleAuth from '@invertase/react-native-apple-authentication';
 import { authService, passkeyService, oauthService, useAuthStore } from '@holiday-wheel/shared';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -199,6 +200,66 @@ export function RegisterScreen({ navigation }: RegisterScreenProps): React.JSX.E
     }
   };
 
+  // Apple Sign-In (creates account automatically, iOS only)
+  const handleAppleSignIn = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const appleAuthResponse = await appleAuth.performRequest({
+        requestedOperation: appleAuth.Operation.LOGIN,
+        requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
+      });
+
+      const credentialState = await appleAuth.getCredentialStateForUser(
+        appleAuthResponse.user
+      );
+
+      if (credentialState !== appleAuth.State.AUTHORIZED) {
+        setError('Apple Sign-In not authorized');
+        setLoading(false);
+        return;
+      }
+
+      const identityToken = appleAuthResponse.identityToken;
+      if (!identityToken) {
+        setError('Failed to get Apple identity token');
+        setLoading(false);
+        return;
+      }
+
+      // Convert null to undefined for fullName properties
+      const fullName = appleAuthResponse.fullName
+        ? {
+            givenName: appleAuthResponse.fullName.givenName ?? undefined,
+            familyName: appleAuthResponse.fullName.familyName ?? undefined,
+          }
+        : undefined;
+
+      const result = await oauthService.appleAuth(
+        identityToken,
+        appleAuthResponse.user,
+        appleAuthResponse.email ?? undefined,
+        fullName
+      );
+
+      if (result.ok && result.token && result.user) {
+        await handleAuthSuccess(result.token, result.user);
+      } else {
+        setError(result.error || 'Apple Sign-In failed');
+      }
+    } catch (err: unknown) {
+      const appleError = err as { code?: string; message?: string };
+      if (appleError.code === appleAuth.Error.CANCELED) {
+        // User cancelled
+      } else {
+        setError(appleError.message || 'Apple Sign-In error');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (success) {
     return (
       <View style={styles.container}>
@@ -238,6 +299,18 @@ export function RegisterScreen({ navigation }: RegisterScreenProps): React.JSX.E
             <Text style={styles.googleButtonIcon}>G</Text>
             <Text style={styles.googleButtonText}>Continue with Google</Text>
           </TouchableOpacity>
+
+          {/* Apple Sign-In Button (iOS only) */}
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity
+              style={[styles.appleButton, loading && styles.buttonDisabled]}
+              onPress={handleAppleSignIn}
+              disabled={loading}
+            >
+              <Text style={styles.appleButtonIcon}>{'\uF8FF'}</Text>
+              <Text style={styles.appleButtonText}>Continue with Apple</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Passkey Registration Option */}
           {passkeySupported && (
@@ -465,6 +538,25 @@ const styles = StyleSheet.create({
   },
   googleButtonText: {
     color: '#333',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  appleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#000000',
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 12,
+  },
+  appleButtonIcon: {
+    fontSize: 20,
+    marginRight: 10,
+    color: '#ffffff',
+  },
+  appleButtonText: {
+    color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
   },

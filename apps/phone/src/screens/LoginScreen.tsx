@@ -19,6 +19,7 @@ import {
   statusCodes,
   isErrorWithCode,
 } from '@react-native-google-signin/google-signin';
+import appleAuth from '@invertase/react-native-apple-authentication';
 import {
   useAuthStore,
   authService,
@@ -206,30 +207,60 @@ export function LoginScreen({
     setError(null);
 
     try {
-      // TODO: Use @invertase/react-native-apple-authentication
-      // const appleAuthResponse = await appleAuth.performRequest({...});
-      // const result = await oauthService.appleAuth(
-      //   appleAuthResponse.identityToken,
-      //   appleAuthResponse.user,
-      //   appleAuthResponse.email,
-      //   appleAuthResponse.fullName
-      // );
+      // Perform the Apple Sign-In request
+      const appleAuthResponse = await appleAuth.performRequest({
+        requestedOperation: appleAuth.Operation.LOGIN,
+        requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
+      });
 
-      // For now, show a message that Apple Sign-In needs native setup
-      setError(
-        'Apple Sign-In requires native SDK setup. ' +
-          'Install @invertase/react-native-apple-authentication and enable Sign in with Apple capability.'
+      // Get the credential state
+      const credentialState = await appleAuth.getCredentialStateForUser(
+        appleAuthResponse.user
       );
-      setLoading(false);
 
-      // When native SDK is set up:
-      // if (result.ok && result.token && result.user) {
-      //   await handleAuthSuccess(result.token, result.user);
-      // } else {
-      //   setError(result.error || 'Apple Sign-In failed');
-      // }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Apple Sign-In error');
+      if (credentialState !== appleAuth.State.AUTHORIZED) {
+        setError('Apple Sign-In not authorized');
+        setLoading(false);
+        return;
+      }
+
+      // Get the identity token
+      const identityToken = appleAuthResponse.identityToken;
+      if (!identityToken) {
+        setError('Failed to get Apple identity token');
+        setLoading(false);
+        return;
+      }
+
+      // Send to backend for verification
+      // Convert null to undefined for fullName properties
+      const fullName = appleAuthResponse.fullName
+        ? {
+            givenName: appleAuthResponse.fullName.givenName ?? undefined,
+            familyName: appleAuthResponse.fullName.familyName ?? undefined,
+          }
+        : undefined;
+
+      const result = await oauthService.appleAuth(
+        identityToken,
+        appleAuthResponse.user,
+        appleAuthResponse.email ?? undefined,
+        fullName
+      );
+
+      if (result.ok && result.token && result.user) {
+        await handleAuthSuccess(result.token, result.user);
+      } else {
+        setError(result.error || 'Apple Sign-In failed');
+      }
+    } catch (err: unknown) {
+      const appleError = err as { code?: string; message?: string };
+      if (appleError.code === appleAuth.Error.CANCELED) {
+        // User cancelled, don't show error
+      } else {
+        setError(appleError.message || 'Apple Sign-In error');
+      }
+    } finally {
       setLoading(false);
     }
   };

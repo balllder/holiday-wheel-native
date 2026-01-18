@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@holiday-wheel/shared": "^0.0.1",
+    "@invertase/react-native-apple-authentication": "^2.5.1",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-google-signin/google-signin": "^16.1.1",
     "@react-native/new-app-screen": "0.83.1",
