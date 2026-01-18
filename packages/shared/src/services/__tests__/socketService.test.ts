@@ -93,7 +93,7 @@ describe('socketService', () => {
   });
 
   describe('event handlers', () => {
-    let eventHandlers: Record<string, Function>;
+    let eventHandlers: Record<string, (...args: unknown[]) => void>;
 
     beforeEach(() => {
       eventHandlers = {};
@@ -405,7 +405,7 @@ describe('socketService', () => {
       socketService.setToastCallback(callback);
 
       // Verify callback is called when toast event fires
-      let toastHandler: Function;
+      let toastHandler: (data: { msg: string }) => void;
       mockSocket.on.mockImplementation((event, handler) => {
         if (event === 'toast') {
           toastHandler = handler;
