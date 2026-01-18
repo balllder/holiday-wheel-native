@@ -1318,3 +1318,759 @@ impl Database {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Create a temporary test database
+    async fn create_test_db() -> Database {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap().to_string();
+        // Keep the tempfile handle alive by leaking it (tests are short-lived)
+        std::mem::forget(tmp);
+        Database::new(&path).await.unwrap()
+    }
+
+    // ========== USER TESTS ==========
+
+    #[tokio::test]
+    async fn test_create_user() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "test@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Test User".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+            })
+            .await
+            .unwrap();
+
+        assert!(user_id > 0);
+    }
+
+    #[tokio::test]
+    async fn test_user_exists() {
+        let db = create_test_db().await;
+
+        // User doesn't exist yet
+        assert!(!db.user_exists("test@example.com").await.unwrap());
+
+        // Create user
+        db.create_user(NewUser {
+            email: "test@example.com".to_string(),
+            password_hash: "hash123".to_string(),
+            display_name: "Test User".to_string(),
+            verification_token: "token123".to_string(),
+            verification_token_expires: 9999999999,
+        })
+        .await
+        .unwrap();
+
+        // Now user exists
+        assert!(db.user_exists("test@example.com").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_user_exists_case_insensitive() {
+        let db = create_test_db().await;
+
+        db.create_user(NewUser {
+            email: "Test@Example.COM".to_string(),
+            password_hash: "hash123".to_string(),
+            display_name: "Test User".to_string(),
+            verification_token: "token123".to_string(),
+            verification_token_expires: 9999999999,
+        })
+        .await
+        .unwrap();
+
+        // Should find with different case
+        assert!(db.user_exists("test@example.com").await.unwrap());
+        assert!(db.user_exists("TEST@EXAMPLE.COM").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_get_user_by_email() {
+        let db = create_test_db().await;
+
+        db.create_user(NewUser {
+            email: "test@example.com".to_string(),
+            password_hash: "hash123".to_string(),
+            display_name: "Test User".to_string(),
+            verification_token: "token123".to_string(),
+            verification_token_expires: 9999999999,
+        })
+        .await
+        .unwrap();
+
+        let user = db.get_user_by_email("test@example.com").await.unwrap();
+        assert!(user.is_some());
+        let user = user.unwrap();
+        assert_eq!(user.display_name, "Test User");
+        assert_eq!(user.password_hash, Some("hash123".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_user_by_email_not_found() {
+        let db = create_test_db().await;
+
+        let user = db.get_user_by_email("nonexistent@example.com").await.unwrap();
+        assert!(user.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_user_by_id() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "test@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Test User".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+            })
+            .await
+            .unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap();
+        assert!(user.is_some());
+        assert_eq!(user.unwrap().email, "test@example.com");
+    }
+
+    #[tokio::test]
+    async fn test_verify_user() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "test@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Test User".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+            })
+            .await
+            .unwrap();
+
+        // User not verified initially
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert!(!user.verified);
+        assert!(user.verification_token.is_some());
+
+        // Verify user
+        db.verify_user(user_id).await.unwrap();
+
+        // User now verified, token cleared
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert!(user.verified);
+        assert!(user.verification_token.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_user_by_verification_token() {
+        let db = create_test_db().await;
+
+        db.create_user(NewUser {
+            email: "test@example.com".to_string(),
+            password_hash: "hash123".to_string(),
+            display_name: "Test User".to_string(),
+            verification_token: "unique-token-123".to_string(),
+            verification_token_expires: 9999999999,
+        })
+        .await
+        .unwrap();
+
+        let user = db
+            .get_user_by_verification_token("unique-token-123")
+            .await
+            .unwrap();
+        assert!(user.is_some());
+        assert_eq!(user.unwrap().email, "test@example.com");
+    }
+
+    #[tokio::test]
+    async fn test_remember_token() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "test@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Test User".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+            })
+            .await
+            .unwrap();
+
+        // Set remember token
+        db.set_remember_token(user_id, "remember-me-token").await.unwrap();
+
+        // Get user by token
+        let user = db.get_user_by_token("remember-me-token").await.unwrap();
+        assert!(user.is_some());
+
+        // Clear token
+        db.clear_remember_token(user_id).await.unwrap();
+
+        // Token no longer works
+        let user = db.get_user_by_token("remember-me-token").await.unwrap();
+        assert!(user.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_create_oauth_user() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_oauth_user("oauth@example.com", "OAuth User", true)
+            .await
+            .unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.email, "oauth@example.com");
+        assert_eq!(user.display_name, "OAuth User");
+        assert!(user.verified);
+        assert!(user.password_hash.is_none()); // No password for OAuth users
+    }
+
+    #[tokio::test]
+    async fn test_user_has_password() {
+        let db = create_test_db().await;
+
+        // OAuth user without password
+        let oauth_user_id = db
+            .create_oauth_user("oauth@example.com", "OAuth User", true)
+            .await
+            .unwrap();
+        assert!(!db.user_has_password(oauth_user_id).await.unwrap());
+
+        // Regular user with password
+        let regular_user_id = db
+            .create_user(NewUser {
+                email: "regular@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Regular User".to_string(),
+                verification_token: "token".to_string(),
+                verification_token_expires: 9999999999,
+            })
+            .await
+            .unwrap();
+        assert!(db.user_has_password(regular_user_id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_delete_user() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "test@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Test User".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+            })
+            .await
+            .unwrap();
+
+        assert!(db.get_user_by_id(user_id).await.unwrap().is_some());
+
+        let deleted = db.delete_user(user_id).await.unwrap();
+        assert!(deleted);
+
+        assert!(db.get_user_by_id(user_id).await.unwrap().is_none());
+    }
+
+    // ========== PUZZLE TESTS ==========
+
+    #[tokio::test]
+    async fn test_get_random_puzzle() {
+        let db = create_test_db().await;
+
+        // Default puzzles are inserted during init
+        let puzzle = db.get_random_puzzle("test-room", None).await.unwrap();
+
+        assert!(!puzzle.category.is_empty());
+        assert!(!puzzle.answer.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_puzzle_not_repeated() {
+        let db = create_test_db().await;
+
+        // Get first puzzle
+        let puzzle1 = db.get_random_puzzle("test-room", None).await.unwrap();
+
+        // Get more puzzles, should not repeat the first one until we've used them all
+        let mut seen_ids = vec![puzzle1.id];
+
+        // Get up to 9 more puzzles (we have 10 default puzzles)
+        for _ in 0..9 {
+            let puzzle = db.get_random_puzzle("test-room", None).await.unwrap();
+            if seen_ids.contains(&puzzle.id) {
+                // We've cycled through all puzzles
+                break;
+            }
+            seen_ids.push(puzzle.id);
+        }
+
+        // Should have seen multiple unique puzzles
+        assert!(seen_ids.len() > 1);
+    }
+
+    #[tokio::test]
+    async fn test_clear_used_puzzles() {
+        let db = create_test_db().await;
+
+        // Get all puzzles once
+        for _ in 0..10 {
+            db.get_random_puzzle("test-room", None).await.unwrap();
+        }
+
+        // Clear used puzzles
+        db.clear_used_puzzles("test-room").await.unwrap();
+
+        // Should be able to get puzzles again
+        let puzzle = db.get_random_puzzle("test-room", None).await.unwrap();
+        assert!(puzzle.id > 0);
+    }
+
+    #[tokio::test]
+    async fn test_add_puzzle() {
+        let db = create_test_db().await;
+
+        let puzzle_id = db.add_puzzle("TEST CATEGORY", "test answer", 1).await.unwrap();
+        assert!(puzzle_id > 0);
+
+        // Verify puzzle was added with uppercase answer
+        let puzzles = db.list_all_puzzles(Some(1)).await.unwrap();
+        let added = puzzles.iter().find(|p| p.id == puzzle_id).unwrap();
+        assert_eq!(added.category, "TEST CATEGORY");
+        assert_eq!(added.answer, "TEST ANSWER"); // Should be uppercased
+    }
+
+    #[tokio::test]
+    async fn test_delete_puzzle() {
+        let db = create_test_db().await;
+
+        let puzzle_id = db.add_puzzle("TEST", "DELETE ME", 1).await.unwrap();
+
+        let deleted = db.delete_puzzle(puzzle_id).await.unwrap();
+        assert!(deleted);
+
+        // Should no longer exist
+        let puzzles = db.list_all_puzzles(None).await.unwrap();
+        assert!(!puzzles.iter().any(|p| p.id == puzzle_id));
+    }
+
+    // ========== PACK TESTS ==========
+
+    #[tokio::test]
+    async fn test_list_packs() {
+        let db = create_test_db().await;
+
+        let packs = db.list_packs().await.unwrap();
+        // Default pack should exist
+        assert!(!packs.is_empty());
+        assert!(packs.iter().any(|p| p.name == "Default"));
+    }
+
+    #[tokio::test]
+    async fn test_get_or_create_pack() {
+        let db = create_test_db().await;
+
+        // Create new pack
+        let pack_id = db.get_or_create_pack("Test Pack").await.unwrap();
+        assert!(pack_id > 1); // Not the default pack
+
+        // Get same pack again
+        let pack_id2 = db.get_or_create_pack("Test Pack").await.unwrap();
+        assert_eq!(pack_id, pack_id2);
+    }
+
+    #[tokio::test]
+    async fn test_delete_pack() {
+        let db = create_test_db().await;
+
+        // Create a pack
+        let pack_id = db.get_or_create_pack("Deletable Pack").await.unwrap();
+
+        // Add a puzzle to it
+        db.add_puzzle("TEST", "TEST PUZZLE", pack_id).await.unwrap();
+
+        // Delete pack
+        let deleted = db.delete_pack(pack_id).await.unwrap();
+        assert!(deleted);
+
+        // Pack's puzzles should be deleted too
+        let puzzles = db.list_all_puzzles(Some(pack_id)).await.unwrap();
+        assert!(puzzles.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_cannot_delete_default_pack() {
+        let db = create_test_db().await;
+
+        let deleted = db.delete_pack(1).await.unwrap();
+        assert!(!deleted); // Should return false
+    }
+
+    // ========== OAUTH ACCOUNT TESTS ==========
+
+    #[tokio::test]
+    async fn test_create_oauth_account() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_oauth_user("test@example.com", "Test User", true)
+            .await
+            .unwrap();
+
+        let account_id = db
+            .create_oauth_account(user_id, "google", "google-user-123", Some("test@example.com"))
+            .await
+            .unwrap();
+
+        assert!(account_id > 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_oauth_account() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_oauth_user("test@example.com", "Test User", true)
+            .await
+            .unwrap();
+
+        db.create_oauth_account(user_id, "google", "google-user-123", Some("test@example.com"))
+            .await
+            .unwrap();
+
+        let account = db.get_oauth_account("google", "google-user-123").await.unwrap();
+        assert!(account.is_some());
+        let account = account.unwrap();
+        assert_eq!(account.user_id, user_id);
+        assert_eq!(account.provider, "google");
+    }
+
+    #[tokio::test]
+    async fn test_get_user_oauth_accounts() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_oauth_user("test@example.com", "Test User", true)
+            .await
+            .unwrap();
+
+        // Add multiple OAuth accounts
+        db.create_oauth_account(user_id, "google", "google-123", Some("test@example.com"))
+            .await
+            .unwrap();
+        db.create_oauth_account(user_id, "apple", "apple-456", Some("test@example.com"))
+            .await
+            .unwrap();
+
+        let accounts = db.get_user_oauth_accounts(user_id).await.unwrap();
+        assert_eq!(accounts.len(), 2);
+    }
+
+    // ========== PASSKEY TESTS ==========
+
+    #[tokio::test]
+    async fn test_create_passkey() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_oauth_user("test@example.com", "Test User", true)
+            .await
+            .unwrap();
+
+        db.create_passkey(
+            "credential-id-123",
+            user_id,
+            &[1, 2, 3, 4],
+            0,
+            Some("[\"internal\"]"),
+            Some("My Device"),
+        )
+        .await
+        .unwrap();
+
+        // Verify passkey was created
+        let passkey = db.get_passkey("credential-id-123").await.unwrap();
+        assert!(passkey.is_some());
+        let passkey = passkey.unwrap();
+        assert_eq!(passkey.user_id, user_id);
+        assert_eq!(passkey.device_name, Some("My Device".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_user_passkeys() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_oauth_user("test@example.com", "Test User", true)
+            .await
+            .unwrap();
+
+        db.create_passkey("cred-1", user_id, &[1, 2], 0, None, Some("Device 1"))
+            .await
+            .unwrap();
+        db.create_passkey("cred-2", user_id, &[3, 4], 0, None, Some("Device 2"))
+            .await
+            .unwrap();
+
+        let passkeys = db.get_user_passkeys(user_id).await.unwrap();
+        assert_eq!(passkeys.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_update_passkey_counter() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_oauth_user("test@example.com", "Test User", true)
+            .await
+            .unwrap();
+
+        db.create_passkey("cred-123", user_id, &[1, 2, 3], 0, None, None)
+            .await
+            .unwrap();
+
+        // Update counter
+        db.update_passkey_counter("cred-123", 5).await.unwrap();
+
+        let passkey = db.get_passkey("cred-123").await.unwrap().unwrap();
+        assert_eq!(passkey.counter, 5);
+        assert!(passkey.last_used_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_delete_passkey() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_oauth_user("test@example.com", "Test User", true)
+            .await
+            .unwrap();
+
+        db.create_passkey("cred-to-delete", user_id, &[1, 2], 0, None, None)
+            .await
+            .unwrap();
+
+        let deleted = db.delete_passkey("cred-to-delete", user_id).await.unwrap();
+        assert!(deleted);
+
+        assert!(db.get_passkey("cred-to-delete").await.unwrap().is_none());
+    }
+
+    // ========== WEBAUTHN CHALLENGE TESTS ==========
+
+    #[tokio::test]
+    async fn test_store_and_consume_challenge() {
+        let db = create_test_db().await;
+
+        db.store_challenge(
+            "challenge-abc",
+            Some(1),
+            Some("test@example.com"),
+            "registration",
+            300, // 5 minutes
+        )
+        .await
+        .unwrap();
+
+        // Consume challenge
+        let challenge = db.consume_challenge("challenge-abc").await.unwrap();
+        assert!(challenge.is_some());
+        let challenge = challenge.unwrap();
+        assert_eq!(challenge.challenge, "challenge-abc");
+        assert_eq!(challenge.challenge_type, "registration");
+
+        // Challenge should be deleted (one-time use)
+        let challenge_again = db.consume_challenge("challenge-abc").await.unwrap();
+        assert!(challenge_again.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_expired_challenge() {
+        let db = create_test_db().await;
+
+        // Store challenge that's already expired
+        db.store_challenge(
+            "expired-challenge",
+            None,
+            Some("test@example.com"),
+            "authentication",
+            -1, // Already expired
+        )
+        .await
+        .unwrap();
+
+        // Should not be consumable
+        let challenge = db.consume_challenge("expired-challenge").await.unwrap();
+        assert!(challenge.is_none());
+    }
+
+    // ========== ROOM CONFIG TESTS ==========
+
+    #[tokio::test]
+    async fn test_get_room_config_default() {
+        let db = create_test_db().await;
+
+        let config = db.get_room_config("new-room").await.unwrap();
+
+        // Should return defaults
+        assert_eq!(config.vowel_cost, 250);
+        assert_eq!(config.final_seconds, 30);
+        assert_eq!(config.final_jackpot, 10000);
+    }
+
+    #[tokio::test]
+    async fn test_set_room_config() {
+        let db = create_test_db().await;
+
+        let config = RoomConfig {
+            vowel_cost: 500,
+            final_seconds: 60,
+            final_jackpot: 50000,
+            prize_replace_cash_values: vec![1000, 2000, 3000],
+            puzzle_display_seconds: 45,
+            prize_wedge_names: vec!["PRIZE 1".to_string(), "PRIZE 2".to_string()],
+            pack_id: Some(1),
+        };
+
+        db.set_room_config("custom-room", &config, Some(1)).await.unwrap();
+
+        let loaded = db.get_room_config("custom-room").await.unwrap();
+        assert_eq!(loaded.vowel_cost, 500);
+        assert_eq!(loaded.final_seconds, 60);
+        assert_eq!(loaded.final_jackpot, 50000);
+        assert_eq!(loaded.prize_replace_cash_values, vec![1000, 2000, 3000]);
+        assert_eq!(loaded.prize_wedge_names, vec!["PRIZE 1", "PRIZE 2"]);
+    }
+
+    // ========== ROOM ACTIVITY TESTS ==========
+
+    #[tokio::test]
+    async fn test_update_room_activity() {
+        let db = create_test_db().await;
+
+        db.update_room_activity("active-room", None).await.unwrap();
+
+        let rooms = db.list_active_rooms(24).await.unwrap();
+        assert!(rooms.iter().any(|r| r.name == "active-room"));
+    }
+
+    #[tokio::test]
+    async fn test_delete_room() {
+        let db = create_test_db().await;
+
+        db.update_room_activity("room-to-delete", None).await.unwrap();
+
+        let deleted = db.delete_room("room-to-delete").await.unwrap();
+        assert!(deleted);
+
+        let rooms = db.list_active_rooms(24).await.unwrap();
+        assert!(!rooms.iter().any(|r| r.name == "room-to-delete"));
+    }
+
+    // ========== ADMIN TESTS ==========
+
+    #[tokio::test]
+    async fn test_list_all_users() {
+        let db = create_test_db().await;
+
+        db.create_user(NewUser {
+            email: "user1@example.com".to_string(),
+            password_hash: "hash".to_string(),
+            display_name: "User 1".to_string(),
+            verification_token: "token1".to_string(),
+            verification_token_expires: 9999999999,
+        })
+        .await
+        .unwrap();
+
+        db.create_user(NewUser {
+            email: "user2@example.com".to_string(),
+            password_hash: "hash".to_string(),
+            display_name: "User 2".to_string(),
+            verification_token: "token2".to_string(),
+            verification_token_expires: 9999999999,
+        })
+        .await
+        .unwrap();
+
+        let users = db.list_all_users().await.unwrap();
+        assert_eq!(users.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_set_user_admin() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "test@example.com".to_string(),
+                password_hash: "hash".to_string(),
+                display_name: "Test".to_string(),
+                verification_token: "token".to_string(),
+                verification_token_expires: 9999999999,
+            })
+            .await
+            .unwrap();
+
+        // Initially not admin
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert!(!user.is_admin);
+
+        // Make admin
+        db.set_user_admin(user_id, true).await.unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert!(user.is_admin);
+
+        // Remove admin
+        db.set_user_admin(user_id, false).await.unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert!(!user.is_admin);
+    }
+
+    #[tokio::test]
+    async fn test_get_puzzle_counts() {
+        let db = create_test_db().await;
+
+        let counts = db.get_puzzle_counts().await.unwrap();
+
+        // Default pack should have puzzles
+        assert!(!counts.is_empty());
+        let default_pack = counts.iter().find(|(_, name, _)| name == "Default").unwrap();
+        assert!(default_pack.2 > 0); // Should have default puzzles
+    }
+
+    #[tokio::test]
+    async fn test_import_puzzles() {
+        let db = create_test_db().await;
+
+        let puzzles = vec![
+            ("Phrase".to_string(), "test puzzle one".to_string()),
+            ("Thing".to_string(), "test puzzle two".to_string()),
+        ];
+
+        let count = db.import_puzzles(puzzles, 1).await.unwrap();
+        assert_eq!(count, 2);
+
+        // Verify puzzles were added with uppercase
+        let all = db.list_all_puzzles(Some(1)).await.unwrap();
+        assert!(all.iter().any(|p| p.answer == "TEST PUZZLE ONE"));
+        assert!(all.iter().any(|p| p.answer == "TEST PUZZLE TWO"));
+    }
+}

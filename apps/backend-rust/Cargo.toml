@@ -67,3 +67,6 @@ time = "0.3"
 
 # Build OpenSSL from source (required by webauthn-rs for x509 parsing)
 openssl = { version = "0.10", features = ["vendored"] }
+
+[dev-dependencies]
+tempfile = "3"
