@@ -251,7 +251,7 @@ pub async fn index() -> Html<String> {
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script>
         // Check if already logged in
-        if (localStorage.getItem('token')) {{
+        if (localStorage.getItem('user')) {{
             window.location.href = '/lobby';
         }}
 
@@ -273,7 +273,8 @@ pub async fn index() -> Html<String> {
                 const startRes = await fetch('/auth/api/passkey/login/start', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ email: email || undefined }})
+                    body: JSON.stringify({{ email: email || undefined }}),
+                    credentials: 'include'
                 }});
                 const startData = await startRes.json();
                 if (!startRes.ok) {{
@@ -314,12 +315,12 @@ pub async fn index() -> Html<String> {
                             userHandle: credential.response.userHandle ? bufferToBase64url(credential.response.userHandle) : null
                         }},
                         type: credential.type
-                    }})
+                    }}),
+                    credentials: 'include'
                 }});
 
                 const finishData = await finishRes.json();
-                if (finishRes.ok && finishData.token) {{
-                    localStorage.setItem('token', finishData.token);
+                if (finishRes.ok && finishData.user) {{
                     localStorage.setItem('user', JSON.stringify(finishData.user));
                     window.location.href = '/lobby';
                 }} else {{
@@ -357,11 +358,11 @@ pub async fn index() -> Html<String> {
                         const res = await fetch('/auth/api/oauth/google', {{
                             method: 'POST',
                             headers: {{ 'Content-Type': 'application/json' }},
-                            body: JSON.stringify({{ access_token: response.access_token, user_info: userInfo }})
+                            body: JSON.stringify({{ access_token: response.access_token, user_info: userInfo }}),
+                            credentials: 'include'
                         }});
                         const data = await res.json();
-                        if (res.ok && data.token) {{
-                            localStorage.setItem('token', data.token);
+                        if (res.ok && data.user) {{
                             localStorage.setItem('user', JSON.stringify(data.user));
                             window.location.href = '/lobby';
                         }} else {{
@@ -428,12 +429,12 @@ pub async fn index() -> Html<String> {
                 const res = await fetch('/auth/api/login', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ email, password }})
+                    body: JSON.stringify({{ email, password }}),
+                    credentials: 'include'
                 }});
                 const data = await res.json();
 
-                if (res.ok && data.token) {{
-                    localStorage.setItem('token', data.token);
+                if (res.ok && data.user) {{
                     localStorage.setItem('user', JSON.stringify(data.user));
                     window.location.href = '/lobby';
                 }} else {{
@@ -626,7 +627,8 @@ pub async fn register() -> Html<String> {
                 const startRes = await fetch('/auth/api/passkey/register/start', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ email, display_name }})
+                    body: JSON.stringify({{ email, display_name }}),
+                    credentials: 'include'
                 }});
                 const startData = await startRes.json();
 
@@ -681,12 +683,12 @@ pub async fn register() -> Html<String> {
                 const finishRes = await fetch('/auth/api/passkey/register/finish', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ email, credential: credentialResponse }})
+                    body: JSON.stringify({{ email, credential: credentialResponse }}),
+                    credentials: 'include'
                 }});
                 const finishData = await finishRes.json();
 
-                if (finishRes.ok && finishData.token) {{
-                    localStorage.setItem('token', finishData.token);
+                if (finishRes.ok && finishData.user) {{
                     localStorage.setItem('user', JSON.stringify(finishData.user));
                     window.location.href = '/lobby';
                 }} else {{
@@ -726,12 +728,12 @@ pub async fn register() -> Html<String> {
                 const res = await fetch('/auth/api/register', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ email, password, display_name }})
+                    body: JSON.stringify({{ email, password, display_name }}),
+                    credentials: 'include'
                 }});
                 const data = await res.json();
 
-                if (res.ok && data.token) {{
-                    localStorage.setItem('token', data.token);
+                if (res.ok && data.user) {{
                     localStorage.setItem('user', JSON.stringify(data.user));
                     window.location.href = '/lobby';
                 }} else if (res.ok || data.ok) {{
@@ -1001,11 +1003,10 @@ pub async fn lobby() -> Html<String> {
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script>
-        // Check auth
-        const token = localStorage.getItem('token');
+        // Check auth - user info stored in localStorage
         const user = JSON.parse(localStorage.getItem('user') || 'null');
 
-        if (!token || !user) {{
+        if (!user) {{
             window.location.href = '/';
         }} else {{
             document.getElementById('userName').textContent = user.display_name || user.email;
@@ -1015,7 +1016,7 @@ pub async fn lobby() -> Html<String> {
         async function checkAdmin() {{
             try {{
                 const res = await fetch('/auth/api/admin/users', {{
-                    headers: {{ 'Authorization': 'Bearer ' + token }}
+                    credentials: 'include'
                 }});
                 if (res.ok) {{
                     // User is admin - show admin button
@@ -1065,7 +1066,7 @@ pub async fn lobby() -> Html<String> {
         async function loadRooms() {{
             try {{
                 const res = await fetch('/auth/api/rooms', {{
-                    headers: {{ 'Authorization': 'Bearer ' + token }}
+                    credentials: 'include'
                 }});
                 const data = await res.json();
 
@@ -1090,8 +1091,16 @@ pub async fn lobby() -> Html<String> {
             window.location.href = '/game?room=' + encodeURIComponent(roomName);
         }}
 
-        function logout() {{
-            localStorage.removeItem('token');
+        async function logout() {{
+            // Clear server cookie
+            try {{
+                await fetch('/auth/logout', {{
+                    method: 'POST',
+                    credentials: 'include'
+                }});
+            }} catch (e) {{
+                // Continue with local logout even if server call fails
+            }}
             localStorage.removeItem('user');
             window.location.href = '/';
         }}
@@ -1138,9 +1147,9 @@ pub async fn lobby() -> Html<String> {
                 const res = await fetch('/auth/api/passkey/list', {{
                     method: 'POST',
                     headers: {{
-                        'Authorization': 'Bearer ' + token,
                         'Content-Type': 'application/json'
-                    }}
+                    }},
+                    credentials: 'include'
                 }});
                 const data = await res.json();
 
@@ -1187,10 +1196,10 @@ pub async fn lobby() -> Html<String> {
                 const startRes = await fetch('/auth/api/passkey/add/start', {{
                     method: 'POST',
                     headers: {{
-                        'Authorization': 'Bearer ' + token,
                         'Content-Type': 'application/json'
                     }},
-                    body: JSON.stringify({{ device_name: deviceName }})
+                    body: JSON.stringify({{ device_name: deviceName }}),
+                    credentials: 'include'
                 }});
                 const startData = await startRes.json();
 
@@ -1244,10 +1253,10 @@ pub async fn lobby() -> Html<String> {
                 const finishRes = await fetch('/auth/api/passkey/add/finish', {{
                     method: 'POST',
                     headers: {{
-                        'Authorization': 'Bearer ' + token,
                         'Content-Type': 'application/json'
                     }},
-                    body: JSON.stringify({{ email: user.email, credential: credentialResponse }})
+                    body: JSON.stringify({{ email: user.email, credential: credentialResponse }}),
+                    credentials: 'include'
                 }});
                 const finishData = await finishRes.json();
 
@@ -1277,10 +1286,10 @@ pub async fn lobby() -> Html<String> {
                 const res = await fetch('/auth/api/passkey/delete', {{
                     method: 'POST',
                     headers: {{
-                        'Authorization': 'Bearer ' + token,
                         'Content-Type': 'application/json'
                     }},
-                    body: JSON.stringify({{ credential_id: credentialId }})
+                    body: JSON.stringify({{ credential_id: credentialId }}),
+                    credentials: 'include'
                 }});
                 const data = await res.json();
 
@@ -1668,9 +1677,8 @@ pub async fn game() -> Html<String> {
 
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script>
-        const token = localStorage.getItem('token');
         const user = JSON.parse(localStorage.getItem('user') || 'null');
-        if (!token || !user) {{ window.location.href = '/'; }}
+        if (!user) {{ window.location.href = '/'; }}
 
         const urlParams = new URLSearchParams(window.location.search);
         const room = urlParams.get('room') || 'main';
@@ -2499,9 +2507,8 @@ pub async fn admin() -> Html<String> {
     </div>
 
     <script>
-        const token = localStorage.getItem('token');
         const user = JSON.parse(localStorage.getItem('user') || 'null');
-        if (!token || !user) {{ window.location.href = '/'; }}
+        if (!user) {{ window.location.href = '/'; }}
 
         let isAdmin = false;
         let packs = [];
@@ -2509,7 +2516,7 @@ pub async fn admin() -> Html<String> {
         async function checkAdmin() {{
             try {{
                 const res = await fetch('/auth/api/admin/users', {{
-                    headers: {{ 'Authorization': 'Bearer ' + token }}
+                    credentials: 'include'
                 }});
                 if (res.status === 403) {{
                     document.getElementById('accessDenied').style.display = 'block';
@@ -2551,7 +2558,7 @@ pub async fn admin() -> Html<String> {
 
         async function loadUsers() {{
             const res = await fetch('/auth/api/admin/users', {{
-                headers: {{ 'Authorization': 'Bearer ' + token }}
+                credentials: 'include'
             }});
             const data = await res.json();
             if (data.ok && data.users) {{
@@ -2575,7 +2582,7 @@ pub async fn admin() -> Html<String> {
         async function verifyUser(id) {{
             const res = await fetch(`/auth/api/admin/users/${{id}}/verify`, {{
                 method: 'POST',
-                headers: {{ 'Authorization': 'Bearer ' + token }}
+                credentials: 'include'
             }});
             if (res.ok) {{ showSuccess('User verified'); loadUsers(); }}
             else {{ showError('Failed to verify user'); }}
@@ -2584,7 +2591,8 @@ pub async fn admin() -> Html<String> {
         async function toggleAdmin(id, makeAdmin) {{
             const res = await fetch(`/auth/api/admin/users/${{id}}/admin`, {{
                 method: 'POST',
-                headers: {{ 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }},
+                headers: {{ 'Content-Type': 'application/json' }},
+                    credentials: 'include',
                 body: JSON.stringify({{ is_admin: makeAdmin }})
             }});
             if (res.ok) {{ showSuccess('Admin status updated'); loadUsers(); }}
@@ -2595,7 +2603,7 @@ pub async fn admin() -> Html<String> {
             if (!confirm('Delete this user?')) return;
             const res = await fetch(`/auth/api/admin/users/${{id}}`, {{
                 method: 'DELETE',
-                headers: {{ 'Authorization': 'Bearer ' + token }}
+                credentials: 'include'
             }});
             if (res.ok) {{ showSuccess('User deleted'); loadUsers(); }}
             else {{ showError('Failed to delete user'); }}
@@ -2603,7 +2611,7 @@ pub async fn admin() -> Html<String> {
 
         async function loadPacks() {{
             const res = await fetch('/auth/api/admin/packs', {{
-                headers: {{ 'Authorization': 'Bearer ' + token }}
+                credentials: 'include'
             }});
             const data = await res.json();
             if (data.ok && data.packs) {{
@@ -2630,7 +2638,8 @@ pub async fn admin() -> Html<String> {
             if (!name) {{ showError('Enter a pack name'); return; }}
             const res = await fetch('/auth/api/admin/packs', {{
                 method: 'POST',
-                headers: {{ 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }},
+                headers: {{ 'Content-Type': 'application/json' }},
+                    credentials: 'include',
                 body: JSON.stringify({{ name }})
             }});
             if (res.ok) {{
@@ -2645,7 +2654,7 @@ pub async fn admin() -> Html<String> {
             if (!confirm('Delete this pack and all its puzzles?')) return;
             const res = await fetch(`/auth/api/admin/packs/${{id}}`, {{
                 method: 'DELETE',
-                headers: {{ 'Authorization': 'Bearer ' + token }}
+                credentials: 'include'
             }});
             if (res.ok) {{ showSuccess('Pack deleted'); loadPacks(); loadPuzzles(); }}
             else {{ showError('Failed to delete pack'); }}
@@ -2671,7 +2680,8 @@ pub async fn admin() -> Html<String> {
                 // Create the pack first
                 const packRes = await fetch('/auth/api/admin/packs', {{
                     method: 'POST',
-                    headers: {{ 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }},
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    credentials: 'include',
                     body: JSON.stringify({{ name: data.name }})
                 }});
 
@@ -2687,7 +2697,8 @@ pub async fn admin() -> Html<String> {
                 // Import puzzles
                 const importRes = await fetch('/auth/api/admin/puzzles/import', {{
                     method: 'POST',
-                    headers: {{ 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }},
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    credentials: 'include',
                     body: JSON.stringify({{
                         pack_id: packId,
                         puzzles: data.puzzles.map(p => ({{
@@ -2716,7 +2727,7 @@ pub async fn admin() -> Html<String> {
             const packId = document.getElementById('puzzlePackSelect').value;
             const url = packId ? `/auth/api/admin/puzzles?pack_id=${{packId}}` : '/auth/api/admin/puzzles';
             const res = await fetch(url, {{
-                headers: {{ 'Authorization': 'Bearer ' + token }}
+                credentials: 'include'
             }});
             const data = await res.json();
             if (data.ok && data.puzzles) {{
@@ -2743,7 +2754,8 @@ pub async fn admin() -> Html<String> {
             if (!category || !answer) {{ showError('Enter category and answer'); return; }}
             const res = await fetch('/auth/api/admin/puzzles', {{
                 method: 'POST',
-                headers: {{ 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }},
+                headers: {{ 'Content-Type': 'application/json' }},
+                    credentials: 'include',
                 body: JSON.stringify({{ category, answer, pack_id }})
             }});
             if (res.ok) {{
@@ -2760,7 +2772,7 @@ pub async fn admin() -> Html<String> {
             if (!confirm('Delete this puzzle?')) return;
             const res = await fetch(`/auth/api/admin/puzzles/${{id}}`, {{
                 method: 'DELETE',
-                headers: {{ 'Authorization': 'Bearer ' + token }}
+                credentials: 'include'
             }});
             if (res.ok) {{ showSuccess('Puzzle deleted'); loadPuzzles(); loadPacks(); }}
             else {{ showError('Failed to delete puzzle'); }}
@@ -2768,7 +2780,7 @@ pub async fn admin() -> Html<String> {
 
         async function loadRooms() {{
             const res = await fetch('/auth/api/admin/rooms', {{
-                headers: {{ 'Authorization': 'Bearer ' + token }}
+                credentials: 'include'
             }});
             const data = await res.json();
             if (data.ok && data.rooms) {{
@@ -2791,7 +2803,7 @@ pub async fn admin() -> Html<String> {
             if (!confirm('Delete this room?')) return;
             const res = await fetch(`/auth/api/admin/rooms/${{encodeURIComponent(name)}}`, {{
                 method: 'DELETE',
-                headers: {{ 'Authorization': 'Bearer ' + token }}
+                credentials: 'include'
             }});
             if (res.ok) {{ showSuccess('Room deleted'); loadRooms(); }}
             else {{ showError('Failed to delete room'); }}
@@ -2802,7 +2814,7 @@ pub async fn admin() -> Html<String> {
             const room = document.getElementById('settingsRoom').value;
             try {{
                 const res = await fetch(`/auth/api/admin/settings/${{encodeURIComponent(room)}}`, {{
-                    headers: {{ 'Authorization': 'Bearer ' + token }}
+                    credentials: 'include'
                 }});
                 const data = await res.json();
                 if (data.ok && data.config) {{
@@ -2829,7 +2841,8 @@ pub async fn admin() -> Html<String> {
             try {{
                 const res = await fetch(`/auth/api/admin/settings/${{encodeURIComponent(room)}}`, {{
                     method: 'POST',
-                    headers: {{ 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }},
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    credentials: 'include',
                     body: JSON.stringify(config)
                 }});
                 if (res.ok) {{

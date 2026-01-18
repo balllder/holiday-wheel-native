@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use axum::{
     extract::State,
-    http::StatusCode,
+    http::{header, StatusCode},
+    response::{IntoResponse, Response},
     routing::post,
     Json, Router,
 };
@@ -12,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppState;
 
-use super::UserInfo;
+use super::{set_cookie_header, UserInfo};
 
 // ========== REQUEST/RESPONSE TYPES ==========
 
@@ -107,7 +108,7 @@ pub fn routes() -> Router<Arc<AppState>> {
 async fn google_auth(
     State(state): State<Arc<AppState>>,
     Json(req): Json<GoogleAuthRequest>,
-) -> (StatusCode, Json<OAuthResponse>) {
+) -> Response {
     // Get configured client IDs
     let client_id = std::env::var("GOOGLE_CLIENT_ID").unwrap_or_default();
     let client_id_ios = std::env::var("GOOGLE_CLIENT_ID_IOS").unwrap_or_default();
@@ -123,7 +124,7 @@ async fn google_auth(
                 is_new_user: None,
                 error: Some("Google Sign-In not configured".to_string()),
             }),
-        );
+        ).into_response();
     }
 
     // Verify token
@@ -139,7 +140,7 @@ async fn google_auth(
                     is_new_user: None,
                     error: Some(format!("Invalid token: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -155,7 +156,7 @@ async fn google_auth(
                     is_new_user: None,
                     error: Some("Email not provided by Google".to_string()),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -213,7 +214,7 @@ async fn fetch_google_jwks() -> Result<JwkSet, String> {
 async fn apple_auth(
     State(state): State<Arc<AppState>>,
     Json(req): Json<AppleAuthRequest>,
-) -> (StatusCode, Json<OAuthResponse>) {
+) -> Response {
     let client_id = std::env::var("APPLE_CLIENT_ID").unwrap_or_default();
 
     if client_id.is_empty() {
@@ -226,7 +227,7 @@ async fn apple_auth(
                 is_new_user: None,
                 error: Some("Apple Sign-In not configured".to_string()),
             }),
-        );
+        ).into_response();
     }
 
     // Verify token
@@ -242,7 +243,7 @@ async fn apple_auth(
                     is_new_user: None,
                     error: Some(format!("Invalid token: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -323,7 +324,7 @@ async fn handle_oauth_user(
     provider_user_id: &str,
     email: &str,
     display_name: &str,
-) -> (StatusCode, Json<OAuthResponse>) {
+) -> Response {
     // Check if OAuth account already exists
     let existing_oauth = state.db.get_oauth_account(provider, provider_user_id).await.ok().flatten();
 
@@ -360,7 +361,7 @@ async fn handle_oauth_user(
                                 is_new_user: None,
                                 error: Some(format!("Failed to create user: {}", e)),
                             }),
-                        );
+                        ).into_response();
                     }
                 }
             }
@@ -374,7 +375,7 @@ async fn handle_oauth_user(
                         is_new_user: None,
                         error: Some(format!("Database error: {}", e)),
                     }),
-                );
+                ).into_response();
             }
         }
     };
@@ -392,7 +393,7 @@ async fn handle_oauth_user(
                     is_new_user: None,
                     error: Some("User not found after creation".to_string()),
                 }),
-            );
+            ).into_response();
         }
         Err(e) => {
             return (
@@ -404,7 +405,7 @@ async fn handle_oauth_user(
                     is_new_user: None,
                     error: Some(format!("Database error: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -420,22 +421,24 @@ async fn handle_oauth_user(
                 is_new_user: None,
                 error: Some(format!("Failed to create session: {}", e)),
             }),
-        );
+        ).into_response();
     }
     let _ = state.db.update_last_login(user_id).await;
 
-    (
-        StatusCode::OK,
-        Json(OAuthResponse {
-            ok: true,
-            token: Some(token),
-            user: Some(UserInfo {
-                id: user.id,
-                email: user.email,
-                display_name: user.display_name,
-            }),
-            is_new_user: Some(is_new_user),
-            error: None,
+    // Build response with Set-Cookie header
+    let response = OAuthResponse {
+        ok: true,
+        token: Some(token.clone()),
+        user: Some(UserInfo {
+            id: user.id,
+            email: user.email,
+            display_name: user.display_name,
         }),
-    )
+        is_new_user: Some(is_new_user),
+        error: None,
+    };
+
+    let mut res = (StatusCode::OK, Json(response)).into_response();
+    res.headers_mut().insert(header::SET_COOKIE, set_cookie_header(&token));
+    res
 }

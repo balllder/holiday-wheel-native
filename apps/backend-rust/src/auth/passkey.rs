@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use axum::{
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::post,
     Json, Router,
 };
@@ -14,7 +15,7 @@ use webauthn_rs::prelude::*;
 
 use crate::AppState;
 
-use super::{extract_bearer_token, UserInfo};
+use super::{extract_auth_token, set_cookie_header, UserInfo};
 
 // ========== REQUEST/RESPONSE TYPES ==========
 
@@ -298,7 +299,7 @@ async fn register_start(
 async fn register_finish(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RegisterFinishRequest>,
-) -> (StatusCode, Json<RegisterFinishResponse>) {
+) -> Response {
     let email = req.email.trim().to_lowercase();
 
     let webauthn = match get_webauthn(&state) {
@@ -312,7 +313,7 @@ async fn register_finish(
                     user: None,
                     error: Some(e),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -328,7 +329,7 @@ async fn register_finish(
                     user: None,
                     error: Some(format!("Invalid credential: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -347,7 +348,7 @@ async fn register_finish(
                     user: None,
                     error: Some(format!("Invalid client data: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -365,7 +366,7 @@ async fn register_finish(
                     user: None,
                     error: Some("Challenge expired or not found".to_string()),
                 }),
-            );
+            ).into_response();
         }
         Err(e) => {
             return (
@@ -376,7 +377,7 @@ async fn register_finish(
                     user: None,
                     error: Some(format!("Database error: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -395,7 +396,7 @@ async fn register_finish(
                     user: None,
                     error: Some("Invalid registration state".to_string()),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -411,7 +412,7 @@ async fn register_finish(
                     user: None,
                     error: Some(format!("Registration failed: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -427,7 +428,7 @@ async fn register_finish(
                     user: None,
                     error: Some(format!("Failed to create user: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -444,7 +445,7 @@ async fn register_finish(
                     user: None,
                     error: Some(format!("Failed to serialize passkey: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -461,7 +462,7 @@ async fn register_finish(
                 user: None,
                 error: Some(format!("Failed to store passkey: {}", e)),
             }),
-        );
+        ).into_response();
     }
 
     // Generate auth token
@@ -475,23 +476,25 @@ async fn register_finish(
                 user: None,
                 error: Some(format!("Failed to create session: {}", e)),
             }),
-        );
+        ).into_response();
     }
     let _ = state.db.update_last_login(user_id).await;
 
-    (
-        StatusCode::OK,
-        Json(RegisterFinishResponse {
-            ok: true,
-            token: Some(token),
-            user: Some(UserInfo {
-                id: user_id,
-                email: email.clone(),
-                display_name: email.split('@').next().unwrap_or(&email).to_string(),
-            }),
-            error: None,
+    // Build response with Set-Cookie header
+    let response = RegisterFinishResponse {
+        ok: true,
+        token: Some(token.clone()),
+        user: Some(UserInfo {
+            id: user_id,
+            email: email.clone(),
+            display_name: email.split('@').next().unwrap_or(&email).to_string(),
         }),
-    )
+        error: None,
+    };
+
+    let mut res = (StatusCode::OK, Json(response)).into_response();
+    res.headers_mut().insert(header::SET_COOKIE, set_cookie_header(&token));
+    res
 }
 
 // ========== LOGIN ENDPOINTS ==========
@@ -664,7 +667,7 @@ async fn login_start(
 async fn login_finish(
     State(state): State<Arc<AppState>>,
     Json(req): Json<LoginFinishRequest>,
-) -> (StatusCode, Json<LoginFinishResponse>) {
+) -> Response {
     let webauthn = match get_webauthn(&state) {
         Ok(w) => w,
         Err(e) => {
@@ -676,7 +679,7 @@ async fn login_finish(
                     user: None,
                     error: Some(e),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -692,7 +695,7 @@ async fn login_finish(
                     user: None,
                     error: Some(format!("Invalid credential: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -708,7 +711,7 @@ async fn login_finish(
                     user: None,
                     error: Some(format!("Invalid client data: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -726,7 +729,7 @@ async fn login_finish(
                     user: None,
                     error: Some("Challenge expired or not found".to_string()),
                 }),
-            );
+            ).into_response();
         }
         Err(e) => {
             return (
@@ -737,7 +740,7 @@ async fn login_finish(
                     user: None,
                     error: Some(format!("Database error: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -758,7 +761,7 @@ async fn login_finish(
                     user: None,
                     error: Some("Passkey not found".to_string()),
                 }),
-            );
+            ).into_response();
         }
         Err(e) => {
             return (
@@ -769,7 +772,7 @@ async fn login_finish(
                     user: None,
                     error: Some(format!("Database error: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -785,7 +788,7 @@ async fn login_finish(
                     user: None,
                     error: Some(format!("Invalid stored passkey: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -801,7 +804,7 @@ async fn login_finish(
                     user: None,
                     error: Some("Invalid authentication state".to_string()),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -817,7 +820,7 @@ async fn login_finish(
                     user: None,
                     error: Some(format!("Authentication failed: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -839,7 +842,7 @@ async fn login_finish(
                     user: None,
                     error: Some("User not found".to_string()),
                 }),
-            );
+            ).into_response();
         }
         Err(e) => {
             return (
@@ -850,7 +853,7 @@ async fn login_finish(
                     user: None,
                     error: Some(format!("Database error: {}", e)),
                 }),
-            );
+            ).into_response();
         }
     };
 
@@ -865,23 +868,25 @@ async fn login_finish(
                 user: None,
                 error: Some(format!("Failed to create session: {}", e)),
             }),
-        );
+        ).into_response();
     }
     let _ = state.db.update_last_login(user.id).await;
 
-    (
-        StatusCode::OK,
-        Json(LoginFinishResponse {
-            ok: true,
-            token: Some(token),
-            user: Some(UserInfo {
-                id: user.id,
-                email: user.email,
-                display_name: user.display_name,
-            }),
-            error: None,
+    // Build response with Set-Cookie header
+    let response = LoginFinishResponse {
+        ok: true,
+        token: Some(token.clone()),
+        user: Some(UserInfo {
+            id: user.id,
+            email: user.email,
+            display_name: user.display_name,
         }),
-    )
+        error: None,
+    };
+
+    let mut res = (StatusCode::OK, Json(response)).into_response();
+    res.headers_mut().insert(header::SET_COOKIE, set_cookie_header(&token));
+    res
 }
 
 // ========== PASSKEY MANAGEMENT ENDPOINTS ==========
@@ -890,7 +895,7 @@ async fn list_passkeys(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> (StatusCode, Json<PasskeyListResponse>) {
-    let token = match extract_bearer_token(&headers) {
+    let token = match extract_auth_token(&headers) {
         Some(t) => t,
         None => {
             return (
@@ -957,7 +962,7 @@ async fn add_passkey_start(
     headers: HeaderMap,
     Json(req): Json<AddPasskeyStartRequest>,
 ) -> (StatusCode, Json<RegisterStartResponse>) {
-    let token = match extract_bearer_token(&headers) {
+    let token = match extract_auth_token(&headers) {
         Some(t) => t,
         None => {
             return (
@@ -1061,7 +1066,7 @@ async fn add_passkey_finish(
     headers: HeaderMap,
     Json(req): Json<RegisterFinishRequest>,
 ) -> (StatusCode, Json<SimpleResponse>) {
-    let token = match extract_bearer_token(&headers) {
+    let token = match extract_auth_token(&headers) {
         Some(t) => t,
         None => {
             return (
@@ -1192,7 +1197,7 @@ async fn delete_passkey(
     headers: HeaderMap,
     Json(req): Json<DeletePasskeyRequest>,
 ) -> (StatusCode, Json<SimpleResponse>) {
-    let token = match extract_bearer_token(&headers) {
+    let token = match extract_auth_token(&headers) {
         Some(t) => t,
         None => {
             return (

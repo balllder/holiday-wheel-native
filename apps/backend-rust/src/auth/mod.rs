@@ -7,16 +7,21 @@ use argon2::{
 };
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
+use axum_extra::extract::cookie::{Cookie, SameSite};
 use rand::distributions::{Alphanumeric, DistString};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::db::NewUser;
 use crate::AppState;
+
+/// Cookie name for auth token
+pub const AUTH_COOKIE_NAME: &str = "auth_token";
 
 pub mod oauth;
 pub mod passkey;
@@ -143,7 +148,7 @@ pub fn routes() -> Router<Arc<AppState>> {
 async fn api_login(
     State(state): State<Arc<AppState>>,
     Json(req): Json<LoginRequest>,
-) -> Json<LoginResponse> {
+) -> Response {
     // Get user by email
     let user = match state.db.get_user_by_email(&req.email).await {
         Ok(Some(user)) => user,
@@ -153,7 +158,7 @@ async fn api_login(
                 token: None,
                 user: None,
                 error: Some("Invalid email or password".to_string()),
-            });
+            }).into_response();
         }
         Err(_) => {
             return Json(LoginResponse {
@@ -161,7 +166,7 @@ async fn api_login(
                 token: None,
                 user: None,
                 error: Some("Database error".to_string()),
-            });
+            }).into_response();
         }
     };
 
@@ -177,7 +182,7 @@ async fn api_login(
             token: None,
             user: None,
             error: Some("Invalid email or password".to_string()),
-        });
+        }).into_response();
     }
 
     // Check if verified
@@ -187,7 +192,7 @@ async fn api_login(
             token: None,
             user: None,
             error: Some("Please verify your email first".to_string()),
-        });
+        }).into_response();
     }
 
     // Generate new token
@@ -200,26 +205,34 @@ async fn api_login(
             token: None,
             user: None,
             error: Some("Failed to generate token".to_string()),
-        });
+        }).into_response();
     }
     let _ = state.db.update_last_login(user.id).await;
 
-    Json(LoginResponse {
+    // Build response with Set-Cookie header
+    let response = LoginResponse {
         ok: true,
-        token: Some(token),
+        token: Some(token.clone()),
         user: Some(UserInfo {
             id: user.id,
             email: user.email,
             display_name: user.display_name,
         }),
         error: None,
-    })
+    };
+
+    let mut res = Json(response).into_response();
+    res.headers_mut().insert(
+        header::SET_COOKIE,
+        set_cookie_header(&token),
+    );
+    res
 }
 
 async fn login(
     State(state): State<Arc<AppState>>,
     Json(req): Json<LoginRequest>,
-) -> Json<LoginResponse> {
+) -> Response {
     api_login(State(state), Json(req)).await
 }
 
@@ -486,25 +499,35 @@ async fn verify_email(
 async fn logout(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> Json<SimpleResponse> {
-    if let Some(token) = extract_bearer_token(&headers) {
+) -> Response {
+    // Clear token from database
+    if let Some(token) = extract_auth_token(&headers) {
         if let Ok(Some(user)) = state.db.get_user_by_token(&token).await {
             let _ = state.db.clear_remember_token(user.id).await;
         }
     }
 
-    Json(SimpleResponse {
+    // Build response that clears the cookie
+    let response = SimpleResponse {
         ok: true,
         message: Some("Logged out".to_string()),
         error: None,
-    })
+    };
+
+    let mut res = Json(response).into_response();
+    res.headers_mut().insert(
+        header::SET_COOKIE,
+        HeaderValue::from_str(&build_logout_cookie().to_string())
+            .unwrap_or_else(|_| HeaderValue::from_static("")),
+    );
+    res
 }
 
 async fn me(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Json<VerifyResponse> {
-    let token = match extract_bearer_token(&headers) {
+    let token = match extract_auth_token(&headers) {
         Some(t) => t,
         None => {
             return Json(VerifyResponse {
@@ -537,8 +560,8 @@ async fn api_rooms(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> (StatusCode, Json<RoomsResponse>) {
-    // Verify auth
-    let token = match extract_bearer_token(&headers) {
+    // Verify auth (supports both Bearer token and cookie)
+    let token = match extract_auth_token(&headers) {
         Some(t) => t,
         None => {
             return (
@@ -594,12 +617,73 @@ async fn list_rooms(
 
 // ========== HELPER FUNCTIONS ==========
 
+/// Extract auth token from Bearer header OR HttpOnly cookie
+pub fn extract_auth_token(headers: &HeaderMap) -> Option<String> {
+    // First try Bearer token (for API clients)
+    if let Some(token) = extract_bearer_token(headers) {
+        return Some(token);
+    }
+    // Fall back to cookie (for web client)
+    extract_cookie_token(headers)
+}
+
+/// Extract token from Authorization: Bearer header
 pub fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
     headers
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "))
         .map(|s| s.to_string())
+}
+
+/// Extract token from auth cookie
+pub fn extract_cookie_token(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|cookie| {
+                let cookie = cookie.trim();
+                if let Some(value) = cookie.strip_prefix(&format!("{}=", AUTH_COOKIE_NAME)) {
+                    Some(value.to_string())
+                } else {
+                    None
+                }
+            })
+        })
+}
+
+/// Build an HttpOnly auth cookie
+pub fn build_auth_cookie(token: &str, secure: bool) -> Cookie<'static> {
+    let mut cookie = Cookie::build((AUTH_COOKIE_NAME, token.to_string()))
+        .path("/")
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::days(30));
+
+    if secure {
+        cookie = cookie.secure(true);
+    }
+
+    cookie.build()
+}
+
+/// Build a cookie that clears the auth token
+pub fn build_logout_cookie() -> Cookie<'static> {
+    Cookie::build((AUTH_COOKIE_NAME, ""))
+        .path("/")
+        .http_only(true)
+        .max_age(time::Duration::seconds(0))
+        .build()
+}
+
+/// Create Set-Cookie header value
+pub fn set_cookie_header(token: &str) -> HeaderValue {
+    let secure = std::env::var("SSL_ENABLED")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false);
+    let cookie = build_auth_cookie(token, secure);
+    HeaderValue::from_str(&cookie.to_string()).unwrap_or_else(|_| HeaderValue::from_static(""))
 }
 
 fn now_secs() -> i64 {
