@@ -50,6 +50,8 @@ pub struct UserInfo {
     pub id: i64,
     pub email: String,
     pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_admin: Option<bool>,
 }
 
 
@@ -217,6 +219,7 @@ async fn api_login(
             id: user.id,
             email: user.email,
             display_name: user.display_name,
+            is_admin: if user.is_admin { Some(true) } else { None },
         }),
         error: None,
     };
@@ -407,6 +410,7 @@ async fn api_verify_token(
                     id: user.id,
                     email: user.email,
                     display_name: user.display_name,
+                    is_admin: if user.is_admin { Some(true) } else { None },
                 }),
                 error: None,
             }),
@@ -545,6 +549,7 @@ async fn me(
                 id: user.id,
                 email: user.email,
                 display_name: user.display_name,
+                is_admin: if user.is_admin { Some(true) } else { None },
             }),
             error: None,
         }),
@@ -756,7 +761,7 @@ fn verify_werkzeug_hash(password: &str, hash: &str) -> bool {
 // ========== ADMIN HELPER ==========
 
 async fn get_admin_user(state: &Arc<AppState>, headers: &HeaderMap) -> Option<crate::db::User> {
-    let token = extract_bearer_token(headers)?;
+    let token = extract_auth_token(headers)?;
     let user = state.db.get_user_by_token(&token).await.ok()??;
     if user.is_admin {
         Some(user)

@@ -488,6 +488,7 @@ async fn register_finish(
             id: user_id,
             email: email.clone(),
             display_name: email.split('@').next().unwrap_or(&email).to_string(),
+            is_admin: None, // New users are not admins
         }),
         error: None,
     };
@@ -880,6 +881,7 @@ async fn login_finish(
             id: user.id,
             email: user.email,
             display_name: user.display_name,
+            is_admin: if user.is_admin { Some(true) } else { None },
         }),
         error: None,
     };
