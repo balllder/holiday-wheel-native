@@ -452,19 +452,96 @@ pub async fn index() -> Html<String> {
 
 /// Register page
 pub async fn register() -> Html<String> {
-    Html(format!(r#"<!DOCTYPE html>
+    Html(format!(r##"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Holiday Wheel - Register</title>
-    <style>{}</style>
+    <style>
+        {common_styles}
+        .passkey-section {{
+            margin-bottom: 24px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #333;
+        }}
+        .passkey-btn {{
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 14px 24px;
+            background: #333;
+            color: #fff;
+            border: 2px solid #d4af37;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }}
+        .passkey-btn:hover {{
+            background: #444;
+        }}
+        .passkey-btn svg {{
+            width: 24px;
+            height: 24px;
+            fill: #d4af37;
+        }}
+        .or-divider {{
+            display: flex;
+            align-items: center;
+            margin: 16px 0;
+            color: #666;
+        }}
+        .or-divider::before,
+        .or-divider::after {{
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid #333;
+        }}
+        .or-divider span {{
+            padding: 0 16px;
+        }}
+        .hidden {{ display: none !important; }}
+        .success {{
+            background: #4CAF50;
+            color: #fff;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }}
+    </style>
 </head>
 <body>
     <div class="container">
         <h1>🎡 Holiday Wheel</h1>
         <p class="subtitle">Create your account</p>
         <div class="error" id="error"></div>
+        <div class="success" id="success"></div>
+
+        <!-- Passkey Registration -->
+        <div class="passkey-section" id="passkeySection">
+            <div class="form-group">
+                <label for="passkeyDisplayName">Display Name</label>
+                <input type="text" id="passkeyDisplayName" name="passkeyDisplayName" placeholder="Your name">
+            </div>
+            <div class="form-group">
+                <label for="passkeyEmail">Email</label>
+                <input type="email" id="passkeyEmail" name="passkeyEmail" placeholder="your@email.com">
+            </div>
+            <button type="button" class="passkey-btn" id="passkeyBtn" onclick="registerWithPasskey()">
+                <svg viewBox="0 0 24 24"><path d="M12 1C8.14 1 5 4.14 5 8c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h1v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2h1a1 1 0 0 0 1-1v-3.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7zm0 2c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5 2.24-5 5-5zm0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/></svg>
+                Create Account with Passkey
+            </button>
+            <p style="color: #888; font-size: 12px; margin-top: 8px; text-align: center;">
+                Secure, passwordless authentication using your device
+            </p>
+        </div>
+
+        <div class="or-divider"><span>or use email &amp; password</span></div>
+
         <form id="registerForm">
             <div class="form-group">
                 <label for="displayName">Display Name</label>
@@ -489,6 +566,146 @@ pub async fn register() -> Html<String> {
         </div>
     </div>
     <script>
+        // Check for WebAuthn support
+        if (window.PublicKeyCredential) {{
+            PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(available => {{
+                if (!available) {{
+                    document.getElementById('passkeySection').classList.add('hidden');
+                }}
+            }}).catch(() => {{
+                document.getElementById('passkeySection').classList.add('hidden');
+            }});
+        }} else {{
+            document.getElementById('passkeySection').classList.add('hidden');
+        }}
+
+        // Base64URL utilities
+        function base64urlToBuffer(base64url) {{
+            const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+            const pad = base64.length % 4;
+            const padded = pad ? base64 + '='.repeat(4 - pad) : base64;
+            const binary = atob(padded);
+            const buffer = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {{
+                buffer[i] = binary.charCodeAt(i);
+            }}
+            return buffer.buffer;
+        }}
+
+        function bufferToBase64url(buffer) {{
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {{
+                binary += String.fromCharCode(bytes[i]);
+            }}
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }}
+
+        async function registerWithPasskey() {{
+            const errorDiv = document.getElementById('error');
+            const successDiv = document.getElementById('success');
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+
+            const email = document.getElementById('passkeyEmail').value.trim();
+            const display_name = document.getElementById('passkeyDisplayName').value.trim();
+
+            if (!email) {{
+                errorDiv.textContent = 'Please enter your email';
+                errorDiv.style.display = 'block';
+                return;
+            }}
+            if (!display_name) {{
+                errorDiv.textContent = 'Please enter your display name';
+                errorDiv.style.display = 'block';
+                return;
+            }}
+
+            try {{
+                // Start passkey registration
+                const startRes = await fetch('/auth/api/passkey/register/start', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ email, display_name }})
+                }});
+                const startData = await startRes.json();
+
+                if (!startRes.ok || !startData.ok) {{
+                    errorDiv.textContent = startData.error || 'Failed to start passkey registration';
+                    errorDiv.style.display = 'block';
+                    return;
+                }}
+
+                const options = startData.options;
+
+                // Convert base64url strings to ArrayBuffers
+                const publicKeyOptions = {{
+                    challenge: base64urlToBuffer(options.publicKey.challenge),
+                    rp: options.publicKey.rp,
+                    user: {{
+                        id: base64urlToBuffer(options.publicKey.user.id),
+                        name: options.publicKey.user.name,
+                        displayName: options.publicKey.user.displayName
+                    }},
+                    pubKeyCredParams: options.publicKey.pubKeyCredParams,
+                    timeout: options.publicKey.timeout || 60000,
+                    authenticatorSelection: options.publicKey.authenticatorSelection,
+                    attestation: options.publicKey.attestation || 'none'
+                }};
+
+                if (options.publicKey.excludeCredentials) {{
+                    publicKeyOptions.excludeCredentials = options.publicKey.excludeCredentials.map(c => ({{
+                        id: base64urlToBuffer(c.id),
+                        type: c.type,
+                        transports: c.transports
+                    }}));
+                }}
+
+                // Create credential
+                const credential = await navigator.credentials.create({{
+                    publicKey: publicKeyOptions
+                }});
+
+                // Prepare response for server
+                const credentialResponse = {{
+                    id: credential.id,
+                    rawId: bufferToBase64url(credential.rawId),
+                    response: {{
+                        clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                        attestationObject: bufferToBase64url(credential.response.attestationObject)
+                    }},
+                    type: credential.type
+                }};
+
+                // Finish registration
+                const finishRes = await fetch('/auth/api/passkey/register/finish', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ email, credential: credentialResponse }})
+                }});
+                const finishData = await finishRes.json();
+
+                if (finishRes.ok && finishData.token) {{
+                    localStorage.setItem('token', finishData.token);
+                    localStorage.setItem('user', JSON.stringify(finishData.user));
+                    window.location.href = '/lobby';
+                }} else {{
+                    errorDiv.textContent = finishData.error || 'Passkey registration failed';
+                    errorDiv.style.display = 'block';
+                }}
+            }} catch (err) {{
+                console.error('Passkey error:', err);
+                if (err.name === 'NotAllowedError') {{
+                    errorDiv.textContent = 'Passkey registration was cancelled';
+                }} else if (err.name === 'InvalidStateError') {{
+                    errorDiv.textContent = 'A passkey already exists for this device';
+                }} else {{
+                    errorDiv.textContent = 'Passkey registration failed: ' + err.message;
+                }}
+                errorDiv.style.display = 'block';
+            }}
+        }}
+
         document.getElementById('registerForm').addEventListener('submit', async (e) => {{
             e.preventDefault();
             const errorDiv = document.getElementById('error');
@@ -519,9 +736,9 @@ pub async fn register() -> Html<String> {
                     window.location.href = '/lobby';
                 }} else if (res.ok || data.ok) {{
                     // Registration succeeded but needs email verification
-                    errorDiv.style.background = '#4CAF50';
-                    errorDiv.textContent = data.message || 'Registration successful! Check your email to verify.';
-                    errorDiv.style.display = 'block';
+                    const successDiv = document.getElementById('success');
+                    successDiv.textContent = data.message || 'Registration successful! Check your email to verify.';
+                    successDiv.style.display = 'block';
                 }} else {{
                     errorDiv.textContent = data.error || 'Registration failed';
                     errorDiv.style.display = 'block';
@@ -533,7 +750,7 @@ pub async fn register() -> Html<String> {
         }});
     </script>
 </body>
-</html>"#, COMMON_STYLES))
+</html>"##, common_styles = COMMON_STYLES))
 }
 
 /// Lobby page
@@ -620,6 +837,97 @@ pub async fn lobby() -> Html<String> {
             padding: 8px 16px;
             font-size: 14px;
         }}
+        .sidebar-sections {{
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }}
+        .passkey-section {{
+            background: #1a0a3e;
+            border: 2px solid #333;
+            border-radius: 16px;
+            padding: 24px;
+        }}
+        .passkey-section h3 {{
+            color: #d4af37;
+            margin-bottom: 16px;
+            font-size: 18px;
+        }}
+        .passkey-list {{
+            max-height: 200px;
+            overflow-y: auto;
+        }}
+        .passkey-item {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }}
+        .passkey-item:last-child {{ margin-bottom: 0; }}
+        .passkey-info {{
+            flex: 1;
+        }}
+        .passkey-name {{
+            color: #fff;
+            font-size: 14px;
+            font-weight: 500;
+        }}
+        .passkey-date {{
+            color: #888;
+            font-size: 12px;
+            margin-top: 2px;
+        }}
+        .passkey-delete {{
+            background: transparent;
+            border: none;
+            color: #ff6b6b;
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 12px;
+        }}
+        .passkey-delete:hover {{
+            color: #ff4444;
+            text-decoration: underline;
+        }}
+        .modal-overlay {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }}
+        .modal-overlay.active {{
+            display: flex;
+        }}
+        .modal {{
+            background: #1a0a3e;
+            border: 2px solid #d4af37;
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 400px;
+            width: 90%;
+        }}
+        .modal h2 {{
+            color: #d4af37;
+            margin-bottom: 16px;
+        }}
+        .modal-buttons {{
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }}
+        .modal-buttons button {{
+            flex: 1;
+        }}
+        .hidden {{ display: none !important; }}
     </style>
 </head>
 <body>
@@ -648,17 +956,45 @@ pub async fn lobby() -> Html<String> {
                 </div>
             </div>
 
-            <div class="qr-section">
-                <h3>📱 Phone Connection</h3>
-                <div class="qr-input-row">
-                    <input type="text" id="qrRoomName" value="main" placeholder="Room name" oninput="updateQRCode()">
-                    <button class="btn btn-secondary" onclick="updateQRCode()">Update</button>
+            <div class="sidebar-sections">
+                <div class="qr-section">
+                    <h3>📱 Phone Connection</h3>
+                    <div class="qr-input-row">
+                        <input type="text" id="qrRoomName" value="main" placeholder="Room name" oninput="updateQRCode()">
+                        <button class="btn btn-secondary" onclick="updateQRCode()">Update</button>
+                    </div>
+                    <div class="qr-container">
+                        <div id="qrCode"></div>
+                    </div>
+                    <div class="qr-room-name">Room: <span id="qrRoomDisplay">main</span></div>
+                    <div class="qr-hint">Scan with phone app to join as controller</div>
                 </div>
-                <div class="qr-container">
-                    <div id="qrCode"></div>
+
+                <div class="passkey-section" id="passkeySection">
+                    <h3>🔐 Passkeys</h3>
+                    <div id="passkeyList" class="passkey-list">
+                        <p style="color: #888; font-size: 14px;">Loading...</p>
+                    </div>
+                    <button class="btn btn-secondary" id="addPasskeyBtn" onclick="addPasskey()" style="width: 100%; margin-top: 12px; font-size: 14px;">
+                        + Add Passkey
+                    </button>
                 </div>
-                <div class="qr-room-name">Room: <span id="qrRoomDisplay">main</span></div>
-                <div class="qr-hint">Scan with phone app to join as controller</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Passkey Modal -->
+    <div class="modal-overlay" id="addPasskeyModal">
+        <div class="modal">
+            <h2>Add Passkey</h2>
+            <p style="color: #aaa; margin-bottom: 16px;">Register a new passkey for passwordless login.</p>
+            <div class="form-group">
+                <label for="deviceName">Device Name (optional)</label>
+                <input type="text" id="deviceName" placeholder="e.g., MacBook Pro, iPhone">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn" onclick="confirmAddPasskey()">Add Passkey</button>
+                <button class="btn btn-secondary" onclick="closeModal('addPasskeyModal')">Cancel</button>
             </div>
         </div>
     </div>
@@ -766,6 +1102,208 @@ pub async fn lobby() -> Html<String> {
 
         // Generate initial QR code
         updateQRCode();
+
+        // ========== PASSKEY MANAGEMENT ==========
+
+        // Check for WebAuthn support
+        if (!window.PublicKeyCredential) {{
+            document.getElementById('passkeySection').classList.add('hidden');
+        }}
+
+        // Base64URL utilities
+        function base64urlToBuffer(base64url) {{
+            const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+            const pad = base64.length % 4;
+            const padded = pad ? base64 + '='.repeat(4 - pad) : base64;
+            const binary = atob(padded);
+            const buffer = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {{
+                buffer[i] = binary.charCodeAt(i);
+            }}
+            return buffer.buffer;
+        }}
+
+        function bufferToBase64url(buffer) {{
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {{
+                binary += String.fromCharCode(bytes[i]);
+            }}
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }}
+
+        // Load user's passkeys
+        async function loadPasskeys() {{
+            try {{
+                const res = await fetch('/auth/api/passkey/list', {{
+                    method: 'POST',
+                    headers: {{
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json'
+                    }}
+                }});
+                const data = await res.json();
+
+                const list = document.getElementById('passkeyList');
+                if (data.ok && data.passkeys && data.passkeys.length > 0) {{
+                    list.innerHTML = data.passkeys.map(pk => `
+                        <div class="passkey-item">
+                            <div class="passkey-info">
+                                <div class="passkey-name">${{pk.device_name || 'Passkey'}}</div>
+                                <div class="passkey-date">Added ${{formatDate(pk.created_at)}}</div>
+                            </div>
+                            <button class="passkey-delete" onclick="deletePasskey('${{pk.id}}')">Delete</button>
+                        </div>
+                    `).join('');
+                }} else {{
+                    list.innerHTML = '<p style="color: #888; font-size: 14px;">No passkeys registered</p>';
+                }}
+            }} catch (err) {{
+                console.error('Failed to load passkeys:', err);
+                document.getElementById('passkeyList').innerHTML = '<p style="color: #888; font-size: 14px;">Failed to load</p>';
+            }}
+        }}
+
+        function formatDate(timestamp) {{
+            const date = new Date(timestamp * 1000);
+            return date.toLocaleDateString();
+        }}
+
+        function closeModal(modalId) {{
+            document.getElementById(modalId).classList.remove('active');
+        }}
+
+        function addPasskey() {{
+            document.getElementById('deviceName').value = '';
+            document.getElementById('addPasskeyModal').classList.add('active');
+        }}
+
+        async function confirmAddPasskey() {{
+            const deviceName = document.getElementById('deviceName').value.trim() || null;
+            closeModal('addPasskeyModal');
+
+            try {{
+                // Start passkey registration
+                const startRes = await fetch('/auth/api/passkey/add/start', {{
+                    method: 'POST',
+                    headers: {{
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json'
+                    }},
+                    body: JSON.stringify({{ device_name: deviceName }})
+                }});
+                const startData = await startRes.json();
+
+                if (!startRes.ok || !startData.ok) {{
+                    alert(startData.error || 'Failed to start passkey registration');
+                    return;
+                }}
+
+                const options = startData.options;
+
+                // Convert base64url strings to ArrayBuffers
+                const publicKeyOptions = {{
+                    challenge: base64urlToBuffer(options.publicKey.challenge),
+                    rp: options.publicKey.rp,
+                    user: {{
+                        id: base64urlToBuffer(options.publicKey.user.id),
+                        name: options.publicKey.user.name,
+                        displayName: options.publicKey.user.displayName
+                    }},
+                    pubKeyCredParams: options.publicKey.pubKeyCredParams,
+                    timeout: options.publicKey.timeout || 60000,
+                    authenticatorSelection: options.publicKey.authenticatorSelection,
+                    attestation: options.publicKey.attestation || 'none'
+                }};
+
+                if (options.publicKey.excludeCredentials) {{
+                    publicKeyOptions.excludeCredentials = options.publicKey.excludeCredentials.map(c => ({{
+                        id: base64urlToBuffer(c.id),
+                        type: c.type,
+                        transports: c.transports
+                    }}));
+                }}
+
+                // Create credential
+                const credential = await navigator.credentials.create({{
+                    publicKey: publicKeyOptions
+                }});
+
+                // Prepare response for server
+                const credentialResponse = {{
+                    id: credential.id,
+                    rawId: bufferToBase64url(credential.rawId),
+                    response: {{
+                        clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                        attestationObject: bufferToBase64url(credential.response.attestationObject)
+                    }},
+                    type: credential.type
+                }};
+
+                // Finish registration
+                const finishRes = await fetch('/auth/api/passkey/add/finish', {{
+                    method: 'POST',
+                    headers: {{
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json'
+                    }},
+                    body: JSON.stringify({{ email: user.email, credential: credentialResponse }})
+                }});
+                const finishData = await finishRes.json();
+
+                if (finishRes.ok && finishData.ok) {{
+                    loadPasskeys();
+                }} else {{
+                    alert(finishData.error || 'Failed to add passkey');
+                }}
+            }} catch (err) {{
+                console.error('Passkey error:', err);
+                if (err.name === 'NotAllowedError') {{
+                    alert('Passkey registration was cancelled');
+                }} else if (err.name === 'InvalidStateError') {{
+                    alert('A passkey already exists for this device');
+                }} else {{
+                    alert('Passkey registration failed: ' + err.message);
+                }}
+            }}
+        }}
+
+        async function deletePasskey(credentialId) {{
+            if (!confirm('Are you sure you want to delete this passkey?')) {{
+                return;
+            }}
+
+            try {{
+                const res = await fetch('/auth/api/passkey/delete', {{
+                    method: 'POST',
+                    headers: {{
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json'
+                    }},
+                    body: JSON.stringify({{ credential_id: credentialId }})
+                }});
+                const data = await res.json();
+
+                if (res.ok && data.ok) {{
+                    loadPasskeys();
+                }} else {{
+                    alert(data.error || 'Failed to delete passkey');
+                }}
+            }} catch (err) {{
+                console.error('Delete passkey error:', err);
+                alert('Failed to delete passkey');
+            }}
+        }}
+
+        // Load passkeys on page load
+        loadPasskeys();
+
+        // Close modal on escape
+        document.addEventListener('keydown', (e) => {{
+            if (e.key === 'Escape') {{
+                closeModal('addPasskeyModal');
+            }}
+        }});
     </script>
 </body>
 </html>"#, common_styles = COMMON_STYLES))
@@ -945,6 +1483,64 @@ pub async fn game() -> Html<String> {
             color: #888;
             margin-bottom: 10px;
         }}
+        .modal-overlay {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }}
+        .modal-overlay.active {{
+            display: flex;
+        }}
+        .modal {{
+            background: #1a0a3e;
+            border: 2px solid #d4af37;
+            border-radius: 16px;
+            padding: 32px;
+            min-width: 320px;
+            max-width: 90%;
+            text-align: center;
+        }}
+        .modal h2 {{
+            color: #d4af37;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }}
+        .modal input {{
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 18px;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+        }}
+        .modal-buttons {{
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }}
+        .modal-buttons button {{
+            min-width: 100px;
+        }}
+        .vowel-buttons {{
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }}
+        .vowel-btn {{
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+        }}
         .game-header {{
             text-align: center;
             margin-bottom: 16px;
@@ -1003,6 +1599,14 @@ pub async fn game() -> Html<String> {
                 <input type="text" id="letterInput" maxlength="1" placeholder="Guess a letter">
                 <button class="btn" onclick="guessLetter()">Guess</button>
             </div>
+
+            <div class="host-controls" id="hostControls" style="display: none; margin-top: 20px; padding-top: 16px; border-top: 1px solid #333;">
+                <p style="color: #d4af37; margin-bottom: 12px; font-weight: bold;">Host Controls</p>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn" onclick="newGame()">New Game</button>
+                    <button class="btn btn-secondary" onclick="revealAll()">Reveal All</button>
+                </div>
+            </div>
         </div>
 
         <div class="sidebar">
@@ -1011,8 +1615,53 @@ pub async fn game() -> Html<String> {
                 <p style="color: #888;">No players yet</p>
             </div>
 
-            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #333;">
+            <div id="claimHostSection" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #333;">
+                <button class="btn btn-secondary" onclick="promptClaimHost()" style="width: 100%; font-size: 14px;">Claim Host</button>
+            </div>
+
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #333;">
                 <p style="color: #888; font-size: 14px;">Room: <span id="roomName">-</span></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Solve Modal -->
+    <div class="modal-overlay" id="solveModal">
+        <div class="modal">
+            <h2>Solve the Puzzle</h2>
+            <input type="text" id="solveInput" placeholder="Enter your solution" autocomplete="off">
+            <div class="modal-buttons">
+                <button class="btn" onclick="submitSolve()">Submit</button>
+                <button class="btn btn-secondary" onclick="closeModal('solveModal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Buy Vowel Modal -->
+    <div class="modal-overlay" id="vowelModal">
+        <div class="modal">
+            <h2>Buy a Vowel ($250)</h2>
+            <div class="vowel-buttons">
+                <button class="btn vowel-btn" onclick="selectVowel('A')">A</button>
+                <button class="btn vowel-btn" onclick="selectVowel('E')">E</button>
+                <button class="btn vowel-btn" onclick="selectVowel('I')">I</button>
+                <button class="btn vowel-btn" onclick="selectVowel('O')">O</button>
+                <button class="btn vowel-btn" onclick="selectVowel('U')">U</button>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="closeModal('vowelModal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Claim Host Modal -->
+    <div class="modal-overlay" id="claimHostModal">
+        <div class="modal">
+            <h2>Claim Host</h2>
+            <input type="password" id="hostCodeInput" placeholder="Enter host code" autocomplete="off">
+            <div class="modal-buttons">
+                <button class="btn" onclick="submitClaimHost()">Submit</button>
+                <button class="btn btn-secondary" onclick="closeModal('claimHostModal')">Cancel</button>
             </div>
         </div>
     </div>
@@ -1238,6 +1887,12 @@ pub async fn game() -> Html<String> {
                 renderGame();
             }});
 
+            socket.on('host_granted', (data) => {{
+                console.log('Host granted:', data);
+                isHost = data.granted === true;
+                updateHostUI();
+            }});
+
             socket.on('toast', (data) => {{
                 console.log('Toast:', data);
                 const msg = data.msg || data;
@@ -1436,7 +2091,7 @@ pub async fn game() -> Html<String> {
             // Set spinning state immediately so incoming toasts get queued
             isWheelSpinning = true;
             document.getElementById('wheelResult').textContent = 'Spinning...';
-            socket.emit('spin', {{}});
+            socket.emit('spin', {{ room }});
 
             // Fallback: if no animation started within 2 seconds, reset and show pending toasts
             setTimeout(() => {{
@@ -1453,30 +2108,92 @@ pub async fn game() -> Html<String> {
             const input = document.getElementById('letterInput');
             const letter = input.value.toUpperCase();
             if (letter && letter.length === 1) {{
-                socket.emit('guess_letter', {{ letter }});
+                socket.emit('guess', {{ room, letter }});
                 input.value = '';
             }}
         }}
 
         function buyVowel() {{
             hideNotification();
-            const vowel = prompt('Enter a vowel (A, E, I, O, U):');
-            if (vowel && 'AEIOU'.includes(vowel.toUpperCase())) {{
-                socket.emit('buy_vowel', {{ letter: vowel.toUpperCase() }});
-            }}
+            document.getElementById('vowelModal').classList.add('active');
+        }}
+
+        function selectVowel(vowel) {{
+            socket.emit('buy_vowel', {{ room, letter: vowel }});
+            closeModal('vowelModal');
         }}
 
         function promptSolve() {{
             hideNotification();
-            const solution = prompt('Enter your solution:');
+            document.getElementById('solveInput').value = '';
+            document.getElementById('solveModal').classList.add('active');
+            document.getElementById('solveInput').focus();
+        }}
+
+        function submitSolve() {{
+            const solution = document.getElementById('solveInput').value.trim();
             if (solution) {{
-                socket.emit('solve', {{ answer: solution }});
+                socket.emit('solve', {{ room, attempt: solution }});
             }}
+            closeModal('solveModal');
+        }}
+
+        function closeModal(modalId) {{
+            document.getElementById(modalId).classList.remove('active');
+        }}
+
+        // Host functions
+        let isHost = false;
+
+        function promptClaimHost() {{
+            document.getElementById('hostCodeInput').value = '';
+            document.getElementById('claimHostModal').classList.add('active');
+            document.getElementById('hostCodeInput').focus();
+        }}
+
+        function submitClaimHost() {{
+            const code = document.getElementById('hostCodeInput').value.trim();
+            if (code) {{
+                socket.emit('claim_host', {{ room, code }});
+            }}
+            closeModal('claimHostModal');
+        }}
+
+        function newGame() {{
+            socket.emit('new_game', {{ room }});
+        }}
+
+        function revealAll() {{
+            socket.emit('reveal_all', {{ room }});
+        }}
+
+        function updateHostUI() {{
+            document.getElementById('hostControls').style.display = isHost ? 'block' : 'none';
+            document.getElementById('claimHostSection').style.display = isHost ? 'none' : 'block';
         }}
 
         // Enter key to guess
         document.getElementById('letterInput').addEventListener('keypress', (e) => {{
             if (e.key === 'Enter') guessLetter();
+        }});
+
+        // Enter key to submit solve
+        document.getElementById('solveInput').addEventListener('keypress', (e) => {{
+            if (e.key === 'Enter') submitSolve();
+        }});
+
+        // Enter key to submit host code
+        document.getElementById('hostCodeInput').addEventListener('keypress', (e) => {{
+            if (e.key === 'Enter') submitClaimHost();
+        }});
+
+        // Close modals on escape key
+        document.addEventListener('keydown', (e) => {{
+            if (e.key === 'Escape') {{
+                closeModal('solveModal');
+                closeModal('vowelModal');
+                closeModal('claimHostModal');
+            }}
         }});
 
         connect();
