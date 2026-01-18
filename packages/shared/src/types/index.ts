@@ -52,6 +52,51 @@ export type WedgeValue =
 
 export type GamePhase = 'normal' | 'tossup' | 'final';
 
+/** Type of round in multi-round game structure */
+export type RoundType = 'normal' | 'tossup' | 'speed' | 'bonus';
+
+/** Round configuration for multi-round games */
+export interface RoundConfig {
+  /** Round number (1-indexed) */
+  number: number;
+  /** Type of round */
+  type: RoundType;
+  /** Base wheel values multiplier (e.g., 1 for round 1, 2 for round 3) */
+  value_multiplier: number;
+  /** Whether this round has mystery wedge */
+  has_mystery: boolean;
+  /** Whether this round has express wedge */
+  has_express: boolean;
+}
+
+/** State for multi-round game structure */
+export interface RoundState {
+  /** Current round number (1-indexed, 0 = not started) */
+  current_round: number;
+  /** Total number of rounds in this game */
+  total_rounds: number;
+  /** Configuration for each round */
+  rounds: RoundConfig[];
+  /** Whether multi-round mode is enabled */
+  enabled: boolean;
+}
+
+/** Enhanced toss-up configuration */
+export interface TossupConfig {
+  /** Whether this is a triple toss-up (3 consecutive puzzles) */
+  is_triple: boolean;
+  /** Current puzzle index in triple toss-up (0-2) */
+  triple_index: number;
+  /** Values for each toss-up in triple ($1000, $2000, $3000) */
+  values: number[];
+  /** Delay between letter reveals in ms */
+  reveal_delay: number;
+  /** Whether letters reveal automatically */
+  auto_reveal: boolean;
+  /** Index of next letter to reveal */
+  next_reveal_index: number;
+}
+
 export type FinalStage = 'off' | 'pick' | 'reveal' | 'solve';
 
 export interface TossupState {
@@ -133,6 +178,10 @@ export interface ServerGameState {
   mystery?: MysteryState;
   /** Express mode state (optional for backwards compatibility) */
   express?: ExpressState;
+  /** Multi-round game state (optional for backwards compatibility) */
+  round?: RoundState;
+  /** Enhanced toss-up configuration (optional for backwards compatibility) */
+  tossup_config?: TossupConfig;
 }
 
 // User from auth system

@@ -24,6 +24,10 @@ export { ExpressModeIndicator } from './components/ExpressModeIndicator';
 export type { ExpressModeIndicatorProps } from './components/ExpressModeIndicator';
 export { WildCardButton } from './components/WildCardButton';
 export type { WildCardButtonProps } from './components/WildCardButton';
+export { RoundProgressIndicator } from './components/RoundProgressIndicator';
+export type { RoundProgressIndicatorProps } from './components/RoundProgressIndicator';
+export { TossupValueDisplay } from './components/TossupValueDisplay';
+export type { TossupValueDisplayProps } from './components/TossupValueDisplay';
 
 // Stores
 export {
@@ -40,6 +44,17 @@ export {
   selectExpressCorrectCount,
   selectMyWildCards,
   selectCanUseWildCard,
+  selectIsMultiRoundEnabled,
+  selectCurrentRound,
+  selectTotalRounds,
+  selectCurrentRoundConfig,
+  selectRoundProgress,
+  selectIsTripleTossup,
+  selectTripleTossupIndex,
+  selectCurrentTossupValue,
+  selectTossupRevealDelay,
+  selectIsAutoReveal,
+  selectNextRevealIndex,
 } from './stores/gameStore';
 
 export {

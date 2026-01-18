@@ -9,6 +9,8 @@ import type {
   FinalState,
   MysteryState,
   ExpressState,
+  RoundState,
+  TossupConfig,
 } from '../types';
 
 interface GameStore {
@@ -33,6 +35,10 @@ interface GameStore {
   // New mechanics state
   mystery: MysteryState;
   express: ExpressState;
+
+  // Multi-round and toss-up state
+  round: RoundState;
+  tossupConfig: TossupConfig;
 
   // Player state
   myPlayerIdx: number | null;
@@ -84,6 +90,20 @@ const initialState = {
     correct_count: 0,
     value_per_consonant: 1000,
   },
+  round: {
+    current_round: 0,
+    total_rounds: 0,
+    rounds: [],
+    enabled: false,
+  },
+  tossupConfig: {
+    is_triple: false,
+    triple_index: 0,
+    values: [1000, 2000, 3000],
+    reveal_delay: 300,
+    auto_reveal: false,
+    next_reveal_index: 0,
+  },
   myPlayerIdx: null,
   isHost: false,
 };
@@ -124,6 +144,20 @@ export const useGameStore = create<GameStore>((set) => ({
         player_idx: null,
         correct_count: 0,
         value_per_consonant: 1000,
+      },
+      round: state.round ?? {
+        current_round: 0,
+        total_rounds: 0,
+        rounds: [],
+        enabled: false,
+      },
+      tossupConfig: state.tossup_config ?? {
+        is_triple: false,
+        triple_index: 0,
+        values: [1000, 2000, 3000],
+        reveal_delay: 300,
+        auto_reveal: false,
+        next_reveal_index: 0,
       },
     }),
 
@@ -200,4 +234,56 @@ export const selectCanUseWildCard = (state: GameStore): boolean => {
   if (state.phase !== 'normal') return false;
   if (state.activeIdx !== state.myPlayerIdx) return false;
   return selectMyWildCards(state) > 0;
+};
+
+// Round selectors
+export const selectIsMultiRoundEnabled = (state: GameStore): boolean => {
+  return state.round.enabled;
+};
+
+export const selectCurrentRound = (state: GameStore): number => {
+  return state.round.current_round;
+};
+
+export const selectTotalRounds = (state: GameStore): number => {
+  return state.round.total_rounds;
+};
+
+export const selectCurrentRoundConfig = (state: GameStore) => {
+  if (!state.round.enabled || state.round.current_round === 0) return null;
+  return state.round.rounds[state.round.current_round - 1] ?? null;
+};
+
+export const selectRoundProgress = (state: GameStore): string => {
+  if (!state.round.enabled) return '';
+  return `Round ${state.round.current_round} of ${state.round.total_rounds}`;
+};
+
+// Toss-up config selectors
+export const selectIsTripleTossup = (state: GameStore): boolean => {
+  return state.tossupConfig.is_triple;
+};
+
+export const selectTripleTossupIndex = (state: GameStore): number => {
+  return state.tossupConfig.triple_index;
+};
+
+export const selectCurrentTossupValue = (state: GameStore): number => {
+  const { is_triple, triple_index, values } = state.tossupConfig;
+  if (is_triple && triple_index < values.length) {
+    return values[triple_index];
+  }
+  return values[0] ?? 1000;
+};
+
+export const selectTossupRevealDelay = (state: GameStore): number => {
+  return state.tossupConfig.reveal_delay;
+};
+
+export const selectIsAutoReveal = (state: GameStore): boolean => {
+  return state.tossupConfig.auto_reveal;
+};
+
+export const selectNextRevealIndex = (state: GameStore): number => {
+  return state.tossupConfig.next_reveal_index;
 };
