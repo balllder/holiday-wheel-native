@@ -48,6 +48,15 @@
 				<string>holidaywheel</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- Replace with your reversed iOS client ID from Google Cloud Console -->
+				<string>com.googleusercontent.apps.YOUR_IOS_CLIENT_ID</string>
+			</array>
+		</dict>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

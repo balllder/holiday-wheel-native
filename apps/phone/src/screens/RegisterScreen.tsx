@@ -13,7 +13,12 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Passkeys from 'react-native-passkeys';
-import { authService, passkeyService, useAuthStore } from '@holiday-wheel/shared';
+import {
+  GoogleSignin,
+  statusCodes,
+  isErrorWithCode,
+} from '@react-native-google-signin/google-signin';
+import { authService, passkeyService, oauthService, useAuthStore } from '@holiday-wheel/shared';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
 type RegisterScreenProps = {
@@ -34,9 +39,17 @@ export function RegisterScreen({ navigation }: RegisterScreenProps): React.JSX.E
 
   const setAuth = useAuthStore((state) => state.setAuth);
 
-  // Initialize base URL
+  // Initialize services
   React.useEffect(() => {
     authService.setBaseUrl(API_URL);
+    oauthService.setBaseUrl(API_URL);
+
+    // Configure Google Sign-In
+    GoogleSignin.configure({
+      webClientId: 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com',
+      offlineAccess: true,
+      scopes: ['profile', 'email'],
+    });
   }, []);
 
   const handleAuthSuccess = useCallback(
@@ -141,6 +154,51 @@ export function RegisterScreen({ navigation }: RegisterScreenProps): React.JSX.E
     }
   };
 
+  // Google Sign-In (creates account automatically)
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      await GoogleSignin.hasPlayServices();
+      const signInResult = await GoogleSignin.signIn();
+
+      const idToken = signInResult.data?.idToken;
+      if (!idToken) {
+        setError('Failed to get Google ID token');
+        setLoading(false);
+        return;
+      }
+
+      const result = await oauthService.googleAuth(idToken);
+
+      if (result.ok && result.token && result.user) {
+        await handleAuthSuccess(result.token, result.user);
+      } else {
+        setError(result.error || 'Google Sign-In failed');
+      }
+    } catch (err: unknown) {
+      if (isErrorWithCode(err)) {
+        switch (err.code) {
+          case statusCodes.SIGN_IN_CANCELLED:
+            break;
+          case statusCodes.IN_PROGRESS:
+            setError('Sign-in already in progress');
+            break;
+          case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
+            setError('Google Play Services not available');
+            break;
+          default:
+            setError(`Google Sign-In error: ${err.message}`);
+        }
+      } else {
+        setError(err instanceof Error ? err.message : 'Google Sign-In error');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (success) {
     return (
       <View style={styles.container}>
@@ -171,6 +229,34 @@ export function RegisterScreen({ navigation }: RegisterScreenProps): React.JSX.E
         <View style={styles.formContainer}>
           <Text style={styles.header}>Create Account</Text>
 
+          {/* Google Sign-In Button */}
+          <TouchableOpacity
+            style={[styles.googleButton, loading && styles.buttonDisabled]}
+            onPress={handleGoogleSignIn}
+            disabled={loading}
+          >
+            <Text style={styles.googleButtonIcon}>G</Text>
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
+          </TouchableOpacity>
+
+          {/* Passkey Registration Option */}
+          {passkeySupported && (
+            <TouchableOpacity
+              style={[styles.passkeyButton, loading && styles.buttonDisabled]}
+              onPress={handlePasskeyRegister}
+              disabled={loading}
+            >
+              <Text style={styles.passkeyButtonIcon}>🔐</Text>
+              <Text style={styles.passkeyButtonText}>Register with Passkey</Text>
+            </TouchableOpacity>
+          )}
+
+          <View style={styles.dividerContainer}>
+            <View style={styles.divider} />
+            <Text style={styles.dividerText}>or register with email</Text>
+            <View style={styles.divider} />
+          </View>
+
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -191,26 +277,6 @@ export function RegisterScreen({ navigation }: RegisterScreenProps): React.JSX.E
             autoCapitalize="words"
             autoComplete="name"
           />
-
-          {/* Passkey Registration Option */}
-          {passkeySupported && (
-            <>
-              <TouchableOpacity
-                style={[styles.passkeyButton, loading && styles.buttonDisabled]}
-                onPress={handlePasskeyRegister}
-                disabled={loading}
-              >
-                <Text style={styles.passkeyButtonIcon}>🔐</Text>
-                <Text style={styles.passkeyButtonText}>Register with Passkey</Text>
-              </TouchableOpacity>
-
-              <View style={styles.dividerContainer}>
-                <View style={styles.divider} />
-                <Text style={styles.dividerText}>or use password</Text>
-                <View style={styles.divider} />
-              </View>
-            </>
-          )}
 
           <TextInput
             style={styles.input}
@@ -379,5 +445,27 @@ const styles = StyleSheet.create({
     color: '#666',
     paddingHorizontal: 16,
     fontSize: 14,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  googleButtonIcon: {
+    fontSize: 20,
+    marginRight: 10,
+    color: '#4285f4',
+    fontWeight: 'bold',
+  },
+  googleButtonText: {
+    color: '#333',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

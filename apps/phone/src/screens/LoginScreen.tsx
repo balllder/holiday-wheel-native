@@ -15,9 +15,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Passkeys from 'react-native-passkeys';
 import {
+  GoogleSignin,
+  statusCodes,
+  isErrorWithCode,
+} from '@react-native-google-signin/google-signin';
+import {
   useAuthStore,
   authService,
   passkeyService,
+  oauthService,
 } from '@holiday-wheel/shared';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -39,9 +45,18 @@ export function LoginScreen({
 
   const setAuth = useAuthStore((state) => state.setAuth);
 
-  // Initialize base URL
+  // Initialize services
   React.useEffect(() => {
     authService.setBaseUrl(API_URL);
+    oauthService.setBaseUrl(API_URL);
+
+    // Configure Google Sign-In
+    // Replace YOUR_WEB_CLIENT_ID with your actual web client ID from Google Cloud Console
+    GoogleSignin.configure({
+      webClientId: 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com',
+      offlineAccess: true,
+      scopes: ['profile', 'email'],
+    });
   }, []);
 
   const handleAuthSuccess = useCallback(
@@ -140,25 +155,47 @@ export function LoginScreen({
     setError(null);
 
     try {
-      // TODO: Use @react-native-google-signin/google-signin
-      // const { idToken } = await GoogleSignin.signIn();
-      // const result = await oauthService.googleAuth(idToken);
+      // Check if Play Services are available (Android only)
+      await GoogleSignin.hasPlayServices();
 
-      // For now, show a message that Google Sign-In needs native setup
-      setError(
-        'Google Sign-In requires native SDK setup. ' +
-          'Install @react-native-google-signin/google-signin and configure OAuth credentials.'
-      );
-      setLoading(false);
+      // Sign in with Google
+      const signInResult = await GoogleSignin.signIn();
 
-      // When native SDK is set up:
-      // if (result.ok && result.token && result.user) {
-      //   await handleAuthSuccess(result.token, result.user);
-      // } else {
-      //   setError(result.error || 'Google Sign-In failed');
-      // }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Google Sign-In error');
+      // Get the ID token
+      const idToken = signInResult.data?.idToken;
+      if (!idToken) {
+        setError('Failed to get Google ID token');
+        setLoading(false);
+        return;
+      }
+
+      // Send the token to our backend for verification
+      const result = await oauthService.googleAuth(idToken);
+
+      if (result.ok && result.token && result.user) {
+        await handleAuthSuccess(result.token, result.user);
+      } else {
+        setError(result.error || 'Google Sign-In failed');
+      }
+    } catch (err: unknown) {
+      if (isErrorWithCode(err)) {
+        switch (err.code) {
+          case statusCodes.SIGN_IN_CANCELLED:
+            // User cancelled, don't show error
+            break;
+          case statusCodes.IN_PROGRESS:
+            setError('Sign-in already in progress');
+            break;
+          case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
+            setError('Google Play Services not available');
+            break;
+          default:
+            setError(`Google Sign-In error: ${err.message}`);
+        }
+      } else {
+        setError(err instanceof Error ? err.message : 'Google Sign-In error');
+      }
+    } finally {
       setLoading(false);
     }
   };
