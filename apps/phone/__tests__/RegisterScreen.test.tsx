@@ -4,7 +4,6 @@ import { Platform } from 'react-native';
 import { RegisterScreen } from '../src/screens/RegisterScreen';
 import {
   authService,
-  passkeyService,
   oauthService,
   useAuthStore,
 } from '@holiday-wheel/shared';

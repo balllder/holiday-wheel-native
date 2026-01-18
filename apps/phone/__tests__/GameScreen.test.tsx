@@ -5,7 +5,6 @@ import { GameScreen } from '../src/screens/GameScreen';
 import {
   useGameStore,
   useAuthStore,
-  socketService,
   configService,
 } from '@holiday-wheel/shared';
 
@@ -14,10 +13,10 @@ jest.spyOn(Alert, 'alert');
 
 // Mock react-native-svg with proper default export
 jest.mock('react-native-svg', () => {
-  const React = require('react');
+  const ReactLib = require('react');
   const mockComponent = (name: string) => {
-    const Component = ({ children, ...props }: { children?: React.ReactNode }) =>
-      React.createElement(name, props, children);
+    const Component = ({ children, ...props }: { children?: ReactLib.ReactNode }) =>
+      ReactLib.createElement(name, props, children);
     Component.displayName = name;
     return Component;
   };

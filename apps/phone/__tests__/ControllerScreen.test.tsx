@@ -5,7 +5,6 @@ import { ControllerScreen } from '../src/screens/ControllerScreen';
 import {
   useGameStore,
   useAuthStore,
-  socketService,
   configService,
 } from '@holiday-wheel/shared';
 
