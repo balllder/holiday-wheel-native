@@ -567,6 +567,59 @@ pub async fn lobby() -> Html<String> {
             gap: 12px;
         }}
         .hidden {{ display: none !important; }}
+        .lobby-content {{
+            display: grid;
+            grid-template-columns: 1fr 280px;
+            gap: 24px;
+        }}
+        @media (max-width: 768px) {{
+            .lobby-content {{
+                grid-template-columns: 1fr;
+            }}
+        }}
+        .qr-section {{
+            background: #1a0a3e;
+            border: 2px solid #333;
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+        }}
+        .qr-section h3 {{
+            color: #d4af37;
+            margin-bottom: 16px;
+            font-size: 18px;
+        }}
+        .qr-container {{
+            background: #fff;
+            padding: 16px;
+            border-radius: 8px;
+            display: inline-block;
+            margin-bottom: 16px;
+        }}
+        .qr-room-name {{
+            color: #d4af37;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }}
+        .qr-hint {{
+            color: #888;
+            font-size: 12px;
+        }}
+        .qr-input-row {{
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }}
+        .qr-input-row input {{
+            flex: 1;
+            padding: 8px 12px;
+            font-size: 14px;
+        }}
+        .qr-input-row button {{
+            padding: 8px 16px;
+            font-size: 14px;
+        }}
     </style>
 </head>
 <body>
@@ -582,17 +635,35 @@ pub async fn lobby() -> Html<String> {
             </div>
         </div>
 
-        <h2 style="color: #fff; margin-bottom: 16px;">Active Rooms</h2>
-        <div class="rooms-grid" id="roomsGrid">
-            <p style="color: #888;">Loading rooms...</p>
-        </div>
+        <div class="lobby-content">
+            <div class="main-section">
+                <h2 style="color: #fff; margin-bottom: 16px;">Active Rooms</h2>
+                <div class="rooms-grid" id="roomsGrid">
+                    <p style="color: #888;">Loading rooms...</p>
+                </div>
 
-        <div class="join-form">
-            <input type="text" id="roomName" placeholder="Enter room name" value="main">
-            <button class="btn" onclick="joinRoom()">Join Room</button>
+                <div class="join-form">
+                    <input type="text" id="roomName" placeholder="Enter room name" value="main" oninput="updateQRCode()">
+                    <button class="btn" onclick="joinRoom()">Join Room</button>
+                </div>
+            </div>
+
+            <div class="qr-section">
+                <h3>📱 Phone Connection</h3>
+                <div class="qr-input-row">
+                    <input type="text" id="qrRoomName" value="main" placeholder="Room name" oninput="updateQRCode()">
+                    <button class="btn btn-secondary" onclick="updateQRCode()">Update</button>
+                </div>
+                <div class="qr-container">
+                    <canvas id="qrCanvas" width="180" height="180"></canvas>
+                </div>
+                <div class="qr-room-name">Room: <span id="qrRoomDisplay">main</span></div>
+                <div class="qr-hint">Scan with phone app to join as controller</div>
+            </div>
         </div>
     </div>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <script>
         // Check auth
         const token = localStorage.getItem('token');
@@ -619,6 +690,34 @@ pub async fn lobby() -> Html<String> {
             }}
         }}
         checkAdmin();
+
+        // QR Code generation
+        function updateQRCode() {{
+            const roomName = document.getElementById('qrRoomName').value || 'main';
+            const serverUrl = window.location.origin;
+            const deepLink = `holidaywheel://join?room=${{encodeURIComponent(roomName)}}&server=${{encodeURIComponent(serverUrl)}}`;
+
+            document.getElementById('qrRoomDisplay').textContent = roomName;
+            document.getElementById('roomName').value = roomName;
+
+            const canvas = document.getElementById('qrCanvas');
+            QRCode.toCanvas(canvas, deepLink, {{
+                width: 180,
+                margin: 0,
+                color: {{
+                    dark: '#1a0a3e',
+                    light: '#ffffff'
+                }}
+            }}, function(error) {{
+                if (error) console.error('QR generation error:', error);
+            }});
+        }}
+
+        // Sync room name inputs
+        document.getElementById('roomName').addEventListener('input', function() {{
+            document.getElementById('qrRoomName').value = this.value;
+            updateQRCode();
+        }});
 
         // Load rooms
         async function loadRooms() {{
@@ -658,6 +757,9 @@ pub async fn lobby() -> Html<String> {
         // Initial load and refresh every 5 seconds
         loadRooms();
         setInterval(loadRooms, 5000);
+
+        // Generate initial QR code
+        updateQRCode();
     </script>
 </body>
 </html>"#, common_styles = COMMON_STYLES))
