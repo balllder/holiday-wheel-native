@@ -16,6 +16,8 @@ export { PuzzleBoard } from './components/PuzzleBoard';
 export type { PuzzleBoardProps } from './components/PuzzleBoard';
 export { Confetti, useConfetti } from './components/Confetti';
 export type { ConfettiProps } from './components/Confetti';
+export { PhaseTransition, usePhaseTransition } from './components/PhaseTransition';
+export type { PhaseTransitionProps, GamePhase } from './components/PhaseTransition';
 
 // Stores
 export {
