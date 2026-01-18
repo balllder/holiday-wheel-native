@@ -41,5 +41,17 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- Replace with your reversed tvOS client ID from Google Cloud Console -->
+				<string>com.googleusercontent.apps.YOUR_TVOS_CLIENT_ID</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

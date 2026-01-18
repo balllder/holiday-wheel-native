@@ -10,7 +10,13 @@ import {
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuthStore, authService } from '@holiday-wheel/shared';
+import {
+  GoogleSignin,
+  statusCodes,
+  isErrorWithCode,
+} from '@react-native-google-signin/google-signin';
+import appleAuth from '@invertase/react-native-apple-authentication';
+import { useAuthStore, authService, oauthService } from '@holiday-wheel/shared';
 import { configService } from '@holiday-wheel/shared';
 
 export function TVLoginScreen(): React.JSX.Element {
@@ -26,13 +32,21 @@ export function TVLoginScreen(): React.JSX.Element {
 
   const setAuth = useAuthStore((state) => state.setAuth);
 
-  // Initialize server URL from config
+  // Initialize server URL and configure auth services
   useEffect(() => {
-    const initUrl = async () => {
+    const initServices = async () => {
       const url = await configService.getServerUrl();
       authService.setBaseUrl(url);
+      oauthService.setBaseUrl(url);
+
+      // Configure Google Sign-In
+      GoogleSignin.configure({
+        webClientId: 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com',
+        offlineAccess: true,
+        scopes: ['profile', 'email'],
+      });
     };
-    initUrl();
+    initServices();
   }, []);
 
   const handleAuthSuccess = useCallback(
@@ -70,18 +84,41 @@ export function TVLoginScreen(): React.JSX.Element {
     setError(null);
 
     try {
-      // TODO: Use @react-native-google-signin/google-signin for tvOS
-      // const { idToken } = await GoogleSignin.signIn();
-      // const result = await oauthService.googleAuth(idToken);
+      await GoogleSignin.hasPlayServices();
+      const signInResult = await GoogleSignin.signIn();
 
-      // For now, show a message that Google Sign-In needs native setup
-      setError(
-        'Google Sign-In requires native SDK setup. ' +
-          'Configure @react-native-google-signin/google-signin for tvOS.'
-      );
-      setLoading(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Google Sign-In error');
+      const idToken = signInResult.data?.idToken;
+      if (!idToken) {
+        setError('Failed to get Google ID token');
+        setLoading(false);
+        return;
+      }
+
+      const result = await oauthService.googleAuth(idToken);
+
+      if (result.ok && result.token && result.user) {
+        await handleAuthSuccess(result.token, result.user);
+      } else {
+        setError(result.error || 'Google Sign-In failed');
+      }
+    } catch (err: unknown) {
+      if (isErrorWithCode(err)) {
+        switch (err.code) {
+          case statusCodes.SIGN_IN_CANCELLED:
+            break;
+          case statusCodes.IN_PROGRESS:
+            setError('Sign-in already in progress');
+            break;
+          case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
+            setError('Google Play Services not available');
+            break;
+          default:
+            setError(`Google Sign-In error: ${err.message}`);
+        }
+      } else {
+        setError(err instanceof Error ? err.message : 'Google Sign-In error');
+      }
+    } finally {
       setLoading(false);
     }
   };
@@ -92,18 +129,56 @@ export function TVLoginScreen(): React.JSX.Element {
     setError(null);
 
     try {
-      // TODO: Use @invertase/react-native-apple-authentication for tvOS
-      // const appleAuthResponse = await appleAuth.performRequest({...});
-      // const result = await oauthService.appleAuth(...);
+      const appleAuthResponse = await appleAuth.performRequest({
+        requestedOperation: appleAuth.Operation.LOGIN,
+        requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
+      });
 
-      // For now, show a message that Apple Sign-In needs native setup
-      setError(
-        'Apple Sign-In requires native SDK setup. ' +
-          'Enable Sign in with Apple capability for tvOS.'
+      const credentialState = await appleAuth.getCredentialStateForUser(
+        appleAuthResponse.user
       );
-      setLoading(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Apple Sign-In error');
+
+      if (credentialState !== appleAuth.State.AUTHORIZED) {
+        setError('Apple Sign-In not authorized');
+        setLoading(false);
+        return;
+      }
+
+      const identityToken = appleAuthResponse.identityToken;
+      if (!identityToken) {
+        setError('Failed to get Apple identity token');
+        setLoading(false);
+        return;
+      }
+
+      // Convert null to undefined for fullName properties
+      const fullName = appleAuthResponse.fullName
+        ? {
+            givenName: appleAuthResponse.fullName.givenName ?? undefined,
+            familyName: appleAuthResponse.fullName.familyName ?? undefined,
+          }
+        : undefined;
+
+      const result = await oauthService.appleAuth(
+        identityToken,
+        appleAuthResponse.user,
+        appleAuthResponse.email ?? undefined,
+        fullName
+      );
+
+      if (result.ok && result.token && result.user) {
+        await handleAuthSuccess(result.token, result.user);
+      } else {
+        setError(result.error || 'Apple Sign-In failed');
+      }
+    } catch (err: unknown) {
+      const appleError = err as { code?: string; message?: string };
+      if (appleError.code === appleAuth.Error.CANCELED) {
+        // User cancelled
+      } else {
+        setError(appleError.message || 'Apple Sign-In error');
+      }
+    } finally {
       setLoading(false);
     }
   };

@@ -600,6 +600,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = "tv-tvOS/tv-tvOS.entitlements";
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = "tv-tvOS/Info.plist";
@@ -630,6 +631,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = "tv-tvOS/tv-tvOS.entitlements";
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = "tv-tvOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
