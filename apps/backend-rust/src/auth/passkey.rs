@@ -9,6 +9,7 @@ use axum::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::distributions::{Alphanumeric, DistString};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 use webauthn_rs::prelude::*;
 
 use crate::AppState;
@@ -236,7 +237,7 @@ async fn register_start(
     };
 
     // Store challenge with email for later lookup
-    let challenge_id = URL_SAFE_NO_PAD.encode(ccr.public_key.challenge.0.as_slice());
+    let challenge_id = URL_SAFE_NO_PAD.encode(ccr.public_key.challenge.as_ref());
     if let Err(e) = state
         .db
         .store_challenge(&challenge_id, None, Some(&email), "registration", 300)
@@ -332,7 +333,7 @@ async fn register_finish(
     };
 
     // Get the challenge from the response to look up stored state
-    let challenge_b64 = URL_SAFE_NO_PAD.encode(&reg_response.response.client_data_json);
+    let _challenge_b64 = URL_SAFE_NO_PAD.encode(&reg_response.response.client_data_json);
 
     // Parse client data to get challenge
     let client_data: serde_json::Value = match serde_json::from_slice(&reg_response.response.client_data_json) {
@@ -609,7 +610,7 @@ async fn login_start(
         }
     };
 
-    let challenge_id = URL_SAFE_NO_PAD.encode(rcr.public_key.challenge.0.as_slice());
+    let challenge_id = URL_SAFE_NO_PAD.encode(rcr.public_key.challenge.as_ref());
     if let Err(e) = state
         .db
         .store_challenge(&challenge_id, user_id, None, "authentication", 300)
@@ -1031,7 +1032,7 @@ async fn add_passkey_start(
     };
 
     let state_json = serde_json::to_string(&reg_state).unwrap_or_default();
-    let challenge_id = URL_SAFE_NO_PAD.encode(ccr.public_key.challenge.0.as_slice());
+    let challenge_id = URL_SAFE_NO_PAD.encode(ccr.public_key.challenge.as_ref());
 
     // Store device name in email field (hacky but works)
     let device_info = req.device_name.unwrap_or_else(|| "Unknown Device".to_string());
