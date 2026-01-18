@@ -47,8 +47,6 @@ pub struct UserInfo {
     pub display_name: String,
 }
 
-// Re-export for submodules
-pub use self::UserInfo as UserInfoExport;
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {

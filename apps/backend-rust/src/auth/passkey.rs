@@ -132,7 +132,7 @@ pub fn routes() -> Router<Arc<AppState>> {
 
 // ========== HELPER FUNCTIONS ==========
 
-fn get_webauthn(state: &AppState) -> Result<Webauthn, String> {
+fn get_webauthn(_state: &AppState) -> Result<Webauthn, String> {
     let rp_id = std::env::var("WEBAUTHN_RP_ID").unwrap_or_else(|_| "localhost".to_string());
     let rp_name = std::env::var("WEBAUTHN_RP_NAME").unwrap_or_else(|_| "Holiday Wheel".to_string());
     let rp_origin = std::env::var("WEBAUTHN_RP_ORIGIN")
@@ -564,34 +564,30 @@ async fn login_start(
         .filter_map(|p| serde_json::from_slice(&p.public_key).ok())
         .collect();
 
-    let (rcr, auth_state) = if allow_credentials.is_empty() {
-        // Discoverable credentials
-        match webauthn.start_discoverable_authentication() {
-            Ok(result) => result,
-            Err(e) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(LoginStartResponse {
-                        ok: false,
-                        options: None,
-                        error: Some(format!("WebAuthn error: {}", e)),
-                    }),
-                );
-            }
-        }
-    } else {
-        match webauthn.start_passkey_authentication(&allow_credentials) {
-            Ok(result) => result,
-            Err(e) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(LoginStartResponse {
-                        ok: false,
-                        options: None,
-                        error: Some(format!("WebAuthn error: {}", e)),
-                    }),
-                );
-            }
+    // webauthn-rs 0.5 doesn't support discoverable credentials without email
+    // Require email for passkey authentication
+    if allow_credentials.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(LoginStartResponse {
+                ok: false,
+                options: None,
+                error: Some("Email is required for passkey login".to_string()),
+            }),
+        );
+    }
+
+    let (rcr, auth_state) = match webauthn.start_passkey_authentication(&allow_credentials) {
+        Ok(result) => result,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(LoginStartResponse {
+                    ok: false,
+                    options: None,
+                    error: Some(format!("WebAuthn error: {}", e)),
+                }),
+            );
         }
     };
 
@@ -746,10 +742,11 @@ async fn login_finish(
     };
 
     // Also consume the main challenge
-    let main_challenge = state.db.consume_challenge(challenge_str).await.ok().flatten();
+    let _main_challenge = state.db.consume_challenge(challenge_str).await.ok().flatten();
 
     // Look up the credential to find the user
-    let cred_id = URL_SAFE_NO_PAD.encode(auth_response.id.as_ref());
+    // Use raw_id which is the raw bytes of the credential ID
+    let cred_id = URL_SAFE_NO_PAD.encode(auth_response.raw_id.as_ref() as &[u8]);
     let stored_cred = match state.db.get_passkey(&cred_id).await {
         Ok(Some(c)) => c,
         Ok(None) => {
