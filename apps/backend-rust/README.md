@@ -36,9 +36,11 @@ See `.env.example` for all available options.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | SQLite database path | `sqlite:puzzles.db` |
+| `DB_PATH` | SQLite database path | `puzzles.db` |
+| `DATABASE_URL` | Alternative: SQLite URL (e.g., `sqlite:puzzles.db`) | - |
 | `PORT` | Server port | `5000` |
 | `HOST_CODE` | Code to claim host mode | `holiday` |
+| `ADMIN_EMAIL` | Email to auto-grant admin on login | - |
 | `RUST_LOG` | Log level | `info` |
 
 ### SSL/TLS (HTTPS)
@@ -93,8 +95,9 @@ docker run -p 5000:5000 \
 | `GOOGLE_CLIENT_ID` | Google OAuth web client ID | - |
 | `GOOGLE_CLIENT_ID_IOS` | Google OAuth iOS client ID | - |
 | `GOOGLE_CLIENT_ID_ANDROID` | Google OAuth Android client ID | - |
-| `APPLE_CLIENT_ID` | Apple Sign-In bundle ID | - |
-| `APPLE_TEAM_ID` | Apple Developer Team ID | - |
+| `APPLE_CLIENT_ID` | Apple Sign-In bundle ID (native apps) | - |
+| `APPLE_CLIENT_ID_WEB` | Apple Services ID (web flow) | - |
+| `APPLE_REDIRECT_URI` | Apple callback URL (web flow) | - |
 
 ---
 
@@ -203,16 +206,22 @@ docker run -p 5000:5000 \
 | Method | Path | Description | Auth |
 |--------|------|-------------|------|
 | POST | `/auth/api/oauth/google` | Authenticate with Google | No |
-| POST | `/auth/api/oauth/apple` | Authenticate with Apple | No |
+| POST | `/auth/api/oauth/apple` | Authenticate with Apple (native) | No |
+| GET | `/auth/api/oauth/apple/authorize` | Start Apple web sign-in (redirect) | No |
+| POST | `/auth/api/oauth/apple/callback` | Apple web callback (form_post) | No |
 
-**Google Auth Request:**
+**Google Auth Request (supports both token types):**
 ```json
 {
-  "id_token": "google-id-token-from-sdk"
+  "id_token": "google-id-token-from-mobile-sdk"
+}
+// OR for web client:
+{
+  "access_token": "google-access-token-from-gis"
 }
 ```
 
-**Apple Auth Request:**
+**Apple Auth Request (native apps):**
 ```json
 {
   "identity_token": "apple-identity-token",
@@ -224,6 +233,12 @@ docker run -p 5000:5000 \
   }
 }
 ```
+
+**Apple Web Flow:**
+1. Client redirects to `GET /auth/api/oauth/apple/authorize`
+2. User authenticates with Apple
+3. Apple POSTs to `/auth/api/oauth/apple/callback`
+4. Server redirects to `/lobby#auth_token=xxx&user=yyy`
 
 **OAuth Response:**
 ```json
@@ -402,6 +417,7 @@ The server includes a built-in web client accessible at the root URL.
 | `/register` | Registration page |
 | `/lobby` | Game lobby (requires auth) |
 | `/game?room={name}` | Game room (requires auth) |
+| `/join?room={name}` | Universal link - tries app deep link, falls back to web |
 | `/admin` | Admin panel (requires admin) |
 
 ### Authentication Options
@@ -410,7 +426,7 @@ The server includes a built-in web client accessible at the root URL.
 
 - **Sign in with Passkey** - Passwordless authentication using device biometrics or security key
 - **Sign in with Google** - OAuth authentication (requires `GOOGLE_CLIENT_ID`)
-- **Sign in with Apple** - OAuth authentication (iOS/macOS only)
+- **Sign in with Apple** - OAuth authentication (web requires `APPLE_CLIENT_ID_WEB` + `APPLE_REDIRECT_URI`)
 - **Email/Password** - Traditional login
 
 #### Register Page (`/register`)

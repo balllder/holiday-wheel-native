@@ -10,7 +10,8 @@ A React Native "Wheel of Fortune" style game app built as a monorepo with phone 
 holiday-wheel-native/
 ├── apps/
 │   ├── phone/          # React Native app for phones/tablets
-│   └── tv/             # React Native app for Apple TV/Android TV
+│   ├── tv/             # React Native app for Apple TV/Android TV
+│   └── backend-rust/   # Rust backend server (Axum + Socket.IO)
 ├── packages/
 │   └── shared/         # Shared types, stores, and services
 ├── package.json        # Root monorepo config
@@ -18,6 +19,7 @@ holiday-wheel-native/
 ```
 
 **Monorepo**: Uses npm workspaces + Turbo for task orchestration.
+**Backend**: Rust with Axum web framework, SQLite database, Socket.IO for real-time.
 
 ## Tech Stack
 
@@ -44,10 +46,16 @@ npm start              # Start Metro bundler
 npm run android        # Run on Android/Android TV
 npm run ios            # Run on iOS/Apple TV
 npm run test           # Run Jest tests
+
+# Backend (run from apps/backend-rust)
+cargo run              # Start server
+cargo build            # Build server
+cargo test             # Run tests
 ```
 
 ## Key Files
 
+**Frontend:**
 - `apps/phone/App.tsx` - Phone app entry point with deep linking
 - `apps/tv/src/App.tsx` - TV app entry point
 - `packages/shared/src/stores/authStore.ts` - Authentication state
@@ -56,6 +64,15 @@ npm run test           # Run Jest tests
 - `packages/shared/src/services/authService.ts` - Auth API service
 - `packages/shared/src/services/configService.ts` - Server URL configuration
 - `packages/shared/src/components/AnimatedWheel.tsx` - Shared wheel animation
+
+**Backend:**
+- `apps/backend-rust/src/main.rs` - Server entry point, routes setup
+- `apps/backend-rust/src/auth/mod.rs` - Authentication routes (login, register)
+- `apps/backend-rust/src/auth/passkey.rs` - WebAuthn/Passkey endpoints
+- `apps/backend-rust/src/auth/oauth.rs` - Google/Apple OAuth endpoints
+- `apps/backend-rust/src/game/handlers.rs` - Socket.IO game event handlers
+- `apps/backend-rust/src/db/mod.rs` - SQLite database operations
+- `apps/backend-rust/src/routes/mod.rs` - Web client HTML pages
 
 ## State Management Pattern
 
@@ -176,3 +193,31 @@ The TV app includes host controls (`HostControlPanel.tsx`):
 - **Player Management**: Set active player, view scores
 
 Toggle with Menu button during gameplay.
+
+## Backend Configuration
+
+Key environment variables for `apps/backend-rust`:
+
+```bash
+# Database
+DB_PATH=puzzles.db              # SQLite database path
+
+# Admin
+ADMIN_EMAIL=admin@example.com   # Auto-grant admin on login
+
+# WebAuthn/Passkeys
+WEBAUTHN_RP_ID=localhost
+WEBAUTHN_RP_ORIGIN=http://localhost:5000
+
+# OAuth - Google
+GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
+
+# OAuth - Apple (native)
+APPLE_CLIENT_ID=com.holidaywheel.phone
+
+# OAuth - Apple (web)
+APPLE_CLIENT_ID_WEB=com.holidaywheel.web
+APPLE_REDIRECT_URI=https://domain.com/auth/api/oauth/apple/callback
+```
+
+See `apps/backend-rust/README.md` for full API documentation.
