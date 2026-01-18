@@ -37,5 +37,10 @@ yarn-error.log*
 .DS_Store
 *.pem
 
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
 # Generated assets (regenerate with: node scripts/generate-icons.js)
 assets/generated-icons/
