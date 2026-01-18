@@ -1,6 +1,9 @@
 use std::sync::Arc;
+use std::path::PathBuf;
 
 use axum::{routing::get, Router};
+use axum_server::tls_rustls::RustlsConfig;
+use rustls::crypto::ring::default_provider;
 use socketioxide::SocketIo;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
@@ -25,6 +28,11 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Install the ring crypto provider for rustls
+    default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     // Initialize logging
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
@@ -85,10 +93,41 @@ async fn main() -> anyhow::Result<()> {
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| "5000".to_string())
         .parse::<u16>()?;
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
 
-    info!("Server running on http://0.0.0.0:{}", port);
-    axum::serve(listener, app).await?;
+    let ssl_enabled = std::env::var("SSL_ENABLED")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false);
+    let ssl_cert = std::env::var("SSL_CERT").ok();
+    let ssl_key = std::env::var("SSL_KEY").ok();
+
+    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
+
+    // Use HTTPS if SSL is enabled and certificates are provided
+    if ssl_enabled {
+        match (ssl_cert, ssl_key) {
+            (Some(cert_path), Some(key_path)) => {
+                let config = RustlsConfig::from_pem_file(
+                    PathBuf::from(&cert_path),
+                    PathBuf::from(&key_path),
+                )
+                .await?;
+
+                info!("Server running on https://0.0.0.0:{}", port);
+                info!("SSL cert: {}, key: {}", cert_path, key_path);
+                axum_server::bind_rustls(addr, config)
+                    .serve(app.into_make_service())
+                    .await?;
+            }
+            _ => {
+                anyhow::bail!("SSL_ENABLED=true but SSL_CERT and/or SSL_KEY not set");
+            }
+        }
+    } else {
+        info!("Server running on http://0.0.0.0:{}", port);
+        info!("To enable HTTPS, set SSL_ENABLED=true with SSL_CERT and SSL_KEY");
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        axum::serve(listener, app).await?;
+    }
 
     Ok(())
 }
