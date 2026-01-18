@@ -417,7 +417,7 @@ async fn register_finish(
     };
 
     // Create user (verified since passkey proves device ownership)
-    let user_id = match state.db.create_oauth_user(&email, &email.split('@').next().unwrap_or(&email), true).await {
+    let user_id = match state.db.create_oauth_user(&email, email.split('@').next().unwrap_or(&email), true).await {
         Ok(id) => id,
         Err(e) => {
             return (
@@ -1009,7 +1009,7 @@ async fn add_passkey_start(
     let exclude_credentials: Vec<CredentialID> = existing
         .iter()
         .filter_map(|p| URL_SAFE_NO_PAD.decode(&p.id).ok())
-        .map(|id| CredentialID::from(id))
+        .map(CredentialID::from)
         .collect();
 
     let user_unique_id = Uuid::new_v5(&Uuid::NAMESPACE_DNS, user.email.as_bytes());
