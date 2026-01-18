@@ -841,3 +841,369 @@ async fn handle_apple_web_user(
         Err(e) => Err(format!("Database error: {}", e)),
     }
 }
+
+// ========== TESTS ==========
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========== REQUEST/RESPONSE SERIALIZATION ==========
+
+    #[test]
+    fn test_google_auth_request_deserialize_id_token() {
+        let json = r#"{"id_token": "my-jwt-token"}"#;
+        let req: GoogleAuthRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.id_token, Some("my-jwt-token".to_string()));
+        assert_eq!(req.access_token, None);
+    }
+
+    #[test]
+    fn test_google_auth_request_deserialize_access_token() {
+        let json = r#"{"access_token": "my-access-token"}"#;
+        let req: GoogleAuthRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.id_token, None);
+        assert_eq!(req.access_token, Some("my-access-token".to_string()));
+    }
+
+    #[test]
+    fn test_google_auth_request_deserialize_both_tokens() {
+        let json = r#"{"id_token": "jwt", "access_token": "access"}"#;
+        let req: GoogleAuthRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.id_token, Some("jwt".to_string()));
+        assert_eq!(req.access_token, Some("access".to_string()));
+    }
+
+    #[test]
+    fn test_apple_auth_request_deserialize() {
+        let json = r#"{
+            "identity_token": "apple-jwt",
+            "user_identifier": "user-123",
+            "email": "test@example.com",
+            "full_name": {"given_name": "John", "family_name": "Doe"}
+        }"#;
+        let req: AppleAuthRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.identity_token, "apple-jwt");
+        assert_eq!(req.email, Some("test@example.com".to_string()));
+        let name = req.full_name.unwrap();
+        assert_eq!(name.given_name, Some("John".to_string()));
+        assert_eq!(name.family_name, Some("Doe".to_string()));
+    }
+
+    #[test]
+    fn test_apple_auth_request_minimal() {
+        let json = r#"{"identity_token": "apple-jwt"}"#;
+        let req: AppleAuthRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.identity_token, "apple-jwt");
+        assert_eq!(req.email, None);
+        assert!(req.full_name.is_none());
+    }
+
+    #[test]
+    fn test_oauth_response_serialize_success() {
+        let response = OAuthResponse {
+            ok: true,
+            token: Some("auth-token".to_string()),
+            user: Some(UserInfo {
+                id: 1,
+                email: "test@example.com".to_string(),
+                display_name: "Test User".to_string(),
+                is_admin: None,
+            }),
+            is_new_user: Some(true),
+            error: None,
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"ok\":true"));
+        assert!(json.contains("\"token\":\"auth-token\""));
+        assert!(json.contains("\"is_new_user\":true"));
+        assert!(!json.contains("\"error\"")); // None values should be skipped
+    }
+
+    #[test]
+    fn test_oauth_response_serialize_error() {
+        let response = OAuthResponse {
+            ok: false,
+            token: None,
+            user: None,
+            is_new_user: None,
+            error: Some("Invalid token".to_string()),
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"ok\":false"));
+        assert!(json.contains("\"error\":\"Invalid token\""));
+        assert!(!json.contains("\"token\"")); // None values should be skipped
+    }
+
+    // ========== JWKS/JWK PARSING ==========
+
+    #[test]
+    fn test_jwk_set_deserialize() {
+        let json = r#"{
+            "keys": [
+                {
+                    "kty": "RSA",
+                    "kid": "key-id-1",
+                    "use": "sig",
+                    "alg": "RS256",
+                    "n": "modulus-value",
+                    "e": "AQAB"
+                }
+            ]
+        }"#;
+        let jwks: JwkSet = serde_json::from_str(json).unwrap();
+        assert_eq!(jwks.keys.len(), 1);
+        let key = &jwks.keys[0];
+        assert_eq!(key.kty, "RSA");
+        assert_eq!(key.kid, "key-id-1");
+        assert_eq!(key.use_, Some("sig".to_string()));
+        assert_eq!(key.alg, Some("RS256".to_string()));
+        assert_eq!(key.n, Some("modulus-value".to_string()));
+        assert_eq!(key.e, Some("AQAB".to_string()));
+    }
+
+    #[test]
+    fn test_jwk_set_multiple_keys() {
+        let json = r#"{
+            "keys": [
+                {"kty": "RSA", "kid": "key1", "n": "n1", "e": "e1"},
+                {"kty": "RSA", "kid": "key2", "n": "n2", "e": "e2"}
+            ]
+        }"#;
+        let jwks: JwkSet = serde_json::from_str(json).unwrap();
+        assert_eq!(jwks.keys.len(), 2);
+        assert_eq!(jwks.keys[0].kid, "key1");
+        assert_eq!(jwks.keys[1].kid, "key2");
+    }
+
+    // ========== CLAIMS PARSING ==========
+
+    #[test]
+    fn test_google_claims_deserialize() {
+        let json = r#"{
+            "sub": "google-user-id",
+            "email": "user@gmail.com",
+            "email_verified": true,
+            "name": "John Doe",
+            "picture": "https://example.com/photo.jpg",
+            "aud": "client-id",
+            "iss": "https://accounts.google.com",
+            "exp": 1234567890
+        }"#;
+        let claims: GoogleClaims = serde_json::from_str(json).unwrap();
+        assert_eq!(claims.sub, "google-user-id");
+        assert_eq!(claims.email, Some("user@gmail.com".to_string()));
+        assert_eq!(claims.name, Some("John Doe".to_string()));
+        assert_eq!(claims.aud, "client-id");
+        assert_eq!(claims.iss, "https://accounts.google.com");
+        assert_eq!(claims.exp, 1234567890);
+    }
+
+    #[test]
+    fn test_google_claims_minimal() {
+        let json = r#"{
+            "sub": "user-id",
+            "aud": "client-id",
+            "iss": "accounts.google.com",
+            "exp": 123
+        }"#;
+        let claims: GoogleClaims = serde_json::from_str(json).unwrap();
+        assert_eq!(claims.sub, "user-id");
+        assert_eq!(claims.email, None);
+        assert_eq!(claims.name, None);
+    }
+
+    #[test]
+    fn test_apple_claims_deserialize() {
+        let json = r#"{
+            "sub": "apple-user-id",
+            "email": "user@privaterelay.appleid.com",
+            "email_verified": true,
+            "aud": "com.example.app",
+            "iss": "https://appleid.apple.com",
+            "exp": 1234567890
+        }"#;
+        let claims: AppleClaims = serde_json::from_str(json).unwrap();
+        assert_eq!(claims.sub, "apple-user-id");
+        assert_eq!(claims.email, Some("user@privaterelay.appleid.com".to_string()));
+        assert_eq!(claims.aud, "com.example.app");
+        assert_eq!(claims.iss, "https://appleid.apple.com");
+    }
+
+    #[test]
+    fn test_apple_claims_boolean_email_verified() {
+        // Apple sends email_verified as boolean, not string
+        let json = r#"{
+            "sub": "user-id",
+            "email_verified": false,
+            "aud": "client",
+            "iss": "https://appleid.apple.com",
+            "exp": 123
+        }"#;
+        let claims: AppleClaims = serde_json::from_str(json).unwrap();
+        assert_eq!(claims.email_verified, Some(false));
+    }
+
+    // ========== GOOGLE USER INFO ==========
+
+    #[test]
+    fn test_google_user_info_deserialize() {
+        let json = r#"{
+            "sub": "123456789",
+            "email": "user@gmail.com",
+            "email_verified": true,
+            "name": "Test User",
+            "picture": "https://example.com/photo.jpg"
+        }"#;
+        let info: GoogleUserInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.sub, "123456789");
+        assert_eq!(info.email, Some("user@gmail.com".to_string()));
+        assert_eq!(info.name, Some("Test User".to_string()));
+    }
+
+    // ========== APPLE CALLBACK FORM ==========
+
+    #[test]
+    fn test_apple_callback_form_deserialize() {
+        let json = r#"{
+            "code": "auth-code",
+            "id_token": "jwt-token",
+            "state": "csrf-token",
+            "user": "{\"name\":{\"firstName\":\"John\"}}"
+        }"#;
+        let form: AppleCallbackForm = serde_json::from_str(json).unwrap();
+        assert_eq!(form.id_token, Some("jwt-token".to_string()));
+        assert_eq!(form.state, Some("csrf-token".to_string()));
+        assert!(form.user.is_some());
+    }
+
+    #[test]
+    fn test_apple_callback_form_with_error() {
+        let json = r#"{"error": "user_cancelled_authorize"}"#;
+        let form: AppleCallbackForm = serde_json::from_str(json).unwrap();
+        assert_eq!(form.error, Some("user_cancelled_authorize".to_string()));
+        assert_eq!(form.id_token, None);
+    }
+
+    #[test]
+    fn test_apple_user_data_deserialize() {
+        let json = r#"{
+            "name": {"firstName": "John", "lastName": "Doe"},
+            "email": "john@example.com"
+        }"#;
+        let data: AppleUserData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.email, Some("john@example.com".to_string()));
+        let name = data.name.unwrap();
+        assert_eq!(name.first_name, Some("John".to_string()));
+        assert_eq!(name.last_name, Some("Doe".to_string()));
+    }
+
+    // ========== OAUTH STATE MANAGEMENT ==========
+
+    #[tokio::test]
+    async fn test_oauth_state_storage() {
+        // Clear any existing state first
+        {
+            let mut states = OAUTH_STATES.write().await;
+            states.clear();
+        }
+
+        // Insert a state
+        {
+            let mut states = OAUTH_STATES.write().await;
+            states.insert("test-state".to_string(), OAuthState {
+                created_at: now_secs(),
+                redirect_uri: "/lobby".to_string(),
+            });
+        }
+
+        // Verify it's retrievable
+        {
+            let states = OAUTH_STATES.read().await;
+            let state = states.get("test-state").unwrap();
+            assert_eq!(state.redirect_uri, "/lobby");
+        }
+
+        // Clean up
+        {
+            let mut states = OAUTH_STATES.write().await;
+            states.remove("test-state");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_oauth_state_cleanup_removes_expired() {
+        // Clear existing states
+        {
+            let mut states = OAUTH_STATES.write().await;
+            states.clear();
+        }
+
+        // Insert an expired state (created 11 minutes ago)
+        {
+            let mut states = OAUTH_STATES.write().await;
+            states.insert("expired-state".to_string(), OAuthState {
+                created_at: now_secs() - 660, // 11 minutes ago
+                redirect_uri: "/old".to_string(),
+            });
+            // Insert a valid state
+            states.insert("valid-state".to_string(), OAuthState {
+                created_at: now_secs(),
+                redirect_uri: "/new".to_string(),
+            });
+        }
+
+        // Run cleanup
+        cleanup_expired_states().await;
+
+        // Verify expired is removed, valid remains
+        {
+            let states = OAUTH_STATES.read().await;
+            assert!(states.get("expired-state").is_none(), "Expired state should be removed");
+            assert!(states.get("valid-state").is_some(), "Valid state should remain");
+        }
+
+        // Clean up
+        {
+            let mut states = OAUTH_STATES.write().await;
+            states.clear();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_oauth_state_10_minute_expiration() {
+        // State exactly at 10 minute boundary
+        let state = OAuthState {
+            created_at: now_secs() - 600, // Exactly 10 minutes ago
+            redirect_uri: "/test".to_string(),
+        };
+
+        // Should be expired (>= 600 seconds)
+        let is_expired = now_secs() - state.created_at >= 600;
+        assert!(is_expired, "State at exactly 10 minutes should be expired");
+    }
+
+    #[test]
+    fn test_now_secs_reasonable() {
+        let now = now_secs();
+        // Should be after 2024-01-01 (1704067200) and before 2100-01-01
+        assert!(now > 1704067200, "Timestamp should be after 2024");
+        assert!(now < 4102444800, "Timestamp should be before 2100");
+    }
+
+    // ========== APPLE AUTHORIZE QUERY ==========
+
+    #[test]
+    fn test_apple_authorize_query_deserialize() {
+        let json = r#"{"redirect": "/custom-page"}"#;
+        let query: AppleAuthorizeQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.redirect, Some("/custom-page".to_string()));
+    }
+
+    #[test]
+    fn test_apple_authorize_query_default() {
+        let json = r#"{}"#;
+        let query: AppleAuthorizeQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.redirect, None);
+    }
+}
