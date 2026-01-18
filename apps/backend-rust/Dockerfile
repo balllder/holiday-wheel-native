@@ -34,11 +34,11 @@ RUN mkdir -p /app/data
 
 EXPOSE 5000
 
-# Environment variables
+# Environment variables (defaults, can be overridden at runtime)
 ENV PORT=5000
 ENV RUST_LOG=info
 ENV HOST_CODE=holiday
-ENV DATABASE_URL=sqlite:/app/data/puzzles.db
+ENV DB_PATH=/app/data/puzzles.db
 ENV EMAIL_ENABLED=false
 
 CMD ["/app/holiday-wheel-backend"]
