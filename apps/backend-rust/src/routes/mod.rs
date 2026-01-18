@@ -144,7 +144,7 @@ const COMMON_STYLES: &str = r#"
 
 /// Root route - serves login page
 pub async fn index() -> Html<String> {
-    Html(format!(r#"<!DOCTYPE html>
+    Html(format!(r##"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -447,7 +447,7 @@ pub async fn index() -> Html<String> {
         }});
     </script>
 </body>
-</html>"#, common_styles = COMMON_STYLES))
+</html>"##, common_styles = COMMON_STYLES))
 }
 
 /// Register page
