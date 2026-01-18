@@ -305,6 +305,7 @@ const COMMON_STYLES: &str = r#"
 
 /// Root route - serves login page
 pub async fn index() -> Html<String> {
+    let google_client_id = std::env::var("GOOGLE_CLIENT_ID").unwrap_or_default();
     Html(format!(r##"<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -411,6 +412,9 @@ pub async fn index() -> Html<String> {
     </div>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script>
+        // Inject Google Client ID from server
+        window.GOOGLE_CLIENT_ID = '{google_client_id}';
+
         // Check if already logged in
         if (localStorage.getItem('user')) {{
             window.location.href = '/lobby';
@@ -612,7 +616,7 @@ pub async fn index() -> Html<String> {
         }});
     </script>
 </body>
-</html>"##, common_styles = COMMON_STYLES))
+</html>"##, common_styles = COMMON_STYLES, google_client_id = google_client_id))
 }
 
 /// Register page
