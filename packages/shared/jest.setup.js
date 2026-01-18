@@ -54,15 +54,23 @@ jest.mock('react-native', () => {
       })),
       timing: jest.fn(() => ({
         start: jest.fn((cb) => cb && cb()),
+        stop: jest.fn(),
       })),
       spring: jest.fn(() => ({
         start: jest.fn((cb) => cb && cb()),
+        stop: jest.fn(),
       })),
       sequence: jest.fn(() => ({
         start: jest.fn((cb) => cb && cb()),
+        stop: jest.fn(),
       })),
       parallel: jest.fn(() => ({
         start: jest.fn((cb) => cb && cb()),
+        stop: jest.fn(),
+      })),
+      delay: jest.fn(() => ({
+        start: jest.fn((cb) => cb && cb()),
+        stop: jest.fn(),
       })),
       createAnimatedComponent: jest.fn((component) => component),
     },
@@ -74,6 +82,11 @@ jest.mock('react-native', () => {
     Platform: {
       OS: 'ios',
       select: jest.fn((obj) => obj.ios || obj.default),
+    },
+    Dimensions: {
+      get: jest.fn(() => ({ width: 400, height: 800 })),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
     },
   };
 });

@@ -10,6 +10,12 @@ export { AnimatedScore, useScoreAnimation } from './components/AnimatedScore';
 export type { AnimatedScoreProps } from './components/AnimatedScore';
 export { AnimatedButton, SpinButton, BuzzButton } from './components/AnimatedButton';
 export type { AnimatedButtonProps } from './components/AnimatedButton';
+export { LetterCell } from './components/LetterCell';
+export type { LetterCellProps, LetterState } from './components/LetterCell';
+export { PuzzleBoard } from './components/PuzzleBoard';
+export type { PuzzleBoardProps } from './components/PuzzleBoard';
+export { Confetti, useConfetti } from './components/Confetti';
+export type { ConfettiProps } from './components/Confetti';
 
 // Stores
 export {
