@@ -150,13 +150,89 @@ pub async fn index() -> Html<String> {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Holiday Wheel - Login</title>
-    <style>{}</style>
+    <style>
+        {common_styles}
+        .social-buttons {{
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+        }}
+        .social-btn {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }}
+        .social-btn svg {{
+            width: 20px;
+            height: 20px;
+        }}
+        .btn-passkey {{
+            background: #5856d6;
+            color: #fff;
+        }}
+        .btn-passkey:hover {{ background: #6b69e0; }}
+        .btn-google {{
+            background: #fff;
+            color: #444;
+            border: 1px solid #ddd;
+        }}
+        .btn-google:hover {{ background: #f5f5f5; }}
+        .btn-apple {{
+            background: #000;
+            color: #fff;
+        }}
+        .btn-apple:hover {{ background: #222; }}
+        .divider {{
+            display: flex;
+            align-items: center;
+            margin: 24px 0;
+            color: #888;
+        }}
+        .divider::before, .divider::after {{
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #333;
+        }}
+        .divider span {{
+            padding: 0 16px;
+            font-size: 14px;
+        }}
+        .hidden {{ display: none !important; }}
+    </style>
 </head>
 <body>
     <div class="container">
         <h1>🎡 Holiday Wheel</h1>
         <p class="subtitle">Sign in to play</p>
         <div class="error" id="error"></div>
+
+        <div class="social-buttons">
+            <button id="passkeyBtn" class="social-btn btn-passkey hidden" onclick="loginWithPasskey()">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1C8.14 1 5 4.14 5 8c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h1v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2h1a1 1 0 0 0 1-1v-3.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7zm0 2c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5 2.24-5 5-5zm0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/></svg>
+                Sign in with Passkey
+            </button>
+            <button id="googleBtn" class="social-btn btn-google" onclick="loginWithGoogle()">
+                <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                Sign in with Google
+            </button>
+            <button id="appleBtn" class="social-btn btn-apple" onclick="loginWithApple()">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                Sign in with Apple
+            </button>
+        </div>
+
+        <div class="divider"><span>or sign in with email</span></div>
+
         <form id="loginForm">
             <div class="form-group">
                 <label for="email">Email</label>
@@ -172,10 +248,172 @@ pub async fn index() -> Html<String> {
             <p>Don't have an account? <a href="/register">Register</a></p>
         </div>
     </div>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script>
         // Check if already logged in
         if (localStorage.getItem('token')) {{
             window.location.href = '/lobby';
+        }}
+
+        // Check passkey support
+        if (window.PublicKeyCredential && PublicKeyCredential.isConditionalMediationAvailable) {{
+            PublicKeyCredential.isConditionalMediationAvailable().then(available => {{
+                if (available || window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {{
+                    document.getElementById('passkeyBtn').classList.remove('hidden');
+                }}
+            }});
+        }}
+
+        async function loginWithPasskey() {{
+            const errorDiv = document.getElementById('error');
+            errorDiv.style.display = 'none';
+            try {{
+                // Start passkey login - need email first for discoverable credentials
+                const email = document.getElementById('email').value;
+                const startRes = await fetch('/auth/api/passkey/login/start', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ email: email || undefined }})
+                }});
+                const startData = await startRes.json();
+                if (!startRes.ok) {{
+                    errorDiv.textContent = startData.error || 'Failed to start passkey login';
+                    errorDiv.style.display = 'block';
+                    return;
+                }}
+
+                // Convert base64url to ArrayBuffer
+                const challenge = base64urlToBuffer(startData.options.challenge);
+                const allowCredentials = (startData.options.allowCredentials || []).map(c => ({{
+                    id: base64urlToBuffer(c.id),
+                    type: c.type,
+                    transports: c.transports
+                }}));
+
+                const credential = await navigator.credentials.get({{
+                    publicKey: {{
+                        challenge,
+                        allowCredentials,
+                        userVerification: startData.options.userVerification || 'preferred',
+                        timeout: startData.options.timeout || 60000,
+                        rpId: startData.options.rpId
+                    }}
+                }});
+
+                // Complete login
+                const finishRes = await fetch('/auth/api/passkey/login/finish', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        id: credential.id,
+                        rawId: bufferToBase64url(credential.rawId),
+                        response: {{
+                            clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                            authenticatorData: bufferToBase64url(credential.response.authenticatorData),
+                            signature: bufferToBase64url(credential.response.signature),
+                            userHandle: credential.response.userHandle ? bufferToBase64url(credential.response.userHandle) : null
+                        }},
+                        type: credential.type
+                    }})
+                }});
+
+                const finishData = await finishRes.json();
+                if (finishRes.ok && finishData.token) {{
+                    localStorage.setItem('token', finishData.token);
+                    localStorage.setItem('user', JSON.stringify(finishData.user));
+                    window.location.href = '/lobby';
+                }} else {{
+                    errorDiv.textContent = finishData.error || 'Passkey login failed';
+                    errorDiv.style.display = 'block';
+                }}
+            }} catch (err) {{
+                console.error('Passkey error:', err);
+                errorDiv.textContent = err.name === 'NotAllowedError' ? 'Passkey authentication was cancelled' : 'Passkey login failed';
+                errorDiv.style.display = 'block';
+            }}
+        }}
+
+        async function loginWithGoogle() {{
+            const errorDiv = document.getElementById('error');
+            errorDiv.style.display = 'none';
+            try {{
+                // Use Google Identity Services popup
+                const client = google.accounts.oauth2.initTokenClient({{
+                    client_id: window.GOOGLE_CLIENT_ID || '',
+                    scope: 'email profile',
+                    callback: async (response) => {{
+                        if (response.error) {{
+                            errorDiv.textContent = 'Google sign-in failed';
+                            errorDiv.style.display = 'block';
+                            return;
+                        }}
+                        // Exchange access token for ID token info
+                        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {{
+                            headers: {{ 'Authorization': 'Bearer ' + response.access_token }}
+                        }});
+                        const userInfo = await userInfoRes.json();
+
+                        // Send to backend - use access_token since we can't get id_token directly
+                        const res = await fetch('/auth/api/oauth/google', {{
+                            method: 'POST',
+                            headers: {{ 'Content-Type': 'application/json' }},
+                            body: JSON.stringify({{ access_token: response.access_token, user_info: userInfo }})
+                        }});
+                        const data = await res.json();
+                        if (res.ok && data.token) {{
+                            localStorage.setItem('token', data.token);
+                            localStorage.setItem('user', JSON.stringify(data.user));
+                            window.location.href = '/lobby';
+                        }} else {{
+                            errorDiv.textContent = data.error || 'Google login failed';
+                            errorDiv.style.display = 'block';
+                        }}
+                    }}
+                }});
+                client.requestAccessToken();
+            }} catch (err) {{
+                console.error('Google error:', err);
+                errorDiv.textContent = 'Google sign-in failed';
+                errorDiv.style.display = 'block';
+            }}
+        }}
+
+        async function loginWithApple() {{
+            const errorDiv = document.getElementById('error');
+            errorDiv.style.display = 'none';
+            try {{
+                // Apple Sign In requires redirect flow for web
+                // For now, show message that Apple Sign In is available on iOS/tvOS apps
+                errorDiv.style.background = '#333';
+                errorDiv.textContent = 'Apple Sign In is available in the iOS and tvOS apps. Use email/password or passkey on web.';
+                errorDiv.style.display = 'block';
+            }} catch (err) {{
+                console.error('Apple error:', err);
+                errorDiv.textContent = 'Apple sign-in failed';
+                errorDiv.style.display = 'block';
+            }}
+        }}
+
+        // Base64URL utilities
+        function base64urlToBuffer(base64url) {{
+            const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+            const pad = base64.length % 4;
+            const padded = pad ? base64 + '='.repeat(4 - pad) : base64;
+            const binary = atob(padded);
+            const buffer = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {{
+                buffer[i] = binary.charCodeAt(i);
+            }}
+            return buffer.buffer;
+        }}
+
+        function bufferToBase64url(buffer) {{
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {{
+                binary += String.fromCharCode(bytes[i]);
+            }}
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
         }}
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {{
@@ -209,7 +447,7 @@ pub async fn index() -> Html<String> {
         }});
     </script>
 </body>
-</html>"#, COMMON_STYLES))
+</html>"#, common_styles = COMMON_STYLES))
 }
 
 /// Register page
@@ -306,16 +544,42 @@ pub async fn lobby() -> Html<String> {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Holiday Wheel - Lobby</title>
-    <style>{}</style>
+    <style>
+        {common_styles}
+        .lobby-header {{
+            text-align: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #333;
+        }}
+        .lobby-header h1 {{
+            font-size: 36px;
+            margin-bottom: 8px;
+        }}
+        .user-row {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+        }}
+        .header-buttons {{
+            display: flex;
+            gap: 12px;
+        }}
+        .hidden {{ display: none !important; }}
+    </style>
 </head>
 <body>
     <div class="container wide">
-        <div class="user-info">
-            <div>
-                <h1>🎡 Holiday Wheel</h1>
+        <div class="lobby-header">
+            <h1>🎡 Holiday Wheel</h1>
+            <div class="user-row">
                 <span>Welcome, <span class="user-name" id="userName">Player</span>!</span>
+                <div class="header-buttons">
+                    <a href="/admin" id="adminBtn" class="btn hidden" style="background:#5856d6;">Admin</a>
+                    <button class="btn btn-secondary" onclick="logout()">Logout</button>
+                </div>
             </div>
-            <button class="btn btn-secondary" onclick="logout()">Logout</button>
         </div>
 
         <h2 style="color: #fff; margin-bottom: 16px;">Active Rooms</h2>
@@ -339,6 +603,22 @@ pub async fn lobby() -> Html<String> {
         }} else {{
             document.getElementById('userName').textContent = user.display_name || user.email;
         }}
+
+        // Check admin status
+        async function checkAdmin() {{
+            try {{
+                const res = await fetch('/auth/api/admin/users', {{
+                    headers: {{ 'Authorization': 'Bearer ' + token }}
+                }});
+                if (res.ok) {{
+                    // User is admin - show admin button
+                    document.getElementById('adminBtn').classList.remove('hidden');
+                }}
+            }} catch (e) {{
+                // Not admin or error - keep button hidden
+            }}
+        }}
+        checkAdmin();
 
         // Load rooms
         async function loadRooms() {{
@@ -380,7 +660,7 @@ pub async fn lobby() -> Html<String> {
         setInterval(loadRooms, 5000);
     </script>
 </body>
-</html>"#, COMMON_STYLES))
+</html>"#, common_styles = COMMON_STYLES))
 }
 
 /// Game page
@@ -557,14 +837,32 @@ pub async fn game() -> Html<String> {
             color: #888;
             margin-bottom: 10px;
         }}
+        .game-header {{
+            text-align: center;
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #333;
+            position: relative;
+        }}
+        .game-header h1 {{
+            color: #d4af37;
+            margin: 0;
+            font-size: 32px;
+        }}
+        .game-header .leave-btn {{
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+        }}
     </style>
 </head>
 <body>
     <div class="game-container">
         <div class="main-area">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h1 style="color: #d4af37; margin: 0;">🎡 Holiday Wheel</h1>
-                <a href="/lobby" class="btn btn-secondary">Leave Room</a>
+            <div class="game-header">
+                <h1>🎡 Holiday Wheel</h1>
+                <a href="/lobby" class="btn btn-secondary leave-btn">Leave Room</a>
             </div>
 
             <div class="notification" id="notification"></div>
@@ -1030,7 +1328,7 @@ pub async fn game() -> Html<String> {
             // Set spinning state immediately so incoming toasts get queued
             isWheelSpinning = true;
             document.getElementById('wheelResult').textContent = 'Spinning...';
-            socket.emit('spin', {{ room }});
+            socket.emit('spin', {{}});
 
             // Fallback: if no animation started within 2 seconds, reset and show pending toasts
             setTimeout(() => {{
@@ -1047,7 +1345,7 @@ pub async fn game() -> Html<String> {
             const input = document.getElementById('letterInput');
             const letter = input.value.toUpperCase();
             if (letter && letter.length === 1) {{
-                socket.emit('guess', {{ room, letter }});
+                socket.emit('guess_letter', {{ letter }});
                 input.value = '';
             }}
         }}
@@ -1056,7 +1354,7 @@ pub async fn game() -> Html<String> {
             hideNotification();
             const vowel = prompt('Enter a vowel (A, E, I, O, U):');
             if (vowel && 'AEIOU'.includes(vowel.toUpperCase())) {{
-                socket.emit('buy_vowel', {{ room, letter: vowel.toUpperCase() }});
+                socket.emit('buy_vowel', {{ letter: vowel.toUpperCase() }});
             }}
         }}
 
@@ -1064,7 +1362,7 @@ pub async fn game() -> Html<String> {
             hideNotification();
             const solution = prompt('Enter your solution:');
             if (solution) {{
-                socket.emit('solve', {{ room, solution }});
+                socket.emit('solve', {{ answer: solution }});
             }}
         }}
 
@@ -1239,6 +1537,16 @@ pub async fn admin() -> Html<String> {
                     </div>
                     <button class="btn" onclick="createPack()">Create Pack</button>
                 </div>
+                <div class="form-row" style="margin-top: 24px; padding-top: 24px; border-top: 1px solid #333;">
+                    <div class="form-group">
+                        <label>Import Puzzle Pack (JSON file)</label>
+                        <input type="file" id="importFile" accept=".json" style="padding: 8px; background: #0d0628; color: #fff; border: 2px solid #333; border-radius: 8px; width: 100%;">
+                    </div>
+                    <button class="btn btn-secondary" onclick="importPack()">Import Pack</button>
+                </div>
+                <p style="color: #888; font-size: 12px; margin-top: 8px;">
+                    JSON format: {{ "name": "Pack Name", "puzzles": [{{ "category": "PHRASE", "answer": "HELLO WORLD" }}] }}
+                </p>
                 <table>
                     <thead>
                         <tr>
@@ -1516,6 +1824,67 @@ pub async fn admin() -> Html<String> {
             }});
             if (res.ok) {{ showSuccess('Pack deleted'); loadPacks(); loadPuzzles(); }}
             else {{ showError('Failed to delete pack'); }}
+        }}
+
+        async function importPack() {{
+            const fileInput = document.getElementById('importFile');
+            if (!fileInput.files || fileInput.files.length === 0) {{
+                showError('Please select a JSON file to import');
+                return;
+            }}
+
+            try {{
+                const file = fileInput.files[0];
+                const text = await file.text();
+                const data = JSON.parse(text);
+
+                if (!data.name || !data.puzzles || !Array.isArray(data.puzzles)) {{
+                    showError('Invalid file format. Expected {{ "name": "...", "puzzles": [...] }}');
+                    return;
+                }}
+
+                // Create the pack first
+                const packRes = await fetch('/auth/api/admin/packs', {{
+                    method: 'POST',
+                    headers: {{ 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ name: data.name }})
+                }});
+
+                if (!packRes.ok) {{
+                    const err = await packRes.json();
+                    showError(err.error || 'Failed to create pack');
+                    return;
+                }}
+
+                const pack = await packRes.json();
+                const packId = pack.pack?.id || pack.id;
+
+                // Import puzzles
+                const importRes = await fetch('/auth/api/admin/puzzles/import', {{
+                    method: 'POST',
+                    headers: {{ 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        pack_id: packId,
+                        puzzles: data.puzzles.map(p => ({{
+                            category: p.category,
+                            answer: p.answer.toUpperCase()
+                        }}))
+                    }})
+                }});
+
+                if (importRes.ok) {{
+                    const result = await importRes.json();
+                    showSuccess(`Imported ${{result.count || data.puzzles.length}} puzzles into "${{data.name}}"`);
+                    fileInput.value = '';
+                    loadPacks();
+                    loadPuzzles();
+                }} else {{
+                    showError('Failed to import puzzles');
+                }}
+            }} catch (e) {{
+                console.error('Import error:', e);
+                showError('Failed to parse JSON file: ' + e.message);
+            }}
         }}
 
         async function loadPuzzles() {{
