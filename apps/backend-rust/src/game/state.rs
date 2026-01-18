@@ -111,6 +111,8 @@ pub struct RoomConfig {
     pub prize_replace_cash_values: Vec<i32>,
     pub puzzle_display_seconds: i32,
     pub prize_wedge_names: Vec<String>,
+    #[serde(default)]
+    pub pack_id: Option<i64>, // None or 0 = all packs
 }
 
 impl Default for RoomConfig {
@@ -122,6 +124,7 @@ impl Default for RoomConfig {
             prize_replace_cash_values: vec![500, 1000, 1500, 2000, 2500, 3000, 3500],
             puzzle_display_seconds: 30,
             prize_wedge_names: vec!["GIFT CARD".to_string()],
+            pack_id: None, // All packs by default
         }
     }
 }

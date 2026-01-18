@@ -556,28 +556,46 @@ impl Database {
     // ========== PUZZLE METHODS ==========
 
     /// Get a random puzzle from a pack (excluding already used ones)
+    /// If pack_id is None or Some(0), puzzles from all packs are used
     pub async fn get_random_puzzle(
         &self,
         room_name: &str,
         pack_id: Option<i64>,
     ) -> Result<Puzzle, DbError> {
-        let pack_id = pack_id.unwrap_or(1);
+        // None or 0 means "all packs"
+        let use_all_packs = pack_id.is_none() || pack_id == Some(0);
 
-        let row = sqlx::query(
-            r#"
-            SELECT id, category, answer
-            FROM puzzles
-            WHERE pack_id = ?
-              AND enabled = 1
-              AND id NOT IN (SELECT puzzle_id FROM used_puzzles WHERE room_name = ?)
-            ORDER BY RANDOM()
-            LIMIT 1
-            "#,
-        )
-        .bind(pack_id)
-        .bind(room_name)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = if use_all_packs {
+            sqlx::query(
+                r#"
+                SELECT id, category, answer
+                FROM puzzles
+                WHERE enabled = 1
+                  AND id NOT IN (SELECT puzzle_id FROM used_puzzles WHERE room_name = ?)
+                ORDER BY RANDOM()
+                LIMIT 1
+                "#,
+            )
+            .bind(room_name)
+            .fetch_optional(&self.pool)
+            .await?
+        } else {
+            sqlx::query(
+                r#"
+                SELECT id, category, answer
+                FROM puzzles
+                WHERE pack_id = ?
+                  AND enabled = 1
+                  AND id NOT IN (SELECT puzzle_id FROM used_puzzles WHERE room_name = ?)
+                ORDER BY RANDOM()
+                LIMIT 1
+                "#,
+            )
+            .bind(pack_id.unwrap())
+            .bind(room_name)
+            .fetch_optional(&self.pool)
+            .await?
+        };
 
         if let Some(row) = row {
             let puzzle = Puzzle {
@@ -594,18 +612,32 @@ impl Database {
             // If no unused puzzles, clear used list and try again
             self.clear_used_puzzles(room_name).await?;
 
-            let row = sqlx::query(
-                r#"
-                SELECT id, category, answer
-                FROM puzzles
-                WHERE pack_id = ? AND enabled = 1
-                ORDER BY RANDOM()
-                LIMIT 1
-                "#,
-            )
-            .bind(pack_id)
-            .fetch_optional(&self.pool)
-            .await?;
+            let row = if use_all_packs {
+                sqlx::query(
+                    r#"
+                    SELECT id, category, answer
+                    FROM puzzles
+                    WHERE enabled = 1
+                    ORDER BY RANDOM()
+                    LIMIT 1
+                    "#,
+                )
+                .fetch_optional(&self.pool)
+                .await?
+            } else {
+                sqlx::query(
+                    r#"
+                    SELECT id, category, answer
+                    FROM puzzles
+                    WHERE pack_id = ? AND enabled = 1
+                    ORDER BY RANDOM()
+                    LIMIT 1
+                    "#,
+                )
+                .bind(pack_id.unwrap())
+                .fetch_optional(&self.pool)
+                .await?
+            };
 
             if let Some(row) = row {
                 let puzzle = Puzzle {
@@ -754,6 +786,7 @@ impl Database {
                 prize_replace_cash_values: prize_values,
                 puzzle_display_seconds: row.get::<Option<i32>, _>("puzzle_display_seconds").unwrap_or(30),
                 prize_wedge_names,
+                pack_id: row.get::<Option<i64>, _>("active_pack_id"),
             })
         } else {
             Ok(RoomConfig::default())

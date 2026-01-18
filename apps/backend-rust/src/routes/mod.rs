@@ -2471,6 +2471,12 @@ pub async fn admin() -> Html<String> {
                 <h3 style="color: #d4af37; margin: 24px 0 16px;">Puzzle Settings</h3>
                 <div class="form-row">
                     <div class="form-group">
+                        <label>Puzzle Pack</label>
+                        <select id="settingsPackId" style="width:100%;padding:12px;background:#0d0628;color:#fff;border:2px solid #333;border-radius:8px;">
+                            <option value="0">All Packs</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <label>Puzzle Display Time (seconds)</label>
                         <input type="number" id="settingsPuzzleDisplay" value="30" min="5" max="120" placeholder="30">
                     </div>
@@ -2633,6 +2639,8 @@ pub async fn admin() -> Html<String> {
                 const options = data.packs.map(p => `<option value="${{p.id}}">${{p.name}}</option>`).join('');
                 document.getElementById('puzzlePackSelect').innerHTML = '<option value="">All Packs</option>' + options;
                 document.getElementById('newPuzzlePack').innerHTML = options;
+                // Update settings pack selector
+                document.getElementById('settingsPackId').innerHTML = '<option value="0">All Packs</option>' + options;
             }}
         }}
 
@@ -2675,50 +2683,72 @@ pub async fn admin() -> Html<String> {
                 const text = await file.text();
                 const data = JSON.parse(text);
 
-                if (!data.name || !data.puzzles || !Array.isArray(data.puzzles)) {{
-                    showError('Invalid file format. Expected {{ "name": "...", "puzzles": [...] }}');
+                // Support both single pack and multiple packs formats
+                let packsToImport = [];
+                if (data.packs && Array.isArray(data.packs)) {{
+                    // Multiple packs format: {{ "packs": [{{ "name": "...", "puzzles": [...] }}, ...] }}
+                    packsToImport = data.packs;
+                }} else if (data.name && data.puzzles && Array.isArray(data.puzzles)) {{
+                    // Single pack format: {{ "name": "...", "puzzles": [...] }}
+                    packsToImport = [data];
+                }} else {{
+                    showError('Invalid file format. Expected {{ "name": "...", "puzzles": [...] }} or {{ "packs": [...] }}');
                     return;
                 }}
 
-                // Create the pack first
-                const packRes = await fetch('/auth/api/admin/packs', {{
-                    method: 'POST',
-                    headers: {{ 'Content-Type': 'application/json' }},
-                    credentials: 'include',
-                    body: JSON.stringify({{ name: data.name }})
-                }});
+                let totalImported = 0;
+                let packsCreated = 0;
 
-                if (!packRes.ok) {{
-                    const err = await packRes.json();
-                    showError(err.error || 'Failed to create pack');
-                    return;
+                for (const packData of packsToImport) {{
+                    if (!packData.name || !packData.puzzles || !Array.isArray(packData.puzzles)) {{
+                        console.warn('Skipping invalid pack:', packData);
+                        continue;
+                    }}
+
+                    // Create the pack first
+                    const packRes = await fetch('/auth/api/admin/packs', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        credentials: 'include',
+                        body: JSON.stringify({{ name: packData.name }})
+                    }});
+
+                    if (!packRes.ok) {{
+                        const err = await packRes.json();
+                        console.warn(`Failed to create pack "${{packData.name}}":`, err.error);
+                        continue;
+                    }}
+
+                    const pack = await packRes.json();
+                    const packId = pack.pack?.id || pack.id;
+
+                    // Import puzzles
+                    const importRes = await fetch('/auth/api/admin/puzzles/import', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        credentials: 'include',
+                        body: JSON.stringify({{
+                            pack_id: packId,
+                            puzzles: packData.puzzles.map(p => ({{
+                                category: p.category,
+                                answer: p.answer.toUpperCase()
+                            }}))
+                        }})
+                    }});
+
+                    if (importRes.ok) {{
+                        totalImported += packData.puzzles.length;
+                        packsCreated++;
+                    }}
                 }}
 
-                const pack = await packRes.json();
-                const packId = pack.pack?.id || pack.id;
-
-                // Import puzzles
-                const importRes = await fetch('/auth/api/admin/puzzles/import', {{
-                    method: 'POST',
-                    headers: {{ 'Content-Type': 'application/json' }},
-                    credentials: 'include',
-                    body: JSON.stringify({{
-                        pack_id: packId,
-                        puzzles: data.puzzles.map(p => ({{
-                            category: p.category,
-                            answer: p.answer.toUpperCase()
-                        }}))
-                    }})
-                }});
-
-                if (importRes.ok) {{
-                    const result = await importRes.json();
-                    showSuccess(`Imported ${{result.count || data.puzzles.length}} puzzles into "${{data.name}}"`);
+                if (packsCreated > 0) {{
+                    showSuccess(`Imported ${{totalImported}} puzzles into ${{packsCreated}} pack(s)`);
                     fileInput.value = '';
                     loadPacks();
                     loadPuzzles();
                 }} else {{
-                    showError('Failed to import puzzles');
+                    showError('Failed to import any packs');
                 }}
             }} catch (e) {{
                 console.error('Import error:', e);
@@ -2826,6 +2856,7 @@ pub async fn admin() -> Html<String> {
                     document.getElementById('settingsFinalSeconds').value = data.config.final_seconds || 30;
                     document.getElementById('settingsFinalJackpot').value = data.config.final_jackpot || 10000;
                     document.getElementById('settingsPrizeWedges').value = (data.config.prize_wedge_names || ['GIFT CARD']).join(', ');
+                    document.getElementById('settingsPackId').value = data.config.pack_id || 0;
                 }}
             }} catch (e) {{
                 console.error('Failed to load settings:', e);
@@ -2834,12 +2865,14 @@ pub async fn admin() -> Html<String> {
 
         async function saveSettings() {{
             const room = document.getElementById('settingsRoom').value;
+            const packId = parseInt(document.getElementById('settingsPackId').value) || 0;
             const config = {{
                 puzzle_display_seconds: parseInt(document.getElementById('settingsPuzzleDisplay').value) || 30,
                 vowel_cost: parseInt(document.getElementById('settingsVowelCost').value) || 250,
                 final_seconds: parseInt(document.getElementById('settingsFinalSeconds').value) || 30,
                 final_jackpot: parseInt(document.getElementById('settingsFinalJackpot').value) || 10000,
-                prize_wedge_names: document.getElementById('settingsPrizeWedges').value.split(',').map(s => s.trim()).filter(s => s)
+                prize_wedge_names: document.getElementById('settingsPrizeWedges').value.split(',').map(s => s.trim()).filter(s => s),
+                pack_id: packId > 0 ? packId : null
             }};
             try {{
                 const res = await fetch(`/auth/api/admin/settings/${{encodeURIComponent(room)}}`, {{

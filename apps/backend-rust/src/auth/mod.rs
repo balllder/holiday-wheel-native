@@ -935,23 +935,34 @@ struct CreatePackRequest {
     name: String,
 }
 
+#[derive(Serialize)]
+struct CreatePackResponse {
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
 async fn admin_create_pack(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(req): Json<CreatePackRequest>,
-) -> (StatusCode, Json<SimpleResponse>) {
+) -> (StatusCode, Json<CreatePackResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
+        return (StatusCode::FORBIDDEN, Json(CreatePackResponse {
+            ok: false, id: None, message: None, error: Some("Admin access required".to_string())
         }));
     }
 
     match state.db.get_or_create_pack(&req.name).await {
-        Ok(id) => (StatusCode::OK, Json(SimpleResponse {
-            ok: true, message: Some(format!("Pack created with ID {}", id)), error: None
+        Ok(id) => (StatusCode::OK, Json(CreatePackResponse {
+            ok: true, id: Some(id), message: Some(format!("Pack created with ID {}", id)), error: None
         })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Failed to create pack".to_string())
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(CreatePackResponse {
+            ok: false, id: None, message: None, error: Some("Failed to create pack".to_string())
         })),
     }
 }
@@ -1249,6 +1260,7 @@ struct SaveSettingsRequest {
     final_seconds: Option<i32>,
     final_jackpot: Option<i32>,
     prize_wedge_names: Option<Vec<String>>,
+    pack_id: Option<i64>,
 }
 
 async fn admin_save_settings(
@@ -1265,6 +1277,14 @@ async fn admin_save_settings(
 
     // Get existing config and merge with new values
     let existing = state.db.get_room_config(&room_name).await.unwrap_or_default();
+
+    // Use pack_id from request, falling back to existing
+    let pack_id = match req.pack_id {
+        Some(0) => None,  // 0 means "all packs"
+        Some(id) => Some(id),
+        None => existing.pack_id,
+    };
+
     let config = crate::game::RoomConfig {
         vowel_cost: req.vowel_cost.unwrap_or(existing.vowel_cost),
         final_seconds: req.final_seconds.unwrap_or(existing.final_seconds),
@@ -1272,10 +1292,8 @@ async fn admin_save_settings(
         prize_replace_cash_values: existing.prize_replace_cash_values,
         puzzle_display_seconds: req.puzzle_display_seconds.unwrap_or(existing.puzzle_display_seconds),
         prize_wedge_names: req.prize_wedge_names.unwrap_or(existing.prize_wedge_names),
+        pack_id,
     };
-
-    // Get existing pack ID
-    let pack_id = state.db.get_active_pack_id(&room_name).await.ok().flatten();
 
     match state.db.set_room_config(&room_name, &config, pack_id).await {
         Ok(_) => {

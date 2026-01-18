@@ -5,7 +5,7 @@ use axum::{routing::get, Router};
 use axum_server::tls_rustls::RustlsConfig;
 use rustls::crypto::ring::default_provider;
 use socketioxide::SocketIo;
-use tokio::sync::RwLock;
+use tokio::sync::{OnceCell, RwLock};
 use tower_http::cors::CorsLayer;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -24,6 +24,7 @@ pub struct AppState {
     pub game_manager: RwLock<GameManager>,
     pub db: db::Database,
     pub email: EmailService,
+    pub io: OnceCell<SocketIo>,
 }
 
 #[tokio::main]
@@ -66,12 +67,16 @@ async fn main() -> anyhow::Result<()> {
         game_manager: RwLock::new(game_manager),
         db,
         email,
+        io: OnceCell::new(),
     });
 
     // Set up Socket.IO
     let (socket_layer, io) = SocketIo::builder()
         .with_state(state.clone())
         .build_layer();
+
+    // Store SocketIo in state for background tasks
+    state.io.set(io.clone()).expect("Failed to set SocketIo");
 
     // Register game socket handlers
     game::handlers::register_handlers(&io);
