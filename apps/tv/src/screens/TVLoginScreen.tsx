@@ -10,7 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuthStore, authService, oauthService } from '@holiday-wheel/shared';
+import { useAuthStore, authService } from '@holiday-wheel/shared';
 import { configService } from '@holiday-wheel/shared';
 
 export function TVLoginScreen(): React.JSX.Element {
@@ -149,7 +149,7 @@ export function TVLoginScreen(): React.JSX.Element {
               disabled={loading}
               activeOpacity={0.8}
             >
-              <Text style={styles.appleIcon}></Text>
+              <Text style={styles.appleIcon} />
               <Text style={styles.appleButtonText}>Sign in with Apple</Text>
             </TouchableOpacity>
           )}

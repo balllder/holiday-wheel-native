@@ -16,7 +16,6 @@ import {
   useAuthStore,
   authService,
   passkeyService,
-  oauthService,
 } from '@holiday-wheel/shared';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -215,7 +214,7 @@ export function LoginScreen({
               onPress={handleAppleSignIn}
               disabled={loading}
             >
-              <Text style={styles.appleIcon}></Text>
+              <Text style={styles.appleIcon} />
               <Text style={styles.appleButtonText}>Sign in with Apple</Text>
             </TouchableOpacity>
           )}
