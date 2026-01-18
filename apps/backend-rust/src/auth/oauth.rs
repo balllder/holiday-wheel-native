@@ -84,7 +84,8 @@ struct GoogleClaims {
 struct AppleClaims {
     sub: String,           // Apple user ID
     email: Option<String>,
-    email_verified: Option<String>, // Apple returns this as a string "true"/"false"
+    #[serde(default)]
+    email_verified: Option<bool>, // Apple returns this as boolean (true/false)
     aud: String,           // Client ID (validated by jsonwebtoken)
     iss: String,           // Issuer (validated by jsonwebtoken)
     exp: i64,              // Expiration (validated by jsonwebtoken)
