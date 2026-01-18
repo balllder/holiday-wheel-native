@@ -11,6 +11,11 @@
       android:theme="@style/AppTheme"
       android:usesCleartextTraffic="${usesCleartextTraffic}"
       android:supportsRtl="true">
+
+      <!-- Digital Asset Links for Passkeys -->
+      <meta-data
+        android:name="asset_statements"
+        android:resource="@raw/asset_statements" />
       <activity
         android:name=".MainActivity"
         android:label="@string/app_name"

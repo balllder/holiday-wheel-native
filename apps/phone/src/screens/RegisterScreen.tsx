@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,10 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { authService } from '@holiday-wheel/shared';
+import * as Passkeys from 'react-native-passkeys';
+import { authService, passkeyService, useAuthStore } from '@holiday-wheel/shared';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
 type RegisterScreenProps = {
@@ -28,6 +30,81 @@ export function RegisterScreen({ navigation }: RegisterScreenProps): React.JSX.E
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [passkeySupported] = useState(Platform.OS === 'ios' || Platform.OS === 'android');
+
+  const setAuth = useAuthStore((state) => state.setAuth);
+
+  // Initialize base URL
+  React.useEffect(() => {
+    authService.setBaseUrl(API_URL);
+  }, []);
+
+  const handleAuthSuccess = useCallback(
+    async (token: string, user: { id: number; email: string; display_name: string }) => {
+      await AsyncStorage.setItem('@auth_token', token);
+      await AsyncStorage.setItem('@auth_user', JSON.stringify(user));
+      setAuth(user, token);
+    },
+    [setAuth]
+  );
+
+  // Passkey registration
+  const handlePasskeyRegister = async () => {
+    if (!email.trim() || !displayName.trim()) {
+      setError('Please enter email and display name first');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Start passkey registration
+      const startResult = await passkeyService.registerStart(
+        email.trim().toLowerCase(),
+        displayName.trim()
+      );
+
+      if (!startResult.ok || !startResult.options) {
+        setError(startResult.error || 'Failed to start passkey registration');
+        setLoading(false);
+        return;
+      }
+
+      // Use react-native-passkeys to create the credential
+      const credential = await Passkeys.create(startResult.options as any);
+
+      if (!credential) {
+        // User cancelled
+        setLoading(false);
+        return;
+      }
+
+      // Finish registration with the credential
+      const finishResult = await passkeyService.registerFinish(
+        email.trim().toLowerCase(),
+        credential
+      );
+
+      if (finishResult.ok && finishResult.token && finishResult.user) {
+        await handleAuthSuccess(finishResult.token, finishResult.user);
+      } else {
+        setError(finishResult.error || 'Passkey registration failed');
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Passkey error';
+      // Check for common passkey error patterns
+      if (errorMessage.toLowerCase().includes('cancel')) {
+        // User cancelled, don't show error
+      } else if (errorMessage.toLowerCase().includes('not supported')) {
+        setError('Passkeys are not supported on this device');
+      } else {
+        setError(`Passkey error: ${errorMessage}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleRegister = async () => {
     // Validation
@@ -49,7 +126,6 @@ export function RegisterScreen({ navigation }: RegisterScreenProps): React.JSX.E
     setLoading(true);
     setError(null);
 
-    authService.setBaseUrl(API_URL);
     const result = await authService.register(
       email.trim().toLowerCase(),
       password,
@@ -115,6 +191,26 @@ export function RegisterScreen({ navigation }: RegisterScreenProps): React.JSX.E
             autoCapitalize="words"
             autoComplete="name"
           />
+
+          {/* Passkey Registration Option */}
+          {passkeySupported && (
+            <>
+              <TouchableOpacity
+                style={[styles.passkeyButton, loading && styles.buttonDisabled]}
+                onPress={handlePasskeyRegister}
+                disabled={loading}
+              >
+                <Text style={styles.passkeyButtonIcon}>🔐</Text>
+                <Text style={styles.passkeyButtonText}>Register with Passkey</Text>
+              </TouchableOpacity>
+
+              <View style={styles.dividerContainer}>
+                <View style={styles.divider} />
+                <Text style={styles.dividerText}>or use password</Text>
+                <View style={styles.divider} />
+              </View>
+            </>
+          )}
 
           <TextInput
             style={styles.input}
@@ -248,5 +344,40 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 32,
     lineHeight: 24,
+  },
+  passkeyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4a3b8c',
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#6b5bb8',
+  },
+  passkeyButtonIcon: {
+    fontSize: 20,
+    marginRight: 10,
+  },
+  passkeyButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+  },
+  divider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#333',
+  },
+  dividerText: {
+    color: '#666',
+    paddingHorizontal: 16,
+    fontSize: 14,
   },
 });

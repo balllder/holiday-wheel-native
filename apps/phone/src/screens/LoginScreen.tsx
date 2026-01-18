@@ -9,9 +9,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as Passkeys from 'react-native-passkeys';
 import {
   useAuthStore,
   authService,
@@ -72,41 +74,64 @@ export function LoginScreen({
     }
   };
 
-  // Passkey login
+  // Passkey login - requires email since we don't support discoverable credentials yet
   const handlePasskeyLogin = async () => {
-    setLoading(true);
-    setError(null);
+    // Prompt for email first
+    Alert.prompt(
+      'Passkey Login',
+      'Enter your email address:',
+      async (inputEmail) => {
+        if (!inputEmail?.trim()) {
+          return;
+        }
 
-    try {
-      // Start passkey authentication
-      const startResult = await passkeyService.loginStart();
-      if (!startResult.ok || !startResult.options) {
-        setError(startResult.error || 'Failed to start passkey authentication');
-        setLoading(false);
-        return;
-      }
+        setLoading(true);
+        setError(null);
 
-      // TODO: Use react-native-passkeys to get the credential
-      // const credential = await Passkey.get(startResult.options);
+        try {
+          // Start passkey authentication with email
+          const startResult = await passkeyService.loginStart(inputEmail.trim().toLowerCase());
+          if (!startResult.ok || !startResult.options) {
+            setError(startResult.error || 'Failed to start passkey authentication');
+            setLoading(false);
+            return;
+          }
 
-      // For now, show a message that passkeys need native setup
-      setError(
-        'Passkey authentication requires native SDK setup. ' +
-          'Install react-native-passkeys and configure your app.'
-      );
-      setLoading(false);
+          // Use react-native-passkeys to get the credential
+          const credential = await Passkeys.get(startResult.options);
 
-      // When native SDK is set up, uncomment:
-      // const finishResult = await passkeyService.loginFinish(credential);
-      // if (finishResult.ok && finishResult.token && finishResult.user) {
-      //   await handleAuthSuccess(finishResult.token, finishResult.user);
-      // } else {
-      //   setError(finishResult.error || 'Passkey authentication failed');
-      // }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Passkey error');
-      setLoading(false);
-    }
+          if (!credential) {
+            // User cancelled or no credential available
+            setLoading(false);
+            return;
+          }
+
+          // Finish authentication with the credential
+          const finishResult = await passkeyService.loginFinish(credential);
+          if (finishResult.ok && finishResult.token && finishResult.user) {
+            await handleAuthSuccess(finishResult.token, finishResult.user);
+          } else {
+            setError(finishResult.error || 'Passkey authentication failed');
+          }
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : 'Passkey error';
+          // Check for common passkey error patterns
+          if (errorMessage.toLowerCase().includes('cancel')) {
+            // User cancelled, don't show error
+          } else if (errorMessage.toLowerCase().includes('not supported')) {
+            setError('Passkeys are not supported on this device');
+          } else if (errorMessage.toLowerCase().includes('no credential')) {
+            setError('No passkey found for this account');
+          } else {
+            setError(`Passkey error: ${errorMessage}`);
+          }
+        } finally {
+          setLoading(false);
+        }
+      },
+      'plain-text',
+      email // Pre-fill with current email if any
+    );
   };
 
   // Google Sign-In
