@@ -7,6 +7,7 @@ test.describe('Health Check', () => {
     expect(response.ok()).toBeTruthy();
 
     const body = await response.json();
-    expect(body.status).toBe('ok');
+    // Backend returns "healthy" from enhanced health check
+    expect(body.status).toBe('healthy');
   });
 });
