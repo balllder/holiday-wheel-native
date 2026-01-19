@@ -1928,6 +1928,15 @@ pub async fn game() -> Html<String> {
             top: 50%;
             transform: translateY(-50%);
         }}
+        .spectator-banner {{
+            background: linear-gradient(90deg, #3498db, #2980b9);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            display: inline-block;
+            margin-top: 8px;
+        }}
 
         /* ========== CONFETTI ========== */
         #confetti-container {{
@@ -2259,6 +2268,7 @@ pub async fn game() -> Html<String> {
         <div class="main-area">
             <div class="game-header">
                 <h1>🎡 Holiday Wheel</h1>
+                <div class="spectator-banner" id="spectatorBanner" style="display: none;">👁️ Spectator Mode - View Only</div>
                 <a href="/lobby" class="btn btn-secondary leave-btn">Leave Room</a>
             </div>
 
@@ -2432,7 +2442,8 @@ pub async fn game() -> Html<String> {
 
         const urlParams = new URLSearchParams(window.location.search);
         const room = urlParams.get('room') || 'main';
-        document.getElementById('roomName').textContent = room;
+        const isSpectating = urlParams.get('spectate') === 'true';
+        document.getElementById('roomName').textContent = room + (isSpectating ? ' (Spectating)' : '');
 
         let socket;
         let gameState = null;
@@ -2742,7 +2753,13 @@ pub async fn game() -> Html<String> {
                 console.log('Connected:', socket.id);
                 // Authenticate the socket for session management
                 socket.emit('auth', {{ token }});
-                socket.emit('join_game', {{ room, name: user.display_name || user.email }});
+                if (isSpectating) {{
+                    // Spectator mode - just watch, don't join as player
+                    socket.emit('join', {{ room }});
+                    myPlayerIdx = null;
+                }} else {{
+                    socket.emit('join_game', {{ room, name: user.display_name || user.email }});
+                }}
             }});
 
             // Handle session invalidation (logged in from another device)
@@ -3073,18 +3090,22 @@ pub async fn game() -> Html<String> {
             }}
 
             // ========== CONTROLS VISIBILITY ==========
-            const isMyTurn = gameState.active_idx === myPlayerIdx;
+            const isMyTurn = !isSpectating && gameState.active_idx === myPlayerIdx;
             const isTossup = phase === 'tossup';
-            const canBuzz = isTossup && myPlayerIdx !== null &&
+            const canBuzz = !isSpectating && isTossup && myPlayerIdx !== null &&
                 !(gameState.tossup?.locked_player_idxs || []).includes(myPlayerIdx);
 
+            // Hide all controls when spectating
+            document.getElementById('controls').style.opacity = isSpectating ? '0.5' : '1';
+
             // Normal controls
-            document.getElementById('spinBtn').disabled = !isMyTurn || isTossup;
+            document.getElementById('spinBtn').disabled = isSpectating || !isMyTurn || isTossup;
             document.getElementById('spinBtn').style.display = isTossup ? 'none' : 'inline-block';
-            document.getElementById('buyVowelBtn').disabled = !isMyTurn || isTossup;
+            document.getElementById('buyVowelBtn').disabled = isSpectating || !isMyTurn || isTossup;
             document.getElementById('buyVowelBtn').style.display = isTossup ? 'none' : 'inline-block';
-            document.getElementById('solveBtn').disabled = !isMyTurn && !canBuzz;
+            document.getElementById('solveBtn').disabled = isSpectating || (!isMyTurn && !canBuzz);
             document.getElementById('guessArea').style.display = isTossup ? 'none' : 'flex';
+            document.getElementById('letterInput').disabled = isSpectating;
 
             // Buzz button for toss-up
             const buzzBtn = document.getElementById('buzzBtn');
@@ -3092,7 +3113,7 @@ pub async fn game() -> Html<String> {
 
             // Wild card button
             const myPlayer = gameState.players?.[myPlayerIdx];
-            const hasWildCard = myPlayer && (myPlayer.wild_cards || 0) > 0;
+            const hasWildCard = !isSpectating && myPlayer && (myPlayer.wild_cards || 0) > 0;
             const wildcardBtn = document.getElementById('wildcardBtn');
             wildcardBtn.classList.toggle('available', isMyTurn && hasWildCard && !isTossup);
         }}
@@ -3290,6 +3311,11 @@ pub async fn game() -> Html<String> {
             SoundService.init();
             document.removeEventListener('click', initSound);
         }}, {{ once: true }});
+
+        // Show spectator banner if in spectator mode
+        if (isSpectating) {{
+            document.getElementById('spectatorBanner').style.display = 'inline-block';
+        }}
 
         connect();
     </script>
@@ -4192,7 +4218,8 @@ pub async fn admin() -> Html<String> {
                                 <div class="room-actions">
                                     <button class="btn btn-sm btn-secondary" onclick="toggleRoomDetails('${{roomId}}')">Details</button>
                                     <button class="btn btn-sm btn-secondary" onclick="openSettingsModal('${{r.name}}')">Settings</button>
-                                    <a href="/game?room=${{encodeURIComponent(r.name)}}" class="btn btn-sm" style="background:#27ae60;" target="_blank">Open</a>
+                                    <a href="/game?room=${{encodeURIComponent(r.name)}}&spectate=true" class="btn btn-sm" style="background:#3498db;" target="_blank">Spectate</a>
+                                    <a href="/game?room=${{encodeURIComponent(r.name)}}" class="btn btn-sm" style="background:#27ae60;" target="_blank">Join</a>
                                     <button class="btn btn-sm btn-secondary" onclick="newGameInRoom('${{r.name}}')">New Game</button>
                                     <button class="btn btn-sm" style="background:#c0392b;" onclick="deleteRoom('${{r.name}}')">Delete</button>
                                 </div>

@@ -821,6 +821,7 @@ struct AdminUserInfo {
     is_admin: bool,
     created_at: i64,
     last_login_at: Option<i64>,
+    current_room: Option<String>,
 }
 
 async fn admin_list_users(
@@ -833,10 +834,23 @@ async fn admin_list_users(
         }));
     }
 
+    // Build a map of user_id -> room_name from the game manager
+    let manager = state.game_manager.read().await;
+    let mut user_rooms: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
+    for (room_name, game) in manager.rooms.iter() {
+        for player in &game.players {
+            if let Some(user_id) = player.user_id {
+                user_rooms.insert(user_id, room_name.clone());
+            }
+        }
+    }
+    drop(manager);
+
     match state.db.list_all_users().await {
         Ok(users) => (StatusCode::OK, Json(AdminUsersResponse {
             ok: true,
             users: Some(users.into_iter().map(|u| AdminUserInfo {
+                current_room: user_rooms.get(&u.id).cloned(),
                 id: u.id,
                 email: u.email,
                 display_name: u.display_name,
