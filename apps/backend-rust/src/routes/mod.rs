@@ -3815,6 +3815,15 @@ pub async fn admin() -> Html<String> {
                     </div>
                 </div>
 
+                <h4 style="color: #d4af37; margin: 24px 0 16px;">Player Settings</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Disconnect Timeout (seconds, 0 = never remove)</label>
+                        <input type="number" id="settingsDisconnectTimeout" value="300" min="0" max="3600" placeholder="300">
+                        <small style="color:#888;display:block;margin-top:4px;">Disconnected players are removed after this time. Default: 300 (5 minutes)</small>
+                    </div>
+                </div>
+
                 <button class="btn" onclick="saveSettings()" style="margin-top: 24px; width: 100%;">Save Settings</button>
             </div>
         </div>
@@ -4347,6 +4356,7 @@ pub async fn admin() -> Html<String> {
                     document.getElementById('settingsFinalJackpot').value = data.config.final_jackpot || 10000;
                     document.getElementById('settingsPrizeWedges').value = (data.config.prize_wedge_names || ['GIFT CARD']).join(', ');
                     document.getElementById('settingsPackId').value = data.config.pack_id || 0;
+                    document.getElementById('settingsDisconnectTimeout').value = data.config.disconnect_timeout_secs ?? 300;
                 }}
             }} catch (e) {{
                 console.error('Failed to load settings:', e);
@@ -4362,7 +4372,8 @@ pub async fn admin() -> Html<String> {
                 final_seconds: parseInt(document.getElementById('settingsFinalSeconds').value) || 30,
                 final_jackpot: parseInt(document.getElementById('settingsFinalJackpot').value) || 10000,
                 prize_wedge_names: document.getElementById('settingsPrizeWedges').value.split(',').map(s => s.trim()).filter(s => s),
-                pack_id: packId > 0 ? packId : null
+                pack_id: packId > 0 ? packId : null,
+                disconnect_timeout_secs: parseInt(document.getElementById('settingsDisconnectTimeout').value) || 300
             }};
             try {{
                 const res = await fetch(`/auth/api/admin/settings/${{encodeURIComponent(room)}}`, {{

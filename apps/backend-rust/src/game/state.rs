@@ -52,6 +52,9 @@ pub struct Player {
     pub socket_id: Option<String>,
     #[serde(skip)]
     pub user_id: Option<i64>,
+    /// Timestamp when the player disconnected (None if connected)
+    #[serde(skip)]
+    pub disconnected_at: Option<i64>,
 }
 
 impl Player {
@@ -65,6 +68,7 @@ impl Player {
             round_prizes: Vec::new(),
             socket_id: None,
             user_id: None,
+            disconnected_at: None,
         }
     }
 
@@ -113,6 +117,13 @@ pub struct RoomConfig {
     pub prize_wedge_names: Vec<String>,
     #[serde(default)]
     pub pack_id: Option<i64>, // None or 0 = all packs
+    /// Seconds before disconnected players are removed (0 = never, default 300 = 5 minutes)
+    #[serde(default = "default_disconnect_timeout")]
+    pub disconnect_timeout_secs: i64,
+}
+
+fn default_disconnect_timeout() -> i64 {
+    300 // 5 minutes default
 }
 
 impl Default for RoomConfig {
@@ -125,6 +136,7 @@ impl Default for RoomConfig {
             puzzle_display_seconds: 30,
             prize_wedge_names: vec!["GIFT CARD".to_string()],
             pack_id: None, // All packs by default
+            disconnect_timeout_secs: 300, // 5 minutes
         }
     }
 }
@@ -288,6 +300,46 @@ impl Game {
             self.active_idx -= 1;
         }
         Some(player)
+    }
+
+    /// Remove players who have been disconnected longer than the timeout
+    /// Returns the names of removed players
+    pub fn cleanup_timed_out_players(&mut self) -> Vec<String> {
+        if self.config.disconnect_timeout_secs <= 0 {
+            return Vec::new(); // Timeout disabled
+        }
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let timeout = self.config.disconnect_timeout_secs;
+        let mut removed_names = Vec::new();
+
+        // Find indices of timed-out players (in reverse order for safe removal)
+        let timed_out_indices: Vec<usize> = self
+            .players
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| {
+                if let Some(disconnected_at) = p.disconnected_at {
+                    now - disconnected_at >= timeout
+                } else {
+                    false
+                }
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        // Remove in reverse order to preserve indices
+        for idx in timed_out_indices.into_iter().rev() {
+            if let Some(player) = self.remove_player(idx) {
+                removed_names.push(player.name);
+            }
+        }
+
+        removed_names
     }
 
     /// Spin the wheel

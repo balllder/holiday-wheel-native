@@ -252,6 +252,7 @@ pub fn register_handlers(io: &SocketIo) {
                 if let Some(idx) = existing_idx {
                     // Reconnect to existing player slot
                     game.players[idx].socket_id = Some(socket.id.to_string());
+                    game.players[idx].disconnected_at = None; // Clear disconnect timestamp
                     socket.emit("you", &serde_json::json!({ "player_idx": idx })).ok();
                     toast!(socket, &format!("Reconnected as {}!", name));
                     broadcast_state!(socket, req.room, game.get_state());
@@ -842,10 +843,15 @@ pub fn register_handlers(io: &SocketIo) {
                         game.tossup.controller_sid = None;
                     }
 
-                    // Remove player (keep their slot but clear socket)
+                    // Remove player (keep their slot but clear socket and track disconnect time)
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs() as i64;
                     for player in &mut game.players {
                         if player.socket_id.as_deref() == Some(socket.id.as_str()) {
                             player.socket_id = None;
+                            player.disconnected_at = Some(now);
                             info!("Player {} disconnected from room {}", player.name, room_name);
                         }
                     }

@@ -85,6 +85,33 @@ async fn main() -> anyhow::Result<()> {
     // Register game socket handlers
     game::handlers::register_handlers(&io);
 
+    // Spawn background task to clean up timed-out players
+    {
+        let state_clone = state.clone();
+        let io_clone = io.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+            loop {
+                interval.tick().await;
+                let mut manager = state_clone.game_manager.write().await;
+                for (room_name, game) in manager.rooms.iter_mut() {
+                    let removed = game.cleanup_timed_out_players();
+                    if !removed.is_empty() {
+                        info!(
+                            "Removed {} timed-out player(s) from room {}: {:?}",
+                            removed.len(),
+                            room_name,
+                            removed
+                        );
+                        // Broadcast updated state to room
+                        let game_state = game.get_state();
+                        io_clone.to(room_name.clone()).emit("state", &game_state).ok();
+                    }
+                }
+            }
+        });
+    }
+
     // Build HTTP routes
     let app = Router::new()
         .route("/", get(routes::index))
