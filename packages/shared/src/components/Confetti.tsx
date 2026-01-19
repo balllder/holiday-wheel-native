@@ -175,7 +175,7 @@ export const Confetti = forwardRef<ConfettiRef, ConfettiProps>(function Confetti
 ) {
   const [pieces, setPieces] = useState<ConfettiPiece[]>([]);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [currentVariant, setCurrentVariant] = useState<ConfettiVariant>(variant);
+  const [_currentVariant, setCurrentVariant] = useState<ConfettiVariant>(variant);
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
   const windowDimensions = useMemo(() => Dimensions.get('window'), []);
 
@@ -362,8 +362,7 @@ export const Confetti = forwardRef<ConfettiRef, ConfettiProps>(function Confetti
     } else if (!active && isAnimating) {
       stopAnimation();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
+  }, [active, variant, isAnimating, startAnimation, stopAnimation]);
 
   // Cleanup on unmount
   useEffect(() => {

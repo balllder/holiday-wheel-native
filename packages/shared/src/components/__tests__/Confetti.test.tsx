@@ -1,7 +1,6 @@
 import React from 'react';
 import { create, act, ReactTestRenderer } from 'react-test-renderer';
 import { Confetti } from '../Confetti';
-import type { ConfettiVariant } from '../Confetti';
 import { useConfettiSimple } from '../../hooks/useConfetti';
 
 describe('Confetti', () => {
@@ -131,10 +130,9 @@ describe('Confetti', () => {
 
     it('calls onComplete callback', () => {
       const onComplete = jest.fn();
-      let tree: ReactTestRenderer | undefined;
 
       act(() => {
-        tree = create(
+        create(
           <Confetti active={true} count={5} duration={1000} onComplete={onComplete} />
         );
       });

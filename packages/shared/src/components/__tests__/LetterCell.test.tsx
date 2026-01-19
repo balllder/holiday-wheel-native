@@ -1,6 +1,6 @@
 import React from 'react';
 import { create, act, ReactTestRenderer } from 'react-test-renderer';
-import { LetterCell, LetterState } from '../LetterCell';
+import { LetterCell } from '../LetterCell';
 
 describe('LetterCell', () => {
   describe('rendering', () => {
@@ -132,10 +132,9 @@ describe('LetterCell', () => {
 
     it('calls onAnimationComplete after animation', () => {
       const onComplete = jest.fn();
-      let tree: ReactTestRenderer | undefined;
 
       act(() => {
-        tree = create(
+        create(
           <LetterCell
             char="A"
             state="revealing"
@@ -158,10 +157,9 @@ describe('LetterCell', () => {
 
     it('respects animation delay', () => {
       const onComplete = jest.fn();
-      let tree: ReactTestRenderer | undefined;
 
       act(() => {
-        tree = create(
+        create(
           <LetterCell
             char="A"
             state="revealing"
