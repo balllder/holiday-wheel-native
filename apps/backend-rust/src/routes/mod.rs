@@ -2929,6 +2929,20 @@ pub async fn game() -> Html<String> {
         .modal-overlay.active {{
             display: flex;
         }}
+        /* Bottom-positioned modals that don't obscure the puzzle */
+        .modal-overlay.bottom-modal {{
+            align-items: flex-end;
+            background: rgba(0, 0, 0, 0.5);
+        }}
+        .modal-overlay.bottom-modal .modal {{
+            margin-bottom: 20px;
+            border-radius: 16px 16px 16px 16px;
+            animation: slideUp 0.2s ease-out;
+        }}
+        @keyframes slideUp {{
+            from {{ transform: translateY(100%); opacity: 0; }}
+            to {{ transform: translateY(0); opacity: 1; }}
+        }}
         .modal {{
             background: #1a0a3e;
             border: 2px solid #d4af37;
@@ -3739,8 +3753,8 @@ pub async fn game() -> Html<String> {
         </div>
     </div>
 
-    <!-- Solve Modal -->
-    <div class="modal-overlay" id="solveModal">
+    <!-- Solve Modal (bottom positioned) -->
+    <div class="modal-overlay bottom-modal" id="solveModal">
         <div class="modal">
             <h2>Solve the Puzzle</h2>
             <input type="text" id="solveInput" placeholder="Enter your solution" autocomplete="off">
@@ -3751,8 +3765,8 @@ pub async fn game() -> Html<String> {
         </div>
     </div>
 
-    <!-- Buy Vowel Modal -->
-    <div class="modal-overlay" id="vowelModal">
+    <!-- Buy Vowel Modal (bottom positioned) -->
+    <div class="modal-overlay bottom-modal" id="vowelModal">
         <div class="modal">
             <h2>Buy a Vowel ($250)</h2>
             <div class="vowel-buttons">
@@ -5484,7 +5498,7 @@ pub async fn game() -> Html<String> {
         async function loadPacks() {{
             try {{
                 const token = localStorage.getItem('auth_token');
-                const response = await fetch('/api/packs', {{
+                const response = await fetch('/auth/api/packs', {{
                     headers: {{
                         'Authorization': `Bearer ${{token}}`
                     }}
