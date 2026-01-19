@@ -29,8 +29,10 @@ RUN mkdir src && \
     cargo build --release && \
     rm -rf src target/release/deps/holiday_wheel*
 
-# Copy actual source code
+# Copy actual source code and build-time required files
 COPY src ./src
+COPY migrations ./migrations
+COPY openapi.yaml ./
 
 # Build the application
 RUN cargo build --release
