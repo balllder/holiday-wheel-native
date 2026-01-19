@@ -65,6 +65,10 @@ rustls-pemfile = "2"
 axum-extra = { version = "0.10", features = ["cookie"] }
 time = "0.3"
 
+# API Documentation (Swagger UI)
+utoipa = { version = "5", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
+
 # Build OpenSSL from source (required by webauthn-rs for x509 parsing)
 openssl = { version = "0.10", features = ["vendored"] }
 

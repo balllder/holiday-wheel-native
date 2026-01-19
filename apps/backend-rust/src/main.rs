@@ -13,6 +13,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod auth;
 mod db;
+mod docs;
 mod email;
 mod game;
 mod routes;
@@ -113,6 +114,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Build HTTP routes
+    // Note: /docs routes don't need state, so we merge them separately
     let app = Router::new()
         .route("/", get(routes::index))
         .route("/register", get(routes::register))
@@ -122,9 +124,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/admin", get(routes::admin))
         .route("/health", get(routes::health))
         .nest("/auth", auth::routes())
+        .with_state(state)
+        .nest("/docs", docs::routes())
         .layer(socket_layer)
-        .layer(CorsLayer::permissive())
-        .with_state(state);
+        .layer(CorsLayer::permissive());
 
     // Start server
     let port = std::env::var("PORT")
