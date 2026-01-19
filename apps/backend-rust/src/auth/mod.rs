@@ -72,6 +72,8 @@ pub struct RegisterResponse {
     pub message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub errors: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<UserInfo>,
 }
 
 #[derive(Debug, Serialize)]
@@ -277,21 +279,21 @@ async fn login(
 async fn api_register(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RegisterRequest>,
-) -> (StatusCode, Json<RegisterResponse>) {
+) -> Response {
     register_user(state, req).await
 }
 
 async fn register(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RegisterRequest>,
-) -> (StatusCode, Json<RegisterResponse>) {
+) -> Response {
     register_user(state, req).await
 }
 
 async fn register_user(
     state: Arc<AppState>,
     req: RegisterRequest,
-) -> (StatusCode, Json<RegisterResponse>) {
+) -> Response {
     let mut errors = Vec::new();
 
     // Validate email
@@ -322,8 +324,9 @@ async fn register_user(
                 ok: false,
                 message: None,
                 errors: Some(errors),
+                user: None,
             }),
-        );
+        ).into_response();
     }
 
     // Check if user exists
@@ -335,8 +338,9 @@ async fn register_user(
                     ok: false,
                     message: None,
                     errors: Some(vec!["Email already registered".to_string()]),
+                    user: None,
                 }),
-            );
+            ).into_response();
         }
         Err(_) => {
             return (
@@ -345,8 +349,9 @@ async fn register_user(
                     ok: false,
                     message: None,
                     errors: Some(vec!["Database error".to_string()]),
+                    user: None,
                 }),
-            );
+            ).into_response();
         }
         Ok(false) => {}
     }
@@ -381,24 +386,51 @@ async fn register_user(
 
     match state.db.create_user(new_user).await {
         Ok(user_id) => {
-            // If email is disabled, auto-verify the user for testing/development
+            // If email is disabled, auto-verify and auto-login for testing/development
             if !state.email.is_enabled() {
                 if let Err(e) = state.db.verify_user(user_id).await {
                     tracing::warn!("Failed to auto-verify user: {}", e);
                 } else {
                     tracing::info!("Auto-verified user {} (email disabled)", email);
                 }
-                return (
-                    StatusCode::OK,
-                    Json(RegisterResponse {
-                        ok: true,
-                        message: Some(
-                            "Registration successful! You can now log in."
-                                .to_string(),
-                        ),
-                        errors: None,
+
+                // Generate token for auto-login
+                let token = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
+                if let Err(e) = state.db.set_remember_token(user_id, &token).await {
+                    tracing::warn!("Failed to set token for auto-login: {}", e);
+                    return (
+                        StatusCode::OK,
+                        Json(RegisterResponse {
+                            ok: true,
+                            message: Some(
+                                "Registration successful! You can now log in."
+                                    .to_string(),
+                            ),
+                            errors: None,
+                            user: None,
+                        }),
+                    ).into_response();
+                }
+
+                // Return response with user info for auto-login (frontend checks for data.user)
+                tracing::info!("Auto-login user {} after registration (email disabled)", email);
+                let response = RegisterResponse {
+                    ok: true,
+                    message: None,
+                    errors: None,
+                    user: Some(UserInfo {
+                        id: user_id,
+                        email: email.clone(),
+                        display_name: display_name.clone(),
+                        is_admin: None,
                     }),
+                };
+                let mut res = Json(response).into_response();
+                res.headers_mut().insert(
+                    header::SET_COOKIE,
+                    set_cookie_header(&token),
                 );
+                return res;
             }
 
             // Send verification email
@@ -420,8 +452,9 @@ async fn register_user(
                             .to_string(),
                     ),
                     errors: None,
+                    user: None,
                 }),
-            )
+            ).into_response()
         }
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -429,8 +462,9 @@ async fn register_user(
                 ok: false,
                 message: None,
                 errors: Some(vec!["Failed to create account".to_string()]),
+                user: None,
             }),
-        ),
+        ).into_response(),
     }
 }
 
