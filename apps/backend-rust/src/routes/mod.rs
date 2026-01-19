@@ -3383,6 +3383,94 @@ pub async fn admin() -> Html<String> {
             padding: 60px;
         }}
         .access-denied h2 {{ color: #c0392b; margin-bottom: 16px; }}
+
+        /* Room cards */
+        .room-card {{
+            background: #0d0628;
+            border: 2px solid #333;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }}
+        .room-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            background: linear-gradient(180deg, #1a0a3e 0%, #0d0628 100%);
+            border-bottom: 1px solid #333;
+        }}
+        .room-info {{
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }}
+        .room-name {{
+            font-size: 20px;
+            font-weight: bold;
+            color: #d4af37;
+        }}
+        .room-meta {{
+            display: flex;
+            gap: 12px;
+        }}
+        .room-meta span {{
+            color: #888;
+            font-size: 14px;
+        }}
+        .room-actions {{
+            display: flex;
+            gap: 8px;
+        }}
+        .room-players {{
+            padding: 16px;
+        }}
+        .room-players h4 {{
+            color: #888;
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            text-transform: uppercase;
+        }}
+        .player-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
+        }}
+        .player-card {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: rgba(26, 10, 62, 0.6);
+            border-radius: 8px;
+            border: 1px solid #333;
+        }}
+        .player-card.active {{
+            border-color: #d4af37;
+            box-shadow: 0 0 10px rgba(212, 175, 55, 0.2);
+        }}
+        .player-details {{
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }}
+        .player-name-admin {{
+            color: #fff;
+            font-weight: 500;
+        }}
+        .player-score-admin {{
+            color: #d4af37;
+            font-size: 14px;
+        }}
+        .player-actions {{
+            display: flex;
+            gap: 4px;
+        }}
+        .no-rooms {{
+            color: #888;
+            text-align: center;
+            padding: 40px;
+        }}
     </style>
 </head>
 <body>
@@ -3422,6 +3510,7 @@ pub async fn admin() -> Html<String> {
                             <th>ID</th>
                             <th>Email</th>
                             <th>Display Name</th>
+                            <th>Room</th>
                             <th>Status</th>
                             <th>Admin</th>
                             <th>Actions</th>
@@ -3508,18 +3597,7 @@ pub async fn admin() -> Html<String> {
             <!-- Rooms Panel -->
             <div class="panel" id="panel-rooms">
                 <h2 style="color: #fff; margin-bottom: 16px;">Active Rooms</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Players</th>
-                            <th>Phase</th>
-                            <th>Host</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="roomsTable"></tbody>
-                </table>
+                <div id="roomsContainer"></div>
             </div>
 
             <!-- Settings Panel -->
@@ -3633,26 +3711,37 @@ pub async fn admin() -> Html<String> {
             setTimeout(() => el.style.display = 'none', 3000);
         }}
 
+        // Store rooms data for cross-referencing with users
+        let roomsData = [];
+
         async function loadUsers() {{
             const res = await fetch('/auth/api/admin/users', {{
                 credentials: 'include'
             }});
             const data = await res.json();
             if (data.ok && data.users) {{
-                document.getElementById('usersTable').innerHTML = data.users.map(u => `
+                document.getElementById('usersTable').innerHTML = data.users.map(u => {{
+                    // Find if user is in any room
+                    const userRoom = u.current_room || null;
+                    const roomBadge = userRoom
+                        ? `<a href="/game?room=${{encodeURIComponent(userRoom)}}" class="badge badge-success" style="text-decoration:none;">${{userRoom}}</a>`
+                        : '<span style="color:#666;">-</span>';
+                    return `
                     <tr>
                         <td>${{u.id}}</td>
                         <td>${{u.email}}</td>
                         <td>${{u.display_name}}</td>
+                        <td>${{roomBadge}}</td>
                         <td>${{u.verified ? '<span class="badge badge-success">Verified</span>' : '<span class="badge badge-warning">Unverified</span>'}}</td>
                         <td>${{u.is_admin ? '<span class="badge badge-success">Admin</span>' : '-'}}</td>
                         <td>
                             ${{!u.verified ? `<button class="btn btn-sm btn-secondary" onclick="verifyUser(${{u.id}})">Verify</button>` : ''}}
                             <button class="btn btn-sm btn-secondary" onclick="toggleAdmin(${{u.id}}, ${{!u.is_admin}})">${{u.is_admin ? 'Remove Admin' : 'Make Admin'}}</button>
+                            ${{userRoom ? `<button class="btn btn-sm" style="background:#e67e22;" onclick="kickUser(${{u.id}}, '${{userRoom}}')">Kick</button>` : ''}}
                             <button class="btn btn-sm" style="background:#c0392b;" onclick="deleteUser(${{u.id}})">Delete</button>
                         </td>
                     </tr>
-                `).join('');
+                `}}).join('');
             }}
         }}
 
@@ -3885,18 +3974,59 @@ pub async fn admin() -> Html<String> {
             }});
             const data = await res.json();
             if (data.ok && data.rooms) {{
-                document.getElementById('roomsTable').innerHTML = data.rooms.length > 0 ? data.rooms.map(r => `
-                    <tr>
-                        <td>${{r.name}}</td>
-                        <td>${{r.player_count}}</td>
-                        <td>${{r.phase}}</td>
-                        <td>${{r.has_host ? '<span class="badge badge-success">Yes</span>' : '-'}}</td>
-                        <td>
-                            <a href="/game?room=${{encodeURIComponent(r.name)}}" class="btn btn-sm btn-secondary">View</a>
-                            <button class="btn btn-sm" style="background:#c0392b;" onclick="deleteRoom('${{r.name}}')">Delete</button>
-                        </td>
-                    </tr>
-                `).join('') : '<tr><td colspan="5" style="color:#888;">No active rooms</td></tr>';
+                roomsData = data.rooms;
+                const container = document.getElementById('roomsContainer');
+
+                if (data.rooms.length === 0) {{
+                    container.innerHTML = '<div class="no-rooms">No active rooms</div>';
+                    return;
+                }}
+
+                container.innerHTML = data.rooms.map(r => {{
+                    const players = r.players || [];
+                    const activeIdx = r.active_idx ?? -1;
+
+                    const playerCards = players.length > 0 ? players.map((p, idx) => `
+                        <div class="player-card ${{idx === activeIdx ? 'active' : ''}}">
+                            <div class="player-details">
+                                <span class="player-name-admin">${{p.name}}${{idx === activeIdx ? ' (active)' : ''}}</span>
+                                <span class="player-score-admin">Total: ${{(p.total || 0).toLocaleString()}} | Round: ${{(p.round_bank || 0).toLocaleString()}}</span>
+                            </div>
+                            <div class="player-actions">
+                                <button class="btn btn-sm btn-secondary" onclick="resetPlayerScore('${{r.name}}', ${{idx}})">Reset</button>
+                                <button class="btn btn-sm" style="background:#e67e22;" onclick="kickPlayer('${{r.name}}', ${{idx}})">Kick</button>
+                            </div>
+                        </div>
+                    `).join('') : '<div style="color:#666;">No players in room</div>';
+
+                    return `
+                        <div class="room-card">
+                            <div class="room-header">
+                                <div class="room-info">
+                                    <span class="room-name">${{r.name}}</span>
+                                    <div class="room-meta">
+                                        <span>Phase: ${{r.phase || 'waiting'}}</span>
+                                        <span>Players: ${{r.player_count || players.length}}</span>
+                                        ${{r.has_host ? '<span class="badge badge-success">Host</span>' : ''}}
+                                    </div>
+                                </div>
+                                <div class="room-actions">
+                                    <a href="/game?room=${{encodeURIComponent(r.name)}}" class="btn btn-sm btn-secondary">View</a>
+                                    <button class="btn btn-sm btn-secondary" onclick="newGameInRoom('${{r.name}}')">New Game</button>
+                                    <button class="btn btn-sm" style="background:#c0392b;" onclick="deleteRoom('${{r.name}}')">Delete</button>
+                                </div>
+                            </div>
+                            <div class="room-players">
+                                <h4>Players</h4>
+                                <div class="player-grid">
+                                    ${{playerCards}}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }}).join('');
+
+                updateRoomSelect();
             }}
         }}
 
@@ -3908,6 +4038,46 @@ pub async fn admin() -> Html<String> {
             }});
             if (res.ok) {{ showSuccess('Room deleted'); loadRooms(); }}
             else {{ showError('Failed to delete room'); }}
+        }}
+
+        async function kickPlayer(room, playerIdx) {{
+            if (!confirm('Kick this player from the room?')) return;
+            const res = await fetch(`/auth/api/admin/rooms/${{encodeURIComponent(room)}}/players/${{playerIdx}}`, {{
+                method: 'DELETE',
+                credentials: 'include'
+            }});
+            if (res.ok) {{ showSuccess('Player kicked'); loadRooms(); loadUsers(); }}
+            else {{ showError('Failed to kick player'); }}
+        }}
+
+        async function kickUser(userId, room) {{
+            if (!confirm('Kick this user from the room?')) return;
+            const res = await fetch(`/auth/api/admin/rooms/${{encodeURIComponent(room)}}/kick-user/${{userId}}`, {{
+                method: 'POST',
+                credentials: 'include'
+            }});
+            if (res.ok) {{ showSuccess('User kicked'); loadRooms(); loadUsers(); }}
+            else {{ showError('Failed to kick user'); }}
+        }}
+
+        async function resetPlayerScore(room, playerIdx) {{
+            if (!confirm('Reset this player\\'s score to $0?')) return;
+            const res = await fetch(`/auth/api/admin/rooms/${{encodeURIComponent(room)}}/players/${{playerIdx}}/reset`, {{
+                method: 'POST',
+                credentials: 'include'
+            }});
+            if (res.ok) {{ showSuccess('Score reset'); loadRooms(); }}
+            else {{ showError('Failed to reset score'); }}
+        }}
+
+        async function newGameInRoom(room) {{
+            if (!confirm('Start a new game in this room? Current game will be ended.')) return;
+            const res = await fetch(`/auth/api/admin/rooms/${{encodeURIComponent(room)}}/new-game`, {{
+                method: 'POST',
+                credentials: 'include'
+            }});
+            if (res.ok) {{ showSuccess('New game started'); loadRooms(); }}
+            else {{ showError('Failed to start new game'); }}
         }}
 
         // Settings functions
@@ -3964,7 +4134,19 @@ pub async fn admin() -> Html<String> {
             const select = document.getElementById('settingsRoom');
             const currentValue = select.value;
             select.innerHTML = '<option value="main">main (default)</option>';
-            // Add other rooms from the rooms list if available
+            // Add other rooms from the rooms list
+            roomsData.forEach(r => {{
+                if (r.name !== 'main') {{
+                    const option = document.createElement('option');
+                    option.value = r.name;
+                    option.textContent = r.name;
+                    select.appendChild(option);
+                }}
+            }});
+            // Restore selection if it still exists
+            if ([...select.options].some(o => o.value === currentValue)) {{
+                select.value = currentValue;
+            }}
         }}
 
         // Initial load
