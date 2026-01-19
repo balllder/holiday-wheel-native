@@ -3830,6 +3830,11 @@ pub async fn admin() -> Html<String> {
                     document.getElementById('accessDenied').style.display = 'block';
                     return;
                 }}
+                if (res.status === 401) {{
+                    // Not authenticated, redirect to login
+                    window.location.href = '/';
+                    return;
+                }}
                 if (res.ok) {{
                     isAdmin = true;
                     document.getElementById('adminUser').textContent = user.display_name + ' (Admin)';
@@ -3837,9 +3842,16 @@ pub async fn admin() -> Html<String> {
                     loadUsers();
                     loadPacks();
                     loadRooms();
+                }} else {{
+                    // Unexpected response
+                    const data = await res.json().catch(() => ({{}}));
+                    showError(data.error || 'Failed to load admin panel: ' + res.status);
+                    document.getElementById('accessDenied').style.display = 'block';
                 }}
             }} catch (e) {{
-                showError('Failed to verify admin access');
+                console.error('Admin check error:', e);
+                showError('Failed to verify admin access: ' + e.message);
+                document.getElementById('accessDenied').style.display = 'block';
             }}
         }}
 
