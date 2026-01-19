@@ -366,8 +366,9 @@ async fn register_user(
                     ok: false,
                     message: None,
                     errors: Some(vec!["Failed to hash password".to_string()]),
+                    user: None,
                 }),
-            );
+            ).into_response();
         }
     };
 
