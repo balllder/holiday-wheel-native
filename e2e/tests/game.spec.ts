@@ -53,8 +53,8 @@ test.describe('Game Page', () => {
 
     await page.waitForURL(/\/game\?room=/, { timeout: 10000 });
 
-    // Wheel element should be visible
-    const wheel = page.locator('#wheel, .wheel, canvas, svg');
+    // Wheel element should be visible (use specific main wheel ID)
+    const wheel = page.locator('#wheelSvg, #wheelContainer');
     await expect(wheel.first()).toBeVisible({ timeout: 5000 });
   });
 

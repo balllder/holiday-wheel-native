@@ -40,7 +40,7 @@ test.describe('Navigation Flow', () => {
 
     // Should navigate to game page
     await page.waitForURL(/\/game\?room=/, { timeout: 10000 });
-    await expect(page.locator('#wheel, .wheel, canvas, svg').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#wheelSvg, #wheelContainer').first()).toBeVisible({ timeout: 5000 });
   });
 
   test('browser back button from game returns to lobby', async ({ page }) => {
@@ -68,7 +68,7 @@ test.describe('Navigation Flow', () => {
 
     // Should load game page
     await page.waitForURL(/\/game\?room=/, { timeout: 10000 });
-    await expect(page.locator('#wheel, .wheel, canvas, svg').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#wheelSvg, #wheelContainer').first()).toBeVisible({ timeout: 5000 });
   });
 
   test('logout redirects to login page', async ({ page }) => {
@@ -142,6 +142,6 @@ test.describe('Navigation Flow', () => {
 
     // Should end up on game page
     await page.waitForURL(/\/game\?room=/, { timeout: 10000 });
-    await expect(page.locator('#wheel, .wheel, canvas, svg').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#wheelSvg, #wheelContainer').first()).toBeVisible({ timeout: 5000 });
   });
 });

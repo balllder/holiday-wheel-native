@@ -29,7 +29,7 @@ test.describe('Socket.IO Connection', () => {
     await page.waitForLoadState('networkidle');
 
     // Verify game UI elements are present (indicates successful socket connection)
-    const wheel = page.locator('#wheel, .wheel, canvas, svg');
+    const wheel = page.locator('#wheelSvg, #wheelContainer');
     await expect(wheel.first()).toBeVisible({ timeout: 5000 });
   });
 
@@ -50,7 +50,7 @@ test.describe('Socket.IO Connection', () => {
     await page.context().setOffline(false);
 
     // Verify reconnection (page should still be functional)
-    const wheel = page.locator('#wheel, .wheel, canvas, svg');
+    const wheel = page.locator('#wheelSvg, #wheelContainer');
     await expect(wheel.first()).toBeVisible({ timeout: 10000 });
   });
 
@@ -90,8 +90,8 @@ test.describe('Socket.IO Connection', () => {
     await page2.waitForURL(/\/game\?room=/, { timeout: 10000 });
 
     // Both pages should show the game
-    const wheel1 = page1.locator('#wheel, .wheel, canvas, svg');
-    const wheel2 = page2.locator('#wheel, .wheel, canvas, svg');
+    const wheel1 = page1.locator('#wheelSvg, #wheelContainer');
+    const wheel2 = page2.locator('#wheelSvg, #wheelContainer');
 
     await expect(wheel1.first()).toBeVisible({ timeout: 5000 });
     await expect(wheel2.first()).toBeVisible({ timeout: 5000 });
