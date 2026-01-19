@@ -141,11 +141,12 @@ test.describe('Error Handling', () => {
     await page.waitForTimeout(2000);
 
     // Script should not execute (no alert dialog)
-    const dialogHandler = page.on('dialog', dialog => {
+    const dialogHandler = async (dialog: import('@playwright/test').Dialog) => {
       // If we get here, XSS was not prevented
       expect(dialog.message()).not.toBe('XSS');
-      dialog.dismiss();
-    });
+      await dialog.dismiss();
+    };
+    page.on('dialog', dialogHandler);
 
     // Page should handle safely
     const pageContent = await page.content();
