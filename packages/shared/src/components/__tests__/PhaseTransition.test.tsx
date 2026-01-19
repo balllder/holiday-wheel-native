@@ -1,6 +1,6 @@
 import React from 'react';
 import { create, act, ReactTestRenderer } from 'react-test-renderer';
-import { PhaseTransition, usePhaseTransition, GamePhase } from '../PhaseTransition';
+import { PhaseTransition, usePhaseTransition } from '../PhaseTransition';
 
 describe('PhaseTransition', () => {
   beforeEach(() => {
@@ -132,10 +132,10 @@ describe('PhaseTransition', () => {
   describe('callbacks', () => {
     it('calls onTransitionStart when transition begins', () => {
       const onTransitionStart = jest.fn();
-      let tree: ReactTestRenderer | undefined;
+      let _tree: ReactTestRenderer | undefined;
 
       act(() => {
-        tree = create(
+        _tree = create(
           <PhaseTransition
             phase="tossup"
             previousPhase="normal"
@@ -153,10 +153,10 @@ describe('PhaseTransition', () => {
 
     it('calls onTransitionComplete when animation finishes', () => {
       const onTransitionComplete = jest.fn();
-      let tree: ReactTestRenderer | undefined;
+      let _tree: ReactTestRenderer | undefined;
 
       act(() => {
-        tree = create(
+        _tree = create(
           <PhaseTransition
             phase="tossup"
             previousPhase="normal"
@@ -178,10 +178,10 @@ describe('PhaseTransition', () => {
   describe('enabled prop', () => {
     it('skips animation when disabled', () => {
       const onTransitionComplete = jest.fn();
-      let tree: ReactTestRenderer | undefined;
+      let _tree: ReactTestRenderer | undefined;
 
       act(() => {
-        tree = create(
+        _tree = create(
           <PhaseTransition
             phase="tossup"
             previousPhase="normal"

@@ -6,7 +6,6 @@ import {
   ViewStyle,
   TextStyle,
   Text,
-  View,
   GestureResponderEvent,
 } from 'react-native';
 

@@ -13,7 +13,7 @@ import {
   selectMyWildCards,
   selectCanUseWildCard,
 } from '../gameStore';
-import type { ServerGameState, Player, GamePhase } from '../../types';
+import type { ServerGameState, Player } from '../../types';
 
 // Helper to create a player
 const createPlayer = (overrides: Partial<Player> = {}): Player => ({

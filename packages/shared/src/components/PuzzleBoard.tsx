@@ -195,7 +195,7 @@ export function PuzzleBoard({
       {grid.map((row, rowIdx) => (
         <View key={rowIdx} style={rowStyle}>
           {row.map((char, colIdx) => {
-            const idx = rowIdx * ROW_WIDTHS[rowIdx] + colIdx;
+            const _idx = rowIdx * ROW_WIDTHS[rowIdx] + colIdx;
             // Recalculate the global index correctly
             let globalIdx = 0;
             for (let r = 0; r < rowIdx; r++) {

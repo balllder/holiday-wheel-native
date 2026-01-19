@@ -55,9 +55,9 @@ describe('AnimatedScore', () => {
     });
 
     it('returns null for zero value', () => {
-      let tree: ReactTestRenderer | undefined;
+      let _tree: ReactTestRenderer | undefined;
       act(() => {
-        tree = create(<AnimatedScore value={0} visible={true} />);
+        _tree = create(<AnimatedScore value={0} visible={true} />);
       });
 
       // Component renders container but starts animation only for non-zero

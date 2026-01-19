@@ -86,7 +86,7 @@ describe('MysteryWedgeModal', () => {
       });
 
       // Find pressables and simulate press on first one (keep button)
-      const pressables = tree?.root.findAllByType('View' as any).filter(
+      const pressables = tree?.root.findAllByType('View' as never).filter(
         node => node.props.onPress
       );
 
@@ -117,7 +117,7 @@ describe('MysteryWedgeModal', () => {
       });
 
       // Find pressables and simulate press on second one (flip button)
-      const pressables = tree?.root.findAllByType('View' as any).filter(
+      const pressables = tree?.root.findAllByType('View' as never).filter(
         node => node.props.onPress
       );
 
@@ -245,10 +245,10 @@ describe('MysteryWedgeModal', () => {
 
     it('calls onRevealComplete after animation', () => {
       const onRevealComplete = jest.fn();
-      let tree: ReactTestRenderer | undefined;
+      let _tree: ReactTestRenderer | undefined;
 
       act(() => {
-        tree = create(
+        _tree = create(
           <MysteryWedgeModal
             visible={true}
             stage="revealing"
@@ -269,10 +269,10 @@ describe('MysteryWedgeModal', () => {
 
     it('runs flip animation when choice is flip', () => {
       const onRevealComplete = jest.fn();
-      let tree: ReactTestRenderer | undefined;
+      let _tree: ReactTestRenderer | undefined;
 
       act(() => {
-        tree = create(
+        _tree = create(
           <MysteryWedgeModal
             visible={true}
             stage="revealing"

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
-import Svg, { Path, Text as SvgText, G, Defs, RadialGradient, Stop } from 'react-native-svg';
+import { View, StyleSheet } from 'react-native';
+import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import type { WedgeValue } from '../types';
 
 // Wheel colors matching the TV show
@@ -12,7 +12,6 @@ const WHEEL_COLORS = [
 
 // Highlight colors for winning wedge
 const HIGHLIGHT_COLOR = 'rgba(255, 255, 255, 0.6)';
-const HIGHLIGHT_GLOW_COLOR = '#ffd700';
 
 interface AnimatedWheelProps {
   wheelSlots: WedgeValue[];
@@ -40,7 +39,7 @@ export function AnimatedWheel({
   highlightFlashes = 3,
 }: AnimatedWheelProps): React.JSX.Element | null {
   const [wheelRotation, setWheelRotation] = useState(0);
-  const [isSpinning, setIsSpinning] = useState(false);
+  const [_isSpinning, setIsSpinning] = useState(false);
   const [showHighlight, setShowHighlight] = useState(false);
   const [highlightOpacity, setHighlightOpacity] = useState(0);
   const prevSpinIdx = useRef<number | null>(null);
