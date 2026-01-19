@@ -2751,10 +2751,41 @@ pub async fn game() -> Html<String> {
         .player-name {{ color: #fff; font-weight: 500; }}
         .player-score {{
             color: var(--color-primary);
-            font-family: 'Mountains of Christmas', cursive;
+            font-family: 'Courier New', monospace;
             font-weight: 700;
-            font-size: 20px;
+            font-size: 14px;
             position: relative;
+            text-align: right;
+        }}
+        .player-score-details {{
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }}
+        .player-score-total {{
+            color: var(--color-primary);
+            font-size: 16px;
+            font-weight: bold;
+        }}
+        .player-score-round {{
+            color: #888;
+            font-size: 12px;
+        }}
+        .player-prizes {{
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            margin-top: 4px;
+        }}
+        .player-prize {{
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            color: #fff;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            white-space: nowrap;
         }}
 
         /* Score change animation */
@@ -4491,7 +4522,7 @@ pub async fn game() -> Html<String> {
             change.className = 'score-change ' + (amount >= 0 ? 'positive' : 'negative');
             change.textContent = (amount >= 0 ? '+' : '-') + formatCash(amount);
 
-            const scoreEl = playerEl.querySelector('.player-score');
+            const scoreEl = playerEl.querySelector('.player-score-total');
             if (scoreEl) {{
                 scoreEl.style.position = 'relative';
                 scoreEl.appendChild(change);
@@ -5187,7 +5218,11 @@ pub async fn game() -> Html<String> {
                     const wildcards = p.wild_cards || 0;
                     const wildcardHtml = wildcards > 0 ?
                         `<div class="player-wildcards">${{'<div class="wildcard-icon">🃏</div>'.repeat(wildcards)}}</div>` : '';
-                    const score = (p.total || 0) + (p.round_bank || 0);
+                    const gameTotal = p.total || 0;
+                    const roundTotal = p.round_bank || 0;
+                    const allPrizes = [...(p.prizes || []), ...(p.round_prizes || [])];
+                    const prizesHtml = allPrizes.length > 0 ?
+                        `<div class="player-prizes">${{allPrizes.map(pr => `<span class="player-prize">${{pr.name}}</span>`).join('')}}</div>` : '';
                     const avatar = getAvatarEmoji(p.avatar_id);
                     const isActive = idx === gameState.active_idx;
                     return `
@@ -5196,7 +5231,11 @@ pub async fn game() -> Html<String> {
                                 <span class="player-avatar ${{isActive ? 'active' : ''}}">${{avatar}}</span>
                                 <span class="player-name">${{p.name}}${{idx === myPlayerIdx ? ' (you)' : ''}}${{wildcardHtml}}</span>
                             </div>
-                            <span class="player-score">${{formatCash(score)}}</span>
+                            <div class="player-score-details">
+                                <span class="player-score-total">${{formatCash(gameTotal + roundTotal)}}</span>
+                                <span class="player-score-round">Game: ${{formatCash(gameTotal)}} | Rnd: ${{formatCash(roundTotal)}}</span>
+                                ${{prizesHtml}}
+                            </div>
                         </div>
                     `;
                 }}).join('');
