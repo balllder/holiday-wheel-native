@@ -1249,6 +1249,42 @@ pub fn register_handlers(io: &SocketIo) {
                                 if game.final_all_picks_complete() {
                                     let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": "All picks complete! Solve now!" }));
                                     toast!(socket, "All picks complete! Solve now!");
+
+                                    // Spawn background task to auto-end final round when timer expires
+                                    let state_clone = state.clone();
+                                    let room_clone = req.room.clone();
+                                    let final_seconds = game.config.final_seconds as u64;
+                                    tokio::spawn(async move {
+                                        // Wait for timer to expire (plus small buffer)
+                                        tokio::time::sleep(Duration::from_secs(final_seconds + 1)).await;
+
+                                        // Check if timer expired and auto-end final round
+                                        let mut manager = state_clone.game_manager.write().await;
+                                        if let Some(game) = manager.get_room_mut(&room_clone) {
+                                            if game.phase == GamePhase::Final && game.final_timer_expired() {
+                                                // Timer expired - end final round
+                                                let player_name = game.players.get(game.active_idx)
+                                                    .map(|p| p.name.clone())
+                                                    .unwrap_or_else(|| "Player".to_string());
+                                                info!(
+                                                    "Final round timer expired for {} in room {}, auto-ending",
+                                                    player_name, room_clone
+                                                );
+                                                game.end_final();
+
+                                                // Broadcast update
+                                                if let Some(io) = state_clone.io.get() {
+                                                    let msg = format!("Time's up! {} didn't solve in time.", player_name);
+                                                    if let Some(ns) = io.of("/") {
+                                                        let _ = ns.to(room_clone.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
+                                                    }
+                                                    if let Some(ns) = io.of("/") {
+                                                        let _ = ns.to(room_clone).emit("state", &game.get_state());
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    });
                                 }
                             }
                             Err(msg) => {

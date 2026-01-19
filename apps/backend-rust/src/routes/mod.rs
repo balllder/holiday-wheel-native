@@ -3817,11 +3817,22 @@ pub async fn game() -> Html<String> {
 
             <div class="host-controls" id="hostControls" style="display: none; margin-top: 20px; padding-top: 16px; border-top: 1px solid #333;">
                 <p style="color: #d4af37; margin-bottom: 12px; font-weight: bold;">Host Controls</p>
-                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;">
                     <button class="btn" onclick="newGame()">New Game</button>
+                    <button class="btn btn-secondary" onclick="newPuzzle()">New Puzzle</button>
+                    <button class="btn btn-secondary" onclick="hostSpin()">Spin</button>
                     <button class="btn btn-secondary" onclick="revealAll()">Reveal All</button>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;">
+                    <button class="btn" id="tossupBtn" onclick="toggleTossup()">Start Toss-up</button>
+                    <button class="btn" id="finalBtn" onclick="toggleFinal()">Start Final</button>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                     <select id="packSelect" onchange="changePack()" style="padding: 8px 12px; border-radius: 8px; background: #1a1a2e; color: #fff; border: 2px solid #333; font-size: 14px; cursor: pointer;">
                         <option value="">All Packs</option>
+                    </select>
+                    <select id="activePlayerSelect" onchange="setActivePlayer()" style="padding: 8px 12px; border-radius: 8px; background: #1a1a2e; color: #fff; border: 2px solid #333; font-size: 14px; cursor: pointer;">
+                        <option value="">Set Active Player</option>
                     </select>
                 </div>
             </div>
@@ -4008,6 +4019,12 @@ pub async fn game() -> Html<String> {
             letterCorrect() {{ this.playTone(880, 0.15, 'sine'); this.playTone(1100, 0.15, 'sine'); }},
             letterWrong() {{ this.playTone(200, 0.3, 'sawtooth'); }},
             bankrupt() {{ this.playTone(100, 0.5, 'sawtooth'); }},
+            loseTurn() {{
+                // Sad trombone - descending notes
+                [300, 280, 250, 200].forEach((f, i) => {{
+                    setTimeout(() => this.playTone(f, 0.2, 'triangle'), i * 180);
+                }});
+            }},
             solve() {{
                 [523, 659, 784, 1047].forEach((f, i) => {{
                     setTimeout(() => this.playTone(f, 0.2, 'sine'), i * 100);
@@ -4048,6 +4065,12 @@ pub async fn game() -> Html<String> {
             }},
             timerUrgent() {{
                 this.playTone(800, 0.1, 'square');
+            }},
+            timesUp() {{
+                // Buzzer sound - descending harsh tones
+                [500, 400, 300].forEach((f, i) => {{
+                    setTimeout(() => this.playTone(f, 0.25, 'sawtooth'), i * 150);
+                }});
             }},
         }};
 
@@ -4852,9 +4875,11 @@ pub async fn game() -> Html<String> {
             // Show the wheel result
             if (pendingWheelResult !== null) {{
                 document.getElementById('wheelResult').textContent = pendingWheelResult;
-                // Play bankrupt sound if landed on bankrupt
+                // Play sounds for special wedges
                 if (pendingWheelResult === 'BANKRUPT') {{
                     SoundService.bankrupt();
+                }} else if (pendingWheelResult === 'LOSE A TURN') {{
+                    SoundService.loseTurn();
                 }}
                 pendingWheelResult = null;
             }}
@@ -5439,8 +5464,13 @@ pub async fn game() -> Html<String> {
                     if (turnTimerLocalRemaining > 0) {{
                         turnTimerTextEl.textContent = turnTimerLocalRemaining + 's';
                         turnTimerEl.classList.toggle('urgent', turnTimerLocalRemaining <= 3);
+                        // Play tick sound
+                        if (turnTimerLocalRemaining <= 3) {{
+                            SoundService.timerUrgent();
+                        }}
                     }} else {{
-                        // Timer expired - hide it (server will send state update)
+                        // Timer expired - play buzzer and hide
+                        SoundService.timesUp();
                         turnTimerEl.classList.remove('active', 'urgent');
                         clearInterval(turnTimerInterval);
                         turnTimerInterval = null;
@@ -5460,6 +5490,32 @@ pub async fn game() -> Html<String> {
             const hasWildCard = !isSpectating && myPlayer && (myPlayer.wild_cards || 0) > 0;
             const wildcardBtn = document.getElementById('wildcardBtn');
             wildcardBtn.classList.toggle('available', isMyTurn && hasWildCard && !isTossup && !isFinalRound);
+
+            // Update host control buttons based on phase
+            const tossupBtn = document.getElementById('tossupBtn');
+            const finalBtn = document.getElementById('finalBtn');
+            if (tossupBtn) {{
+                tossupBtn.textContent = isTossup ? 'End Toss-up' : 'Start Toss-up';
+                tossupBtn.classList.toggle('btn-danger', isTossup);
+            }}
+            if (finalBtn) {{
+                finalBtn.textContent = isFinalRound ? 'End Final' : 'Start Final';
+                finalBtn.classList.toggle('btn-danger', isFinalRound);
+            }}
+
+            // Populate active player dropdown
+            const activePlayerSelect = document.getElementById('activePlayerSelect');
+            if (activePlayerSelect && gameState.players) {{
+                const currentValue = activePlayerSelect.value;
+                activePlayerSelect.innerHTML = '<option value="">Set Active Player</option>';
+                gameState.players.forEach((player, idx) => {{
+                    const option = document.createElement('option');
+                    option.value = idx;
+                    option.textContent = player.name + (idx === gameState.active_idx ? ' (active)' : '');
+                    activePlayerSelect.appendChild(option);
+                }});
+                activePlayerSelect.value = currentValue;
+            }}
         }}
 
         let notificationTimeout = null;
@@ -5643,6 +5699,41 @@ pub async fn game() -> Html<String> {
             const packId = select.value ? parseInt(select.value) : null;
             const packName = select.options[select.selectedIndex]?.textContent?.split(' (')[0] || 'All Packs';
             socket.emit('set_pack', {{ room, pack_id: packId, pack_name: packName }});
+        }}
+
+        function newPuzzle() {{
+            socket.emit('new_puzzle', {{ room }});
+        }}
+
+        function hostSpin() {{
+            socket.emit('spin', {{ room }});
+        }}
+
+        function toggleTossup() {{
+            const phase = (gameState?.phase || '').toLowerCase();
+            if (phase === 'tossup') {{
+                socket.emit('end_tossup', {{ room }});
+            }} else {{
+                socket.emit('start_tossup', {{ room }});
+            }}
+        }}
+
+        function toggleFinal() {{
+            const phase = (gameState?.phase || '').toLowerCase();
+            if (phase === 'final') {{
+                socket.emit('end_final', {{ room }});
+            }} else {{
+                socket.emit('start_final', {{ room }});
+            }}
+        }}
+
+        function setActivePlayer() {{
+            const select = document.getElementById('activePlayerSelect');
+            const playerIdx = select.value ? parseInt(select.value) : null;
+            if (playerIdx !== null) {{
+                socket.emit('set_active', {{ room, player_idx: playerIdx }});
+            }}
+            select.value = ''; // Reset selection
         }}
 
         async function loadPacks() {{
