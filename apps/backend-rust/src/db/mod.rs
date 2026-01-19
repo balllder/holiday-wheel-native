@@ -275,6 +275,7 @@ impl Database {
                 prize_replace_csv TEXT,
                 puzzle_display_seconds INTEGER,
                 prize_wedge_names TEXT,
+                disconnect_timeout_secs INTEGER DEFAULT 300,
                 FOREIGN KEY(active_pack_id) REFERENCES packs(id)
             )
             "#,
@@ -288,6 +289,10 @@ impl Database {
             .await
             .ok();
         sqlx::query("ALTER TABLE room_config ADD COLUMN prize_wedge_names TEXT")
+            .execute(&self.pool)
+            .await
+            .ok();
+        sqlx::query("ALTER TABLE room_config ADD COLUMN disconnect_timeout_secs INTEGER DEFAULT 300")
             .execute(&self.pool)
             .await
             .ok();
@@ -761,7 +766,7 @@ impl Database {
     /// Get room config
     pub async fn get_room_config(&self, room_name: &str) -> Result<RoomConfig, DbError> {
         let row = sqlx::query(
-            "SELECT active_pack_id, vowel_cost, final_seconds, final_jackpot, prize_replace_csv, puzzle_display_seconds, prize_wedge_names FROM room_config WHERE room_name = ?",
+            "SELECT active_pack_id, vowel_cost, final_seconds, final_jackpot, prize_replace_csv, puzzle_display_seconds, prize_wedge_names, disconnect_timeout_secs FROM room_config WHERE room_name = ?",
         )
         .bind(room_name)
         .fetch_optional(&self.pool)
@@ -795,6 +800,7 @@ impl Database {
                 puzzle_display_seconds: row.get::<Option<i32>, _>("puzzle_display_seconds").unwrap_or(30),
                 prize_wedge_names,
                 pack_id: row.get::<Option<i64>, _>("active_pack_id"),
+                disconnect_timeout_secs: row.get::<Option<i64>, _>("disconnect_timeout_secs").unwrap_or(300),
             })
         } else {
             Ok(RoomConfig::default())
@@ -829,8 +835,8 @@ impl Database {
 
         sqlx::query(
             r#"
-            INSERT INTO room_config (room_name, active_pack_id, vowel_cost, final_seconds, final_jackpot, prize_replace_csv, puzzle_display_seconds, prize_wedge_names)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO room_config (room_name, active_pack_id, vowel_cost, final_seconds, final_jackpot, prize_replace_csv, puzzle_display_seconds, prize_wedge_names, disconnect_timeout_secs)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(room_name) DO UPDATE SET
                 active_pack_id = excluded.active_pack_id,
                 vowel_cost = excluded.vowel_cost,
@@ -838,7 +844,8 @@ impl Database {
                 final_jackpot = excluded.final_jackpot,
                 prize_replace_csv = excluded.prize_replace_csv,
                 puzzle_display_seconds = excluded.puzzle_display_seconds,
-                prize_wedge_names = excluded.prize_wedge_names
+                prize_wedge_names = excluded.prize_wedge_names,
+                disconnect_timeout_secs = excluded.disconnect_timeout_secs
             "#,
         )
         .bind(room_name)
@@ -849,6 +856,7 @@ impl Database {
         .bind(&prize_csv)
         .bind(config.puzzle_display_seconds)
         .bind(&prize_wedge_csv)
+        .bind(config.disconnect_timeout_secs)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -1945,6 +1953,7 @@ mod tests {
             puzzle_display_seconds: 45,
             prize_wedge_names: vec!["PRIZE 1".to_string(), "PRIZE 2".to_string()],
             pack_id: Some(1),
+            disconnect_timeout_secs: 300,
         };
 
         db.set_room_config("custom-room", &config, Some(1)).await.unwrap();
