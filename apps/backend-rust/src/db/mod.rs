@@ -93,6 +93,8 @@ pub struct User {
     pub remember_token: Option<String>,
     #[sqlx(default)]
     pub is_admin: bool,
+    #[sqlx(default)]
+    pub avatar_id: i64, // Avatar selection (1-12, default: 1)
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +104,7 @@ pub struct NewUser {
     pub display_name: String,
     pub verification_token: String,
     pub verification_token_expires: i64,
+    pub avatar_id: i64,
 }
 
 // ========== PASSKEY & OAUTH TYPES ==========
@@ -296,8 +299,8 @@ impl Database {
         let result = sqlx::query(
             r#"
             INSERT INTO users (email, password_hash, display_name, verification_token,
-                             verification_token_expires, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+                             verification_token_expires, created_at, avatar_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(user.email.to_lowercase())
@@ -306,6 +309,7 @@ impl Database {
         .bind(&user.verification_token)
         .bind(user.verification_token_expires)
         .bind(now_secs())
+        .bind(user.avatar_id.clamp(1, 12)) // Validate avatar_id range
         .execute(&self.pool)
         .await?;
 
@@ -1197,6 +1201,60 @@ impl Database {
             .await?;
         Ok(())
     }
+
+    // ========== PROFILE METHODS ==========
+
+    /// Update user profile (display name and avatar)
+    pub async fn update_user_profile(
+        &self,
+        user_id: i64,
+        display_name: Option<&str>,
+        avatar_id: Option<i64>,
+    ) -> Result<(), DbError> {
+        if let Some(name) = display_name {
+            sqlx::query("UPDATE users SET display_name = ? WHERE id = ?")
+                .bind(name)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await?;
+        }
+        if let Some(avatar) = avatar_id {
+            // Validate avatar_id is in valid range (1-12)
+            let valid_avatar = avatar.clamp(1, 12);
+            sqlx::query("UPDATE users SET avatar_id = ? WHERE id = ?")
+                .bind(valid_avatar)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Update user avatar
+    pub async fn update_user_avatar(&self, user_id: i64, avatar_id: i64) -> Result<(), DbError> {
+        // Validate avatar_id is in valid range (1-12)
+        let valid_avatar = avatar_id.clamp(1, 12);
+        sqlx::query("UPDATE users SET avatar_id = ? WHERE id = ?")
+            .bind(valid_avatar)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Update user display name
+    pub async fn update_user_display_name(
+        &self,
+        user_id: i64,
+        display_name: &str,
+    ) -> Result<(), DbError> {
+        sqlx::query("UPDATE users SET display_name = ? WHERE id = ?")
+            .bind(display_name)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1225,6 +1283,7 @@ mod tests {
                 display_name: "Test User".to_string(),
                 verification_token: "token123".to_string(),
                 verification_token_expires: 9999999999,
+                avatar_id: 1,
             })
             .await
             .unwrap();
@@ -1246,6 +1305,7 @@ mod tests {
             display_name: "Test User".to_string(),
             verification_token: "token123".to_string(),
             verification_token_expires: 9999999999,
+            avatar_id: 1,
         })
         .await
         .unwrap();
@@ -1264,6 +1324,7 @@ mod tests {
             display_name: "Test User".to_string(),
             verification_token: "token123".to_string(),
             verification_token_expires: 9999999999,
+            avatar_id: 1,
         })
         .await
         .unwrap();
@@ -1283,6 +1344,7 @@ mod tests {
             display_name: "Test User".to_string(),
             verification_token: "token123".to_string(),
             verification_token_expires: 9999999999,
+            avatar_id: 1,
         })
         .await
         .unwrap();
@@ -1313,6 +1375,7 @@ mod tests {
                 display_name: "Test User".to_string(),
                 verification_token: "token123".to_string(),
                 verification_token_expires: 9999999999,
+                avatar_id: 1,
             })
             .await
             .unwrap();
@@ -1333,6 +1396,7 @@ mod tests {
                 display_name: "Test User".to_string(),
                 verification_token: "token123".to_string(),
                 verification_token_expires: 9999999999,
+                avatar_id: 1,
             })
             .await
             .unwrap();
@@ -1361,6 +1425,7 @@ mod tests {
             display_name: "Test User".to_string(),
             verification_token: "unique-token-123".to_string(),
             verification_token_expires: 9999999999,
+            avatar_id: 1,
         })
         .await
         .unwrap();
@@ -1384,6 +1449,7 @@ mod tests {
                 display_name: "Test User".to_string(),
                 verification_token: "token123".to_string(),
                 verification_token_expires: 9999999999,
+                avatar_id: 1,
             })
             .await
             .unwrap();
@@ -1438,6 +1504,7 @@ mod tests {
                 display_name: "Regular User".to_string(),
                 verification_token: "token".to_string(),
                 verification_token_expires: 9999999999,
+                avatar_id: 1,
             })
             .await
             .unwrap();
@@ -1455,6 +1522,7 @@ mod tests {
                 display_name: "Test User".to_string(),
                 verification_token: "token123".to_string(),
                 verification_token_expires: 9999999999,
+                avatar_id: 1,
             })
             .await
             .unwrap();
@@ -1875,6 +1943,7 @@ mod tests {
             display_name: "User 1".to_string(),
             verification_token: "token1".to_string(),
             verification_token_expires: 9999999999,
+            avatar_id: 1,
         })
         .await
         .unwrap();
@@ -1885,6 +1954,7 @@ mod tests {
             display_name: "User 2".to_string(),
             verification_token: "token2".to_string(),
             verification_token_expires: 9999999999,
+            avatar_id: 1,
         })
         .await
         .unwrap();
@@ -1904,6 +1974,7 @@ mod tests {
                 display_name: "Test".to_string(),
                 verification_token: "token".to_string(),
                 verification_token_expires: 9999999999,
+                avatar_id: 1,
             })
             .await
             .unwrap();
@@ -1967,6 +2038,7 @@ mod tests {
             display_name: "User 1".to_string(),
             verification_token: "token1".to_string(),
             verification_token_expires: 9999999999,
+            avatar_id: 1,
         })
         .await
         .unwrap();
@@ -1979,6 +2051,7 @@ mod tests {
                 display_name: "User 2".to_string(),
                 verification_token: "token2".to_string(),
                 verification_token_expires: 9999999999,
+                avatar_id: 1,
             })
             .await;
 
@@ -1996,6 +2069,7 @@ mod tests {
                 display_name: "Reset User".to_string(),
                 verification_token: "token".to_string(),
                 verification_token_expires: 9999999999,
+                avatar_id: 1,
             })
             .await
             .unwrap();
@@ -2030,6 +2104,7 @@ mod tests {
                 display_name: "Login User".to_string(),
                 verification_token: "token".to_string(),
                 verification_token_expires: 9999999999,
+                avatar_id: 1,
             })
             .await
             .unwrap();
@@ -2056,6 +2131,7 @@ mod tests {
                 display_name: "Verify User".to_string(),
                 verification_token: "old-token".to_string(),
                 verification_token_expires: 1000000000,
+                avatar_id: 1,
             })
             .await
             .unwrap();
@@ -2438,5 +2514,376 @@ mod tests {
         assert_eq!(loaded.puzzle_display_seconds, 90);
         assert_eq!(loaded.prize_wedge_names, vec!["TRIP", "BOAT"]);
         assert_eq!(loaded.disconnect_timeout_secs, 120);
+    }
+
+    // ========== PROFILE AND AVATAR TESTS ==========
+
+    #[tokio::test]
+    async fn test_new_user_has_default_avatar() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "avatar@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Avatar User".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        // Default avatar_id should be 0 (database default) or 1 (if explicitly set)
+        assert!(user.avatar_id >= 0 && user.avatar_id <= 12);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_avatar() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "updateavatar@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Update Avatar".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        // Update avatar to valid value
+        db.update_user_avatar(user_id, 5).await.unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.avatar_id, 5);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_avatar_clamps_invalid_high() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "highavatar@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "High Avatar".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        // Update avatar to value > 12 (should be clamped to 12)
+        db.update_user_avatar(user_id, 99).await.unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.avatar_id, 12);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_avatar_clamps_invalid_low() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "lowavatar@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Low Avatar".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        // Update avatar to value 0 (should be clamped to 1)
+        db.update_user_avatar(user_id, 0).await.unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.avatar_id, 1);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_avatar_clamps_negative() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "negavatar@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Neg Avatar".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        // Update avatar to negative value (should be clamped to 1)
+        db.update_user_avatar(user_id, -5).await.unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.avatar_id, 1);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_display_name() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "displayname@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Original Name".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        // Update display name
+        db.update_user_display_name(user_id, "New Display Name")
+            .await
+            .unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.display_name, "New Display Name");
+    }
+
+    #[tokio::test]
+    async fn test_update_user_profile_both_fields() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "profileboth@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Original".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        // Update both display name and avatar
+        db.update_user_profile(user_id, Some("Updated Name"), Some(7))
+            .await
+            .unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.display_name, "Updated Name");
+        assert_eq!(user.avatar_id, 7);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_profile_only_name() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "profilename@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Original".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        // First set a specific avatar
+        db.update_user_avatar(user_id, 3).await.unwrap();
+
+        // Update only display name (avatar should remain unchanged)
+        db.update_user_profile(user_id, Some("Name Only"), None)
+            .await
+            .unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.display_name, "Name Only");
+        assert_eq!(user.avatar_id, 3); // Should be unchanged
+    }
+
+    #[tokio::test]
+    async fn test_update_user_profile_only_avatar() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "profileavatar@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Keep This Name".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        // Update only avatar (name should remain unchanged)
+        db.update_user_profile(user_id, None, Some(10)).await.unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.display_name, "Keep This Name"); // Should be unchanged
+        assert_eq!(user.avatar_id, 10);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_profile_neither_field() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "profileneither@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Unchanged".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        // First set a specific avatar
+        db.update_user_avatar(user_id, 4).await.unwrap();
+
+        // Update with neither field (should be no-op)
+        db.update_user_profile(user_id, None, None).await.unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.display_name, "Unchanged");
+        assert_eq!(user.avatar_id, 4);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_profile_avatar_boundary_12() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "avatar12@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Avatar 12".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        // Update avatar to exactly 12 (should work)
+        db.update_user_profile(user_id, None, Some(12)).await.unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.avatar_id, 12);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_profile_avatar_boundary_1() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "avatar1@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Avatar 1".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        // Update avatar to exactly 1 (should work)
+        db.update_user_profile(user_id, None, Some(1)).await.unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.avatar_id, 1);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_profile_avatar_boundary_13() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "avatar13@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Avatar 13".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        // Update avatar to 13 (should be clamped to 12)
+        db.update_user_profile(user_id, None, Some(13)).await.unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.avatar_id, 12);
+    }
+
+    #[tokio::test]
+    async fn test_oauth_user_has_default_avatar() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_oauth_user("oauthavatar@example.com", "OAuth Avatar User", true)
+            .await
+            .unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        // OAuth users should also have a default avatar
+        assert!(user.avatar_id >= 0 && user.avatar_id <= 12);
+    }
+
+    #[tokio::test]
+    async fn test_oauth_user_can_update_avatar() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_oauth_user("oauthupdateavatar@example.com", "OAuth Update", true)
+            .await
+            .unwrap();
+
+        db.update_user_avatar(user_id, 8).await.unwrap();
+
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.avatar_id, 8);
+    }
+
+    #[tokio::test]
+    async fn test_update_nonexistent_user_avatar() {
+        let db = create_test_db().await;
+
+        // Updating a nonexistent user should not error (SQL UPDATE affects 0 rows)
+        let result = db.update_user_avatar(99999, 5).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_update_nonexistent_user_display_name() {
+        let db = create_test_db().await;
+
+        // Updating a nonexistent user should not error (SQL UPDATE affects 0 rows)
+        let result = db.update_user_display_name(99999, "Nonexistent").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_update_nonexistent_user_profile() {
+        let db = create_test_db().await;
+
+        // Updating a nonexistent user should not error (SQL UPDATE affects 0 rows)
+        let result = db.update_user_profile(99999, Some("Name"), Some(5)).await;
+        assert!(result.is_ok());
     }
 }

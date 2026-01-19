@@ -225,6 +225,15 @@ pub async fn get_socket_user_id(state: &Arc<AppState>, socket_id: &str) -> Optio
     None
 }
 
+/// Look up the avatar_id for a user
+/// Returns the avatar_id (1-12) or None if user not found
+pub async fn get_user_avatar_id(state: &Arc<AppState>, user_id: i64) -> Option<i64> {
+    match state.db.get_user_by_id(user_id).await {
+        Ok(Some(user)) => Some(user.avatar_id),
+        _ => None,
+    }
+}
+
 // ========== TESTABLE HELPER FUNCTIONS ==========
 // These functions extract handler logic for unit testing
 
@@ -264,8 +273,8 @@ pub fn handle_join_game(
         return Ok((idx, true, name));
     }
 
-    // Add new player
-    let player_idx = game.add_player(name.clone(), Some(socket_id.to_string()), None);
+    // Add new player (avatar_id will be set separately if authenticated)
+    let player_idx = game.add_player(name.clone(), Some(socket_id.to_string()), None, None);
     Ok((player_idx, false, name))
 }
 
@@ -515,9 +524,13 @@ pub fn register_handlers(io: &SocketIo) {
 
                 // Look up user_id from authenticated socket (if they called auth first)
                 let user_id = get_socket_user_id(&state, socket.id.as_str()).await;
-                if user_id.is_some() {
+                // Look up avatar_id if authenticated
+                let avatar_id = if let Some(uid) = user_id {
                     info!("Socket {} is authenticated as user_id {:?}", socket.id, user_id);
-                }
+                    get_user_avatar_id(&state, uid).await
+                } else {
+                    None
+                };
 
                 let mut manager = state.game_manager.write().await;
                 let game = manager.get_or_create_room(&req.room);
@@ -527,6 +540,10 @@ pub fn register_handlers(io: &SocketIo) {
                     // Update user_id association if missing
                     if game.players[idx].user_id.is_none() && user_id.is_some() {
                         game.players[idx].user_id = user_id;
+                    }
+                    // Update avatar_id if we have one
+                    if let Some(aid) = avatar_id {
+                        game.players[idx].avatar_id = aid;
                     }
                     socket.emit("you", &serde_json::json!({ "player_idx": idx, "user_id": user_id })).ok();
                     broadcast_state!(socket, req.room, game.get_state());
@@ -553,6 +570,10 @@ pub fn register_handlers(io: &SocketIo) {
                     if game.players[idx].user_id.is_none() && user_id.is_some() {
                         game.players[idx].user_id = user_id;
                     }
+                    // Update avatar_id if we have one
+                    if let Some(aid) = avatar_id {
+                        game.players[idx].avatar_id = aid;
+                    }
                     let reconnected_name = game.players[idx].name.clone();
                     socket.emit("you", &serde_json::json!({ "player_idx": idx, "user_id": user_id })).ok();
                     toast!(socket, &format!("Reconnected as {}!", reconnected_name));
@@ -561,7 +582,7 @@ pub fn register_handlers(io: &SocketIo) {
                 }
 
                 // Add new player with user_id association
-                let player_idx = game.add_player(name.clone(), Some(socket.id.to_string()), user_id);
+                let player_idx = game.add_player(name.clone(), Some(socket.id.to_string()), user_id, avatar_id);
 
                 socket.emit("you", &serde_json::json!({ "player_idx": player_idx, "user_id": user_id })).ok();
                 toast!(socket, &format!("Joined as {}!", name));
@@ -755,7 +776,7 @@ pub fn register_handlers(io: &SocketIo) {
 
                     game.players.clear();
                     for name in req.names.iter() {
-                        game.add_player(name[..name.len().min(30)].to_string(), None, None);
+                        game.add_player(name[..name.len().min(30)].to_string(), None, None, None);
                     }
                     game.active_idx = 0;
                     toast!(socket, &format!("Set {} players.", game.players.len()));
@@ -1197,9 +1218,9 @@ mod tests {
     fn create_test_manager_with_players(room: &str) -> GameManager {
         let mut manager = create_test_manager_with_room(room);
         let game = manager.get_room_mut(room).unwrap();
-        game.add_player("Player 1".to_string(), Some("socket1".to_string()), None);
-        game.add_player("Player 2".to_string(), Some("socket2".to_string()), None);
-        game.add_player("Player 3".to_string(), Some("socket3".to_string()), None);
+        game.add_player("Player 1".to_string(), Some("socket1".to_string()), None, None);
+        game.add_player("Player 2".to_string(), Some("socket2".to_string()), None, None);
+        game.add_player("Player 3".to_string(), Some("socket3".to_string()), None, None);
         manager
     }
 
@@ -1313,7 +1334,7 @@ mod tests {
         // Add player then disconnect them
         {
             let game = manager.get_or_create_room("test-room");
-            game.add_player("Alice".to_string(), Some("old-socket".to_string()), None);
+            game.add_player("Alice".to_string(), Some("old-socket".to_string()), None, None);
             // Simulate disconnect
             game.players[0].socket_id = None;
             game.players[0].disconnected_at = Some(12345);
@@ -1917,6 +1938,7 @@ mod tests {
             "AuthUser".to_string(),
             Some("socket1".to_string()),
             Some(123),
+            Some(5),
         );
 
         assert_eq!(player_idx, 0);
@@ -1934,6 +1956,7 @@ mod tests {
             "AuthUser".to_string(),
             Some("socket1".to_string()),
             Some(123),
+            Some(5),
         );
 
         // Disconnect the player
@@ -1970,6 +1993,7 @@ mod tests {
             "GuestPlayer".to_string(),
             Some("socket1".to_string()),
             None,
+            None,
         );
 
         assert_eq!(player_idx, 0);
@@ -1987,12 +2011,14 @@ mod tests {
             "AuthUser".to_string(),
             Some("socket1".to_string()),
             Some(123),
+            Some(5),
         );
 
         // Add anonymous player
         game.add_player(
             "GuestPlayer".to_string(),
             Some("socket2".to_string()),
+            None,
             None,
         );
 

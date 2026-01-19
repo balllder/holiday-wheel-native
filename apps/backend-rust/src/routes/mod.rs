@@ -77,6 +77,9 @@ pub async fn join(Query(query): Query<JoinQuery>) -> Html<String> {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Join Holiday Wheel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&display=swap" rel="stylesheet">
     <style>
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
         body {{
@@ -97,9 +100,27 @@ pub async fn join(Query(query): Query<JoinQuery>) -> Html<String> {
             max-width: 400px;
         }}
         h1 {{
-            color: #d4af37;
             margin-bottom: 16px;
-            font-size: 28px;
+            font-size: 32px;
+            font-weight: 800;
+            background: linear-gradient(
+                135deg,
+                #ff4444 0%,
+                #d4af37 25%,
+                #22c55e 50%,
+                #d4af37 75%,
+                #ff4444 100%
+            );
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: festiveShimmer 4s linear infinite;
+            letter-spacing: 1px;
+        }}
+        @keyframes festiveShimmer {{
+            0% {{ background-position: 0% center; }}
+            100% {{ background-position: 200% center; }}
         }}
         p {{
             color: #ccc;
@@ -242,10 +263,67 @@ const COMMON_STYLES: &str = r#"
     }
     .container.wide { max-width: 900px; }
     h1 {
-        color: #d4af37;
         text-align: center;
         margin-bottom: 8px;
-        font-size: 28px;
+        font-family: 'Mountains of Christmas', cursive;
+        font-size: 42px;
+        font-weight: 700;
+        background: linear-gradient(
+            135deg,
+            #ff4444 0%,
+            #d4af37 25%,
+            #22c55e 50%,
+            #d4af37 75%,
+            #ff4444 100%
+        );
+        background-size: 200% auto;
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: festiveShimmer 4s linear infinite;
+        text-shadow: none;
+        position: relative;
+        display: inline-block;
+        width: 100%;
+        letter-spacing: 2px;
+    }
+    h1::before {
+        content: "❄";
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 20px;
+        -webkit-text-fill-color: #87ceeb;
+        animation: snowflakeSpin 6s linear infinite;
+        opacity: 0.8;
+    }
+    h1::after {
+        content: "❄";
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 20px;
+        -webkit-text-fill-color: #87ceeb;
+        animation: snowflakeSpin 6s linear infinite reverse;
+        opacity: 0.8;
+    }
+    @keyframes festiveShimmer {
+        0% { background-position: 0% center; }
+        100% { background-position: 200% center; }
+    }
+    @keyframes snowflakeSpin {
+        0% { transform: translateY(-50%) rotate(0deg); }
+        100% { transform: translateY(-50%) rotate(360deg); }
+    }
+    /* Fallback for browsers that don't support background-clip: text */
+    @supports not (-webkit-background-clip: text) {
+        h1 {
+            color: #d4af37;
+            background: none;
+            text-shadow: 0 0 20px rgba(212, 175, 55, 0.5), 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
     }
     .subtitle {
         color: #888;
@@ -354,6 +432,9 @@ pub async fn index() -> Html<String> {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Holiday Wheel - Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&display=swap" rel="stylesheet">
     <style>
         {common_styles}
         .social-buttons {{
@@ -694,6 +775,9 @@ pub async fn register() -> Html<String> {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Holiday Wheel - Register</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&display=swap" rel="stylesheet">
     <style>
         {common_styles}
         .passkey-section {{
@@ -748,6 +832,35 @@ pub async fn register() -> Html<String> {
             margin-bottom: 20px;
             display: none;
         }}
+        .avatar-grid {{
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 10px;
+            margin-top: 8px;
+        }}
+        .avatar-item {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 48px;
+            height: 48px;
+            font-size: 28px;
+            background: #1a1040;
+            border: 2px solid #333;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }}
+        .avatar-item:hover {{
+            background: #2a1850;
+            border-color: #d4af37;
+            transform: scale(1.1);
+        }}
+        .avatar-item.selected {{
+            background: linear-gradient(135deg, #2a1850, #3a2060);
+            border-color: #d4af37;
+            box-shadow: 0 0 12px rgba(212, 175, 55, 0.5);
+        }}
     </style>
 </head>
 <body>
@@ -794,6 +907,24 @@ pub async fn register() -> Html<String> {
             <div class="form-group">
                 <label for="confirmPassword">Confirm Password</label>
                 <input type="password" id="confirmPassword" name="confirmPassword" required>
+            </div>
+            <div class="form-group">
+                <label>Choose Your Avatar</label>
+                <div class="avatar-grid">
+                    <div class="avatar-item selected" data-avatar="1" onclick="selectAvatar(1)">🎅</div>
+                    <div class="avatar-item" data-avatar="2" onclick="selectAvatar(2)">🤶</div>
+                    <div class="avatar-item" data-avatar="3" onclick="selectAvatar(3)">🦌</div>
+                    <div class="avatar-item" data-avatar="4" onclick="selectAvatar(4)">⛄</div>
+                    <div class="avatar-item" data-avatar="5" onclick="selectAvatar(5)">🎄</div>
+                    <div class="avatar-item" data-avatar="6" onclick="selectAvatar(6)">🎁</div>
+                    <div class="avatar-item" data-avatar="7" onclick="selectAvatar(7)">🔔</div>
+                    <div class="avatar-item" data-avatar="8" onclick="selectAvatar(8)">❄️</div>
+                    <div class="avatar-item" data-avatar="9" onclick="selectAvatar(9)">🌟</div>
+                    <div class="avatar-item" data-avatar="10" onclick="selectAvatar(10)">🕯️</div>
+                    <div class="avatar-item" data-avatar="11" onclick="selectAvatar(11)">🧝</div>
+                    <div class="avatar-item" data-avatar="12" onclick="selectAvatar(12)">🤴</div>
+                </div>
+                <input type="hidden" id="avatarId" name="avatarId" value="1">
             </div>
             <button type="submit" class="full">Create Account</button>
         </form>
@@ -943,6 +1074,20 @@ pub async fn register() -> Html<String> {
             }}
         }}
 
+        function selectAvatar(avatarId) {{
+            // Remove selected class from all avatars
+            document.querySelectorAll('.avatar-item').forEach(item => {{
+                item.classList.remove('selected');
+            }});
+            // Add selected class to clicked avatar
+            const selectedItem = document.querySelector('.avatar-item[data-avatar="' + avatarId + '"]');
+            if (selectedItem) {{
+                selectedItem.classList.add('selected');
+            }}
+            // Update hidden input
+            document.getElementById('avatarId').value = avatarId;
+        }}
+
         document.getElementById('registerForm').addEventListener('submit', async (e) => {{
             e.preventDefault();
             const errorDiv = document.getElementById('error');
@@ -951,6 +1096,7 @@ pub async fn register() -> Html<String> {
             const display_name = document.getElementById('displayName').value;
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
+            const avatar_id = parseInt(document.getElementById('avatarId').value, 10);
             const confirmPassword = document.getElementById('confirmPassword').value;
 
             if (password !== confirmPassword) {{
@@ -963,7 +1109,7 @@ pub async fn register() -> Html<String> {
                 const res = await fetch('/auth/api/register', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ email, password, display_name }}),
+                    body: JSON.stringify({{ email, password, display_name, avatar_id }}),
                     credentials: 'include'
                 }});
                 const data = await res.json();
@@ -998,6 +1144,9 @@ pub async fn lobby() -> Html<String> {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Holiday Wheel - Lobby</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&display=swap" rel="stylesheet">
     <style>
         {common_styles}
         .lobby-header {{
@@ -1007,8 +1156,9 @@ pub async fn lobby() -> Html<String> {
             border-bottom: 1px solid #333;
         }}
         .lobby-header h1 {{
-            font-size: 36px;
+            font-size: 40px;
             margin-bottom: 8px;
+            filter: drop-shadow(0 2px 4px rgba(212, 175, 55, 0.3));
         }}
         .user-row {{
             display: flex;
@@ -1019,8 +1169,175 @@ pub async fn lobby() -> Html<String> {
         .header-buttons {{
             display: flex;
             gap: 12px;
+            align-items: center;
+        }}
+        .profile-btn {{
+            background: none;
+            border: 2px solid #d4af37;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            padding: 0;
+        }}
+        .profile-btn:hover {{
+            background: rgba(212, 175, 55, 0.2);
+            transform: scale(1.05);
         }}
         .hidden {{ display: none !important; }}
+        /* Profile Modal Styles */
+        .profile-modal-overlay {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }}
+        .profile-modal-overlay.active {{
+            display: flex;
+        }}
+        .profile-modal {{
+            background: linear-gradient(180deg, #1a0a3e 0%, #0d0628 100%);
+            border: 2px solid #d4af37;
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 420px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }}
+        .profile-modal h2 {{
+            color: #d4af37;
+            margin: 0 0 24px 0;
+            text-align: center;
+            font-size: 28px;
+        }}
+        .profile-modal .form-group {{
+            margin-bottom: 20px;
+        }}
+        .profile-modal label {{
+            display: block;
+            color: #aaa;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }}
+        .profile-modal input {{
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            background: #0d0628;
+            color: #fff;
+            font-size: 16px;
+        }}
+        .profile-modal input:focus {{
+            outline: none;
+            border-color: #d4af37;
+        }}
+        .profile-modal input:disabled {{
+            background: #1a0a3e;
+            color: #888;
+            cursor: not-allowed;
+        }}
+        .avatar-grid {{
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+            margin-top: 8px;
+        }}
+        .avatar-option {{
+            width: 100%;
+            aspect-ratio: 1;
+            border: 2px solid #333;
+            border-radius: 8px;
+            background: #0d0628;
+            font-size: 28px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }}
+        .avatar-option:hover {{
+            border-color: #d4af37;
+            background: rgba(212, 175, 55, 0.1);
+            transform: scale(1.05);
+        }}
+        .avatar-option.selected {{
+            border-color: #d4af37;
+            background: rgba(212, 175, 55, 0.2);
+            box-shadow: 0 0 12px rgba(212, 175, 55, 0.4);
+        }}
+        .profile-modal-buttons {{
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }}
+        .profile-modal-buttons button {{
+            flex: 1;
+            padding: 14px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            border: none;
+        }}
+        .profile-save-btn {{
+            background: #d4af37;
+            color: #0d0628;
+        }}
+        .profile-save-btn:hover {{
+            background: #e5c048;
+        }}
+        .profile-save-btn:disabled {{
+            background: #666;
+            cursor: not-allowed;
+        }}
+        .profile-cancel-btn {{
+            background: #333;
+            color: #d4af37;
+        }}
+        .profile-cancel-btn:hover {{
+            background: #444;
+        }}
+        .profile-toast {{
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 500;
+            z-index: 2000;
+            animation: slideUp 0.3s ease;
+        }}
+        .profile-toast.success {{
+            background: #27ae60;
+            color: #fff;
+        }}
+        .profile-toast.error {{
+            background: #e74c3c;
+            color: #fff;
+        }}
+        @keyframes slideUp {{
+            from {{ opacity: 0; transform: translateX(-50%) translateY(20px); }}
+            to {{ opacity: 1; transform: translateX(-50%) translateY(0); }}
+        }}
+        .current-avatar {{
+            font-size: 48px;
+            text-align: center;
+            margin-bottom: 16px;
+        }}
         .lobby-content {{
             display: grid;
             grid-template-columns: 1fr 280px;
@@ -1174,6 +1491,7 @@ pub async fn lobby() -> Html<String> {
             <div class="user-row">
                 <span>Welcome, <span class="user-name" id="userName">Player</span>!</span>
                 <div class="header-buttons">
+                    <button class="profile-btn" id="profileBtn" onclick="openProfileModal()" title="Edit Profile"></button>
                     <a href="/admin" id="adminBtn" class="btn hidden" style="background:#5856d6;">Admin</a>
                     <button class="btn btn-secondary" onclick="logout()">Logout</button>
                 </div>
@@ -1235,6 +1553,30 @@ pub async fn lobby() -> Html<String> {
             </div>
         </div>
     </div>
+
+    <!-- Profile Modal -->
+    <div class="profile-modal-overlay" id="profileModal">
+        <div class="profile-modal">
+            <h2>Edit Profile</h2>
+            <div class="current-avatar" id="currentAvatarDisplay"></div>
+            <div class="form-group">
+                <label for="profileDisplayName">Display Name</label>
+                <input type="text" id="profileDisplayName" placeholder="Enter your display name" maxlength="30">
+            </div>
+            <div class="form-group">
+                <label for="profileEmail">Email</label>
+                <input type="email" id="profileEmail" disabled>
+            </div>
+            <div class="form-group">
+                <label>Choose Avatar</label>
+                <div class="avatar-grid" id="avatarGrid"></div>
+            </div>
+            <div class="profile-modal-buttons">
+                <button class="profile-save-btn" id="profileSaveBtn" onclick="saveProfile()">Save Changes</button>
+                <button class="profile-cancel-btn" onclick="closeProfileModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script>
@@ -1262,6 +1604,123 @@ pub async fn lobby() -> Html<String> {
             window.location.href = '/';
         }} else {{
             document.getElementById('userName').textContent = user.display_name || user.email;
+        }}
+
+        // ========== PROFILE MANAGEMENT ==========
+        const AVATARS = ['🎅', '🤶', '🦌', '⛄', '🎄', '🎁', '🔔', '❄️', '🌟', '🕯️', '🧝', '🤴'];
+        let selectedAvatarId = user?.avatar_id || 1;
+
+        // Initialize profile button with current avatar
+        function initProfileButton() {{
+            const avatarId = user?.avatar_id || 1;
+            const avatarEmoji = AVATARS[(avatarId - 1) % AVATARS.length] || '🎅';
+            document.getElementById('profileBtn').textContent = avatarEmoji;
+        }}
+        initProfileButton();
+
+        // Initialize avatar grid
+        function initAvatarGrid() {{
+            const grid = document.getElementById('avatarGrid');
+            grid.innerHTML = AVATARS.map((emoji, index) => `
+                <button class="avatar-option ${{(index + 1) === selectedAvatarId ? 'selected' : ''}}"
+                        data-avatar-id="${{index + 1}}"
+                        onclick="selectAvatar(${{index + 1}})">
+                    ${{emoji}}
+                </button>
+            `).join('');
+        }}
+
+        function selectAvatar(avatarId) {{
+            selectedAvatarId = avatarId;
+            // Update selected state in grid
+            document.querySelectorAll('.avatar-option').forEach(btn => {{
+                btn.classList.toggle('selected', parseInt(btn.dataset.avatarId) === avatarId);
+            }});
+            // Update current avatar display
+            document.getElementById('currentAvatarDisplay').textContent = AVATARS[(avatarId - 1) % AVATARS.length];
+        }}
+
+        function openProfileModal() {{
+            // Reset to current user values
+            selectedAvatarId = user?.avatar_id || 1;
+            document.getElementById('profileDisplayName').value = user?.display_name || '';
+            document.getElementById('profileEmail').value = user?.email || '';
+            document.getElementById('currentAvatarDisplay').textContent = AVATARS[(selectedAvatarId - 1) % AVATARS.length];
+            initAvatarGrid();
+            document.getElementById('profileModal').classList.add('active');
+        }}
+
+        function closeProfileModal() {{
+            document.getElementById('profileModal').classList.remove('active');
+        }}
+
+        function showProfileToast(message, type) {{
+            // Remove any existing toast
+            const existing = document.querySelector('.profile-toast');
+            if (existing) existing.remove();
+
+            const toast = document.createElement('div');
+            toast.className = `profile-toast ${{type}}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => toast.remove(), 3000);
+        }}
+
+        async function saveProfile() {{
+            const saveBtn = document.getElementById('profileSaveBtn');
+            const displayName = document.getElementById('profileDisplayName').value.trim();
+
+            if (!displayName) {{
+                showProfileToast('Please enter a display name', 'error');
+                return;
+            }}
+
+            // Disable save button and show loading
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+
+            try {{
+                const res = await fetch('/auth/api/profile', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        display_name: displayName,
+                        avatar_id: selectedAvatarId
+                    }}),
+                    credentials: 'include'
+                }});
+
+                const data = await res.json();
+
+                if (res.ok && data.ok && data.user) {{
+                    // Update local storage with new user data
+                    const updatedUser = {{
+                        ...user,
+                        display_name: data.user.display_name,
+                        avatar_id: data.user.avatar_id
+                    }};
+                    localStorage.setItem('user', JSON.stringify(updatedUser));
+
+                    // Update the global user object
+                    Object.assign(user, updatedUser);
+
+                    // Update UI
+                    document.getElementById('userName').textContent = data.user.display_name || data.user.email;
+                    initProfileButton();
+
+                    closeProfileModal();
+                    showProfileToast('Profile updated successfully!', 'success');
+                }} else {{
+                    showProfileToast(data.error || 'Failed to update profile', 'error');
+                }}
+            }} catch (err) {{
+                console.error('Profile update error:', err);
+                showProfileToast('Failed to update profile. Please try again.', 'error');
+            }} finally {{
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save Changes';
+            }}
         }}
 
         // Check admin status
@@ -1564,6 +2023,14 @@ pub async fn lobby() -> Html<String> {
         document.addEventListener('keydown', (e) => {{
             if (e.key === 'Escape') {{
                 closeModal('addPasskeyModal');
+                closeProfileModal();
+            }}
+        }});
+
+        // Close profile modal on backdrop click
+        document.getElementById('profileModal').addEventListener('click', (e) => {{
+            if (e.target.id === 'profileModal') {{
+                closeProfileModal();
             }}
         }});
     </script>
@@ -1579,6 +2046,9 @@ pub async fn game() -> Html<String> {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Holiday Wheel - Game</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&display=swap" rel="stylesheet">
     <style>
         {common_styles}
         body {{ align-items: flex-start; padding: 20px; }}
@@ -1946,39 +2416,113 @@ pub async fn game() -> Html<String> {
             flex-direction: column;
             align-items: center;
             flex-shrink: 0;
+            perspective: 800px;
         }}
         .wheel-container {{
             position: relative;
             display: flex;
             flex-direction: column;
             align-items: center;
-            width: min(320px, 25vw);
-            height: min(320px, 25vw);
-            min-width: 200px;
-            min-height: 200px;
+            width: min(380px, 32vw);
+            height: min(380px, 32vw);
+            min-width: 280px;
+            min-height: 280px;
+            transform-style: preserve-3d;
+            transform: rotateX(35deg);
+        }}
+        .wheel-outer-rim {{
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 102%;
+            height: 102%;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            background: linear-gradient(135deg, #c0c0c0 0%, #808080 25%, #c0c0c0 50%, #606060 75%, #909090 100%);
+            box-shadow:
+                inset 0 2px 4px rgba(255,255,255,0.3),
+                inset 0 -2px 4px rgba(0,0,0,0.3),
+                0 8px 20px rgba(0,0,0,0.5),
+                0 4px 8px rgba(0,0,0,0.3);
+            z-index: 0;
+        }}
+        .wheel-inner-rim {{
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 96%;
+            height: 96%;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            border: 3px solid #404040;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+            z-index: 1;
+            pointer-events: none;
+        }}
+        .wheel-center-hub {{
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 60px;
+            height: 60px;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            background: linear-gradient(145deg, #e8e8e8 0%, #b0b0b0 30%, #888888 70%, #606060 100%);
+            box-shadow:
+                inset 0 2px 4px rgba(255,255,255,0.5),
+                inset 0 -2px 4px rgba(0,0,0,0.3),
+                0 4px 8px rgba(0,0,0,0.4);
+            z-index: 20;
+            border: 2px solid #505050;
+        }}
+        .wheel-center-hub::after {{
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            background: linear-gradient(145deg, #ffd700 0%, #d4af37 50%, #b8960c 100%);
+            box-shadow: inset 0 1px 2px rgba(255,255,255,0.5);
         }}
         .wheel-pointer {{
             position: absolute;
-            top: -8px;
-            z-index: 10;
+            top: -12px;
+            z-index: 30;
             width: 0;
             height: 0;
-            border-left: 15px solid transparent;
-            border-right: 15px solid transparent;
-            border-top: 25px solid #d4af37;
-            filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));
+            border-left: 18px solid transparent;
+            border-right: 18px solid transparent;
+            border-top: 32px solid #d4af37;
+            filter: drop-shadow(0 3px 4px rgba(0,0,0,0.5));
+        }}
+        .wheel-pointer::before {{
+            content: '';
+            position: absolute;
+            top: -32px;
+            left: -14px;
+            border-left: 14px solid transparent;
+            border-right: 14px solid transparent;
+            border-top: 26px solid #ffd700;
         }}
         .wheel-svg {{
-            width: 100%;
-            height: 100%;
+            width: 94%;
+            height: 94%;
+            position: relative;
+            z-index: 2;
             filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
         }}
         .wheel-result {{
-            font-size: clamp(20px, 2vw, 32px);
+            font-family: 'Mountains of Christmas', cursive;
+            font-size: clamp(28px, 3vw, 42px);
+            font-weight: 700;
             color: #d4af37;
             margin-top: 12px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5), 0 0 20px rgba(212, 175, 55, 0.3);
             text-align: center;
+            letter-spacing: 2px;
         }}
         .puzzle-section {{
             flex: 1;
@@ -1990,8 +2534,17 @@ pub async fn game() -> Html<String> {
                 align-items: center;
             }}
             .wheel-container {{
-                width: min(280px, 60vw);
-                height: min(280px, 60vw);
+                width: min(340px, 70vw);
+                height: min(340px, 70vw);
+                transform: rotateX(28deg);
+            }}
+            .wheel-center-hub {{
+                width: 50px;
+                height: 50px;
+            }}
+            .wheel-center-hub::after {{
+                width: 16px;
+                height: 16px;
             }}
         }}
         .controls {{ display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 20px; }}
@@ -2068,11 +2621,30 @@ pub async fn game() -> Html<String> {
             border-color: var(--color-primary);
             box-shadow: 0 0 15px var(--color-primary-glow);
         }}
+        .player-info {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+        .player-avatar {{
+            font-size: 24px;
+            line-height: 1;
+            transition: transform 0.3s ease;
+        }}
+        .player-avatar.active {{
+            transform: scale(1.2);
+            animation: avatarPulse 1.5s ease-in-out infinite;
+        }}
+        @keyframes avatarPulse {{
+            0%, 100% {{ transform: scale(1.2); }}
+            50% {{ transform: scale(1.35); }}
+        }}
         .player-name {{ color: #fff; font-weight: 500; }}
         .player-score {{
             color: var(--color-primary);
-            font-weight: bold;
-            font-size: 18px;
+            font-family: 'Mountains of Christmas', cursive;
+            font-weight: 700;
+            font-size: 20px;
             position: relative;
         }}
 
@@ -2161,8 +2733,9 @@ pub async fn game() -> Html<String> {
             padding: 12px 20px;
             border-radius: 10px;
             text-align: center;
-            font-size: 16px;
-            font-weight: 600;
+            font-family: 'Mountains of Christmas', cursive;
+            font-size: 18px;
+            font-weight: 700;
             letter-spacing: 0.5px;
             border: 2px solid rgba(212, 175, 55, 0.5);
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
@@ -2298,9 +2871,25 @@ pub async fn game() -> Html<String> {
             position: relative;
         }}
         .game-header h1 {{
-            color: #d4af37;
             margin: 0;
-            font-size: 32px;
+            font-family: 'Mountains of Christmas', cursive;
+            font-size: 44px;
+            font-weight: 700;
+            background: linear-gradient(
+                135deg,
+                #ff4444 0%,
+                #d4af37 25%,
+                #22c55e 50%,
+                #d4af37 75%,
+                #ff4444 100%
+            );
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: festiveShimmer 4s linear infinite;
+            letter-spacing: 3px;
+            filter: drop-shadow(0 2px 4px rgba(212, 175, 55, 0.3));
         }}
         .header-controls {{
             position: absolute;
@@ -2724,14 +3313,15 @@ pub async fn game() -> Html<String> {
         .bonus-star {{ position: absolute; width: 4px; height: 4px; background: #ffd700; border-radius: 50%; animation: twinkle 2s infinite ease-in-out; }}
         @keyframes twinkle {{ 0%, 100% {{ opacity: 0.3; transform: scale(1); }} 50% {{ opacity: 1; transform: scale(1.5); }} }}
         .bonus-header {{ text-align: center; padding: 16px; position: relative; z-index: 1; }}
-        .bonus-title {{ font-size: 38px; font-weight: bold; color: #ffd700; text-shadow: 0 0 30px rgba(255, 215, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.5); margin-bottom: 6px; animation: bonusTitlePulse 2s ease-in-out infinite; }}
+        .bonus-title {{ font-family: 'Mountains of Christmas', cursive; font-size: 42px; font-weight: 700; color: #ffd700; text-shadow: 0 0 30px rgba(255, 215, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.5); margin-bottom: 6px; animation: bonusTitlePulse 2s ease-in-out infinite; }}
         @keyframes bonusTitlePulse {{ 0%, 100% {{ text-shadow: 0 0 30px rgba(255, 215, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.5); }} 50% {{ text-shadow: 0 0 50px rgba(255, 215, 0, 0.8), 0 4px 8px rgba(0, 0, 0, 0.5); }} }}
-        .bonus-player-name {{ font-size: 20px; color: #fff; opacity: 0.9; }}
+        .bonus-player-name {{ font-size: 20px; color: #fff; opacity: 0.9; display: flex; align-items: center; justify-content: center; gap: 8px; }}
+        .bonus-player-avatar {{ font-size: 32px; }}
         .bonus-content {{ flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 12px; padding: 16px; position: relative; z-index: 1; overflow-y: auto; }}
         .prize-wheel-container {{ position: relative; width: 240px; height: 240px; margin: 0 auto; }}
         .prize-wheel-svg {{ width: 100%; height: 100%; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.5)); transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99); }}
         .prize-wheel-pointer {{ position: absolute; top: -8px; left: 50%; transform: translateX(-50%); border-left: 14px solid transparent; border-right: 14px solid transparent; border-top: 24px solid #ffd700; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.5)); z-index: 10; }}
-        .prize-wheel-result {{ text-align: center; margin-top: 10px; font-size: 24px; font-weight: bold; color: #ffd700; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }}
+        .prize-wheel-result {{ text-align: center; margin-top: 10px; font-family: 'Mountains of Christmas', cursive; font-size: 28px; font-weight: 700; color: #ffd700; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }}
         .given-letters {{ display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 8px 0; }}
         .given-letters-label {{ font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 2px; }}
         .given-letters-row {{ display: flex; gap: 5px; }}
@@ -2760,7 +3350,7 @@ pub async fn game() -> Html<String> {
         .bonus-timer-ring .progress.danger {{ stroke: #ef4444; animation: timerPulse 0.5s ease-in-out infinite; }}
         @keyframes timerPulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.5; }} }}
         .bonus-timer-text {{ position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }}
-        .bonus-timer-seconds {{ font-size: 42px; font-weight: bold; color: #fff; line-height: 1; }}
+        .bonus-timer-seconds {{ font-family: 'Mountains of Christmas', cursive; font-size: 48px; font-weight: 700; color: #fff; line-height: 1; }}
         .bonus-timer-seconds.warning {{ color: #f59e0b; }}
         .bonus-timer-seconds.danger {{ color: #ef4444; animation: timerTextPulse 0.5s ease-in-out infinite; }}
         @keyframes timerTextPulse {{ 0%, 100% {{ transform: scale(1); }} 50% {{ transform: scale(1.1); }} }}
@@ -2768,10 +3358,10 @@ pub async fn game() -> Html<String> {
         .bonus-result {{ text-align: center; padding: 20px; }}
         .bonus-result-icon {{ font-size: 72px; margin-bottom: 12px; animation: resultIconBounce 0.6s ease-out; }}
         @keyframes resultIconBounce {{ 0% {{ transform: scale(0) rotate(-15deg); }} 50% {{ transform: scale(1.2) rotate(5deg); }} 100% {{ transform: scale(1) rotate(0); }} }}
-        .bonus-result-title {{ font-size: 32px; font-weight: bold; margin-bottom: 10px; }}
+        .bonus-result-title {{ font-family: 'Mountains of Christmas', cursive; font-size: 36px; font-weight: 700; margin-bottom: 10px; }}
         .bonus-result-title.win {{ color: #22c55e; text-shadow: 0 0 30px rgba(34, 197, 94, 0.5); }}
         .bonus-result-title.lose {{ color: #ef4444; text-shadow: 0 0 30px rgba(239, 68, 68, 0.5); }}
-        .bonus-result-amount {{ font-size: 42px; font-weight: bold; color: #ffd700; text-shadow: 0 0 40px rgba(255, 215, 0, 0.5); margin-bottom: 6px; }}
+        .bonus-result-amount {{ font-family: 'Mountains of Christmas', cursive; font-size: 48px; font-weight: 700; color: #ffd700; text-shadow: 0 0 40px rgba(255, 215, 0, 0.5); margin-bottom: 6px; }}
         .bonus-result-answer {{ font-size: 20px; color: #fff; margin-top: 12px; padding: 10px 20px; background: rgba(0, 0, 0, 0.3); border-radius: 10px; display: inline-block; }}
         .bonus-stage-indicator {{ display: flex; justify-content: center; align-items: center; gap: 8px; margin: 8px 0; }}
         .bonus-stage {{ display: flex; flex-direction: column; align-items: center; gap: 3px; opacity: 0.4; transition: all 0.3s ease; }}
@@ -2958,9 +3548,12 @@ pub async fn game() -> Html<String> {
                 <div class="wheel-area">
                     <div class="wheel-container" id="wheelContainer">
                         <div class="wheel-glow"></div>
+                        <div class="wheel-outer-rim"></div>
                         <div class="wheel-tick-flash" id="wheelTickFlash"></div>
                         <div class="wheel-pointer"></div>
-                        <svg id="wheelSvg" class="wheel-svg" width="280" height="280" viewBox="0 0 280 280"></svg>
+                        <svg id="wheelSvg" class="wheel-svg" width="340" height="340" viewBox="0 0 340 340"></svg>
+                        <div class="wheel-inner-rim"></div>
+                        <div class="wheel-center-hub"></div>
                     </div>
                     <div class="wheel-result" id="wheelResult">Spin!</div>
                 </div>
@@ -3619,7 +4212,7 @@ pub async fn game() -> Html<String> {
             socket.emit('new_game', {{ room }});
         }}
 
-        function openBonusRound(playerName) {{
+        function openBonusRound(playerName, avatarId) {{
             bonusState.active = true;
             bonusState.stage = 'prize';
             bonusState.prizeAmount = 0;
@@ -3628,7 +4221,8 @@ pub async fn game() -> Html<String> {
             bonusState.totalSeconds = gameState?.config?.final_seconds || 10;
             bonusState.remainingSeconds = bonusState.totalSeconds;
 
-            document.getElementById('bonusPlayerName').textContent = playerName;
+            const avatar = getAvatarEmoji(avatarId);
+            document.getElementById('bonusPlayerName').innerHTML = `<span class="bonus-player-avatar">${{avatar}}</span> ${{playerName}}`;
             document.getElementById('bonusRoundOverlay').classList.add('active');
             initBonusStars();
             showBonusStage('prize');
@@ -3730,6 +4324,16 @@ pub async fn game() -> Html<String> {
             setTimeout(() => overlay.classList.remove('active'), 2000);
         }}
 
+        // ========== AVATAR HELPER ==========
+        const AVATAR_EMOJIS = ['', '\ud83c\udf85', '\ud83e\uddd1\u200d\ud83c\udf84', '\ud83e\udd8c', '\u26c4', '\ud83c\udf84', '\ud83c\udf81', '\ud83d\udd14', '\u2744\ufe0f', '\u2b50', '\ud83d\udd6f\ufe0f', '\ud83e\udddd', '\ud83e\udd34'];
+        // Avatar IDs map to: 1=Santa, 2=Mrs Claus, 3=Reindeer, 4=Snowman, 5=Tree, 6=Gift, 7=Bell, 8=Snowflake, 9=Star, 10=Candle, 11=Elf, 12=King
+        function getAvatarEmoji(avatarId) {{
+            const id = parseInt(avatarId) || 1;
+            // Clamp to valid range 1-12
+            const validId = Math.min(12, Math.max(1, id));
+            return AVATAR_EMOJIS[validId] || AVATAR_EMOJIS[1];
+        }}
+
         // ========== SCORE CHANGE ANIMATION ==========
         function formatCash(amount) {{
             return '$' + Math.abs(amount).toLocaleString();
@@ -3820,12 +4424,12 @@ pub async fn game() -> Html<String> {
         function renderWheel(slots) {{
             const svg = document.getElementById('wheelSvg');
             if (!slots || slots.length === 0) {{
-                svg.innerHTML = "<text x='140' y='140' text-anchor='middle' fill='#888'>No wheel data</text>";
+                svg.innerHTML = "<text x='170' y='170' text-anchor='middle' fill='#888'>No wheel data</text>";
                 return;
             }}
 
-            const size = 280;
-            const radius = size / 2 - 8;
+            const size = 340;
+            const radius = size / 2 - 10;
             const centerX = size / 2;
             const centerY = size / 2;
             const numSlots = slots.length;
@@ -3867,8 +4471,8 @@ pub async fn game() -> Html<String> {
                 let rotation = midAngle;
                 if (normalizedAngle > 90 && normalizedAngle < 270) rotation = midAngle + 180;
 
-                // Dynamic font size based on label length and number of slots
-                const baseSize = numSlots > 20 ? 13 : numSlots > 16 ? 15 : 17;
+                // Dynamic font size based on label length and number of slots (slightly larger for bigger wheel)
+                const baseSize = numSlots > 20 ? 15 : numSlots > 16 ? 17 : 19;
                 let fontSize = baseSize;
                 if (label.length > 10) fontSize = baseSize - 3;
                 else if (label.length > 7) fontSize = baseSize - 2;
@@ -3878,10 +4482,7 @@ pub async fn game() -> Html<String> {
                 html += "<text x='" + textX + "' y='" + textY + "' fill='#fff' stroke='#000' stroke-width='1' font-size='" + fontSize + "' font-weight='bold' font-family='Arial, sans-serif' text-anchor='middle' dominant-baseline='middle' transform='rotate(" + rotation + ", " + textX + ", " + textY + ")' style='paint-order: stroke fill; filter: drop-shadow(1px 1px 1px rgba(0,0,0,0.8))'>" + label + "</text>";
             }});
 
-            // Center hub with gradient effect
-            html += "<circle cx='" + centerX + "' cy='" + centerY + "' r='22' fill='#2a2a2a' stroke='#d4af37' stroke-width='4'/>";
-            html += "<circle cx='" + centerX + "' cy='" + centerY + "' r='12' fill='#d4af37'/>";
-            html += "<circle cx='" + centerX + "' cy='" + centerY + "' r='6' fill='#fff' opacity='0.3'/>";
+            // Center hub is rendered by HTML element (wheel-center-hub), not SVG
 
             svg.innerHTML = html;
         }}
@@ -4034,8 +4635,9 @@ pub async fn game() -> Html<String> {
         function connect() {{
             socket = io(window.location.origin, {{ transports: ['websocket'] }});
 
-            socket.on('connect', () => {{
-                console.log('Connected:', socket.id);
+            // Helper to join the game (called on connect and on page load if already connected)
+            function joinGame() {{
+                console.log('Joining game with socket:', socket.id);
                 // Authenticate the socket for session management
                 socket.emit('auth', {{ token }});
                 if (isSpectating) {{
@@ -4045,7 +4647,17 @@ pub async fn game() -> Html<String> {
                 }} else {{
                     socket.emit('join_game', {{ room, name: user.display_name || user.email }});
                 }}
+            }}
+
+            socket.on('connect', () => {{
+                console.log('Connected:', socket.id);
+                joinGame();
             }});
+
+            // If socket is already connected (e.g., page refresh), join immediately
+            if (socket.connected) {{
+                joinGame();
+            }}
 
             // Handle session invalidation (logged in from another device)
             socket.on('session_invalidated', (data) => {{
@@ -4429,9 +5041,14 @@ pub async fn game() -> Html<String> {
                     const wildcardHtml = wildcards > 0 ?
                         `<div class="player-wildcards">${{'<div class="wildcard-icon">🃏</div>'.repeat(wildcards)}}</div>` : '';
                     const score = (p.total || 0) + (p.round_bank || 0);
+                    const avatar = getAvatarEmoji(p.avatar_id);
+                    const isActive = idx === gameState.active_idx;
                     return `
-                        <div class="player ${{idx === gameState.active_idx ? 'active' : ''}}">
-                            <span class="player-name">${{p.name}}${{idx === myPlayerIdx ? ' (you)' : ''}}${{wildcardHtml}}</span>
+                        <div class="player ${{isActive ? 'active' : ''}}">
+                            <div class="player-info">
+                                <span class="player-avatar ${{isActive ? 'active' : ''}}">${{avatar}}</span>
+                                <span class="player-name">${{p.name}}${{idx === myPlayerIdx ? ' (you)' : ''}}${{wildcardHtml}}</span>
+                            </div>
                             <span class="player-score">${{formatCash(score)}}</span>
                         </div>
                     `;
@@ -4452,7 +5069,8 @@ pub async fn game() -> Html<String> {
                     // First entry into bonus round - show prize wheel
                     const activePlayer = gameState.players?.[gameState.active_idx];
                     const playerName = activePlayer?.name || 'Player';
-                    openBonusRound(playerName);
+                    const avatarId = activePlayer?.avatar_id || 1;
+                    openBonusRound(playerName, avatarId);
 
                     // If server already past pick phase, skip to appropriate stage
                     if (serverStage === 'running') {{
@@ -4858,6 +5476,9 @@ pub async fn admin() -> Html<String> {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Holiday Wheel - Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&display=swap" rel="stylesheet">
     <style>
         {common_styles}
         body {{ align-items: flex-start; padding: 20px; }}
@@ -5026,6 +5647,12 @@ pub async fn admin() -> Html<String> {
         .player-name-admin {{
             color: #fff;
             font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .player-avatar-admin {{
+            font-size: 20px;
         }}
         .player-score-admin {{
             color: #d4af37;
@@ -5441,6 +6068,14 @@ pub async fn admin() -> Html<String> {
         // Store rooms data for cross-referencing with users
         let roomsData = [];
 
+        // Avatar helper
+        const AVATAR_EMOJIS = ['', '\ud83c\udf85', '\ud83e\uddd1\u200d\ud83c\udf84', '\ud83e\udd8c', '\u26c4', '\ud83c\udf84', '\ud83c\udf81', '\ud83d\udd14', '\u2744\ufe0f', '\u2b50', '\ud83d\udd6f\ufe0f', '\ud83e\udddd', '\ud83e\udd34'];
+        function getAvatarEmoji(avatarId) {{
+            const id = parseInt(avatarId) || 1;
+            const validId = Math.min(12, Math.max(1, id));
+            return AVATAR_EMOJIS[validId] || AVATAR_EMOJIS[1];
+        }}
+
         async function loadUsers() {{
             const res = await fetch('/auth/api/admin/users', {{
                 credentials: 'include'
@@ -5726,6 +6361,7 @@ pub async fn admin() -> Html<String> {
                         <div class="player-card ${{idx === activeIdx ? 'active' : ''}}">
                             <div class="player-details">
                                 <span class="player-name-admin">
+                                    <span class="player-avatar-admin">${{getAvatarEmoji(p.avatar_id)}}</span>
                                     <span class="connection-dot ${{p.is_connected ? 'connected' : 'disconnected'}}"></span>
                                     ${{p.name}}${{idx === activeIdx ? ' ▶' : ''}}
                                 </span>

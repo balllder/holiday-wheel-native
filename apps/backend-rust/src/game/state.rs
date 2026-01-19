@@ -55,6 +55,8 @@ pub struct Player {
     /// Timestamp when the player disconnected (None if connected)
     #[serde(skip)]
     pub disconnected_at: Option<i64>,
+    /// Avatar ID (1-12), default 1
+    pub avatar_id: i64,
 }
 
 impl Player {
@@ -69,6 +71,7 @@ impl Player {
             socket_id: None,
             user_id: None,
             disconnected_at: None,
+            avatar_id: 1, // Default avatar
         }
     }
 
@@ -252,11 +255,12 @@ impl Game {
     }
 
     /// Add a player to the game
-    pub fn add_player(&mut self, name: String, socket_id: Option<String>, user_id: Option<i64>) -> usize {
+    pub fn add_player(&mut self, name: String, socket_id: Option<String>, user_id: Option<i64>, avatar_id: Option<i64>) -> usize {
         let id = self.players.len();
         let mut player = Player::new(id, name);
         player.socket_id = socket_id;
         player.user_id = user_id;
+        player.avatar_id = avatar_id.unwrap_or(1).clamp(1, 12);
         self.players.push(player);
         id
     }
@@ -894,6 +898,7 @@ impl Game {
                     round_prizes: p.round_prizes.clone(),
                     round_prize_value_total: p.round_prize_value_total(),
                     claimed: p.socket_id.is_some(),
+                    avatar_id: p.avatar_id,
                 })
                 .collect(),
             active_idx: self.active_idx,
@@ -956,6 +961,7 @@ pub struct PlayerState {
     pub round_prizes: Vec<Prize>,
     pub round_prize_value_total: i32,
     pub claimed: bool,
+    pub avatar_id: i64,
 }
 
 /// Puzzle state for client
@@ -1038,9 +1044,9 @@ mod tests {
     /// Create a test game with players
     fn create_test_game_with_players() -> Game {
         let mut game = create_test_game();
-        game.add_player("Player 1".to_string(), Some("socket1".to_string()), None);
-        game.add_player("Player 2".to_string(), Some("socket2".to_string()), None);
-        game.add_player("Player 3".to_string(), Some("socket3".to_string()), None);
+        game.add_player("Player 1".to_string(), Some("socket1".to_string()), None, Some(1));
+        game.add_player("Player 2".to_string(), Some("socket2".to_string()), None, Some(2));
+        game.add_player("Player 3".to_string(), Some("socket3".to_string()), None, Some(3));
         game
     }
 
@@ -1353,7 +1359,7 @@ mod tests {
     #[test]
     fn test_advance_turn_single_player() {
         let mut game = create_test_game();
-        game.add_player("Solo".to_string(), None, None);
+        game.add_player("Solo".to_string(), None, None, None);
         assert_eq!(game.active_idx, 0);
 
         game.advance_turn();
@@ -1365,7 +1371,7 @@ mod tests {
     #[test]
     fn test_add_player() {
         let mut game = create_test_game();
-        let idx = game.add_player("Test Player".to_string(), Some("socket123".to_string()), Some(42));
+        let idx = game.add_player("Test Player".to_string(), Some("socket123".to_string()), Some(42), Some(7));
 
         assert_eq!(idx, 0);
         assert_eq!(game.players.len(), 1);

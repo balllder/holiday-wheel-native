@@ -538,6 +538,7 @@ async fn handle_oauth_user(
             id: user.id,
             email: user.email,
             display_name: user.display_name,
+            avatar_id: user.avatar_id,
             is_admin: if user.is_admin { Some(true) } else { None },
         }),
         is_new_user: Some(is_new_user),
@@ -908,6 +909,7 @@ mod tests {
                 id: 1,
                 email: "test@example.com".to_string(),
                 display_name: "Test User".to_string(),
+                avatar_id: 1,
                 is_admin: None,
             }),
             is_new_user: Some(true),
@@ -1102,16 +1104,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_oauth_state_storage() {
-        // Clear any existing state first
-        {
-            let mut states = OAUTH_STATES.write().await;
-            states.clear();
-        }
+        // Use unique key to avoid race conditions with parallel tests
+        let unique_key = format!("test-state-storage-{}", now_secs());
 
         // Insert a state
         {
             let mut states = OAUTH_STATES.write().await;
-            states.insert("test-state".to_string(), OAuthState {
+            states.insert(unique_key.clone(), OAuthState {
                 created_at: now_secs(),
                 redirect_uri: "/lobby".to_string(),
             });
@@ -1120,34 +1119,33 @@ mod tests {
         // Verify it's retrievable
         {
             let states = OAUTH_STATES.read().await;
-            let state = states.get("test-state").unwrap();
+            let state = states.get(&unique_key).expect("State should exist");
             assert_eq!(state.redirect_uri, "/lobby");
         }
 
-        // Clean up
+        // Clean up only our key
         {
             let mut states = OAUTH_STATES.write().await;
-            states.remove("test-state");
+            states.remove(&unique_key);
         }
     }
 
     #[tokio::test]
     async fn test_oauth_state_cleanup_removes_expired() {
-        // Clear existing states
-        {
-            let mut states = OAUTH_STATES.write().await;
-            states.clear();
-        }
+        // Use unique keys to avoid race conditions with parallel tests
+        let ts = now_secs();
+        let expired_key = format!("expired-state-cleanup-{}", ts);
+        let valid_key = format!("valid-state-cleanup-{}", ts);
 
         // Insert an expired state (created 11 minutes ago)
         {
             let mut states = OAUTH_STATES.write().await;
-            states.insert("expired-state".to_string(), OAuthState {
+            states.insert(expired_key.clone(), OAuthState {
                 created_at: now_secs() - 660, // 11 minutes ago
                 redirect_uri: "/old".to_string(),
             });
             // Insert a valid state
-            states.insert("valid-state".to_string(), OAuthState {
+            states.insert(valid_key.clone(), OAuthState {
                 created_at: now_secs(),
                 redirect_uri: "/new".to_string(),
             });
@@ -1159,14 +1157,14 @@ mod tests {
         // Verify expired is removed, valid remains
         {
             let states = OAUTH_STATES.read().await;
-            assert!(states.get("expired-state").is_none(), "Expired state should be removed");
-            assert!(states.get("valid-state").is_some(), "Valid state should remain");
+            assert!(states.get(&expired_key).is_none(), "Expired state should be removed");
+            assert!(states.get(&valid_key).is_some(), "Valid state should remain");
         }
 
-        // Clean up
+        // Clean up only our keys
         {
             let mut states = OAUTH_STATES.write().await;
-            states.clear();
+            states.remove(&valid_key);
         }
     }
 

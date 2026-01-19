@@ -55,6 +55,7 @@ pub struct UserInfo {
     pub id: i64,
     pub email: String,
     pub display_name: String,
+    pub avatar_id: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_admin: Option<bool>,
 }
@@ -68,9 +69,32 @@ pub struct RegisterRequest {
     pub password: String,
     #[validate(custom(function = "display_name_validator"))]
     pub display_name: String,
+    #[serde(default = "default_avatar")]
+    pub avatar_id: i64,
     #[serde(default)]
     #[allow(dead_code)]
     pub captcha_token: Option<String>,
+}
+
+fn default_avatar() -> i64 {
+    1
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct ProfileUpdateRequest {
+    #[validate(custom(function = "display_name_validator"))]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub avatar_id: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProfileResponse {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<UserInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -131,6 +155,8 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/verify/{token}", get(verify_email))
         .route("/logout", post(logout))
         .route("/me", get(me))
+        .route("/api/profile", get(api_get_profile))
+        .route("/api/profile", post(api_update_profile))
         .route("/api/rooms", get(api_rooms))
         .route("/rooms", get(list_rooms))
         // Passkey endpoints
@@ -267,6 +293,7 @@ async fn api_login(
             id: user.id,
             email: user.email,
             display_name: user.display_name,
+            avatar_id: user.avatar_id,
             is_admin: if user.is_admin { Some(true) } else { None },
         }),
         error: None,
@@ -391,6 +418,7 @@ async fn register_user(
         display_name: display_name.to_string(),
         verification_token: verification_token.clone(),
         verification_token_expires: token_expires,
+        avatar_id: req.avatar_id,
     };
 
     match state.db.create_user(new_user).await {
@@ -431,6 +459,7 @@ async fn register_user(
                         id: user_id,
                         email: email.clone(),
                         display_name: display_name.to_string(),
+                        avatar_id: req.avatar_id, // Use the avatar_id from registration request
                         is_admin: None,
                     }),
                 };
@@ -506,6 +535,7 @@ async fn api_verify_token(
                     id: user.id,
                     email: user.email,
                     display_name: user.display_name,
+                    avatar_id: user.avatar_id,
                     is_admin: if user.is_admin { Some(true) } else { None },
                 }),
                 error: None,
@@ -645,6 +675,7 @@ async fn me(
                 id: user.id,
                 email: user.email,
                 display_name: user.display_name,
+                avatar_id: user.avatar_id,
                 is_admin: if user.is_admin { Some(true) } else { None },
             }),
             error: None,
@@ -654,6 +685,151 @@ async fn me(
             user: None,
             error: None,
         }),
+    }
+}
+
+// ========== PROFILE ENDPOINTS ==========
+
+async fn api_get_profile(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> (StatusCode, Json<ProfileResponse>) {
+    let token = match extract_auth_token(&headers) {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ProfileResponse {
+                    ok: false,
+                    user: None,
+                    error: Some("Authentication required".to_string()),
+                }),
+            );
+        }
+    };
+
+    match state.db.get_user_by_token(&token).await {
+        Ok(Some(user)) => (
+            StatusCode::OK,
+            Json(ProfileResponse {
+                ok: true,
+                user: Some(UserInfo {
+                    id: user.id,
+                    email: user.email,
+                    display_name: user.display_name,
+                    avatar_id: user.avatar_id,
+                    is_admin: if user.is_admin { Some(true) } else { None },
+                }),
+                error: None,
+            }),
+        ),
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            Json(ProfileResponse {
+                ok: false,
+                user: None,
+                error: Some("Invalid token".to_string()),
+            }),
+        ),
+    }
+}
+
+async fn api_update_profile(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<ProfileUpdateRequest>,
+) -> (StatusCode, Json<ProfileResponse>) {
+    // Validate input
+    if let Err(errors) = req.validate() {
+        let error_messages: Vec<String> = errors
+            .field_errors()
+            .values()
+            .flat_map(|v| v.iter().filter_map(|e| e.message.as_ref().map(|s| s.to_string())))
+            .collect();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ProfileResponse {
+                ok: false,
+                user: None,
+                error: Some(error_messages.join(", ")),
+            }),
+        );
+    }
+
+    let token = match extract_auth_token(&headers) {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ProfileResponse {
+                    ok: false,
+                    user: None,
+                    error: Some("Authentication required".to_string()),
+                }),
+            );
+        }
+    };
+
+    // Get current user
+    let user = match state.db.get_user_by_token(&token).await {
+        Ok(Some(user)) => user,
+        _ => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ProfileResponse {
+                    ok: false,
+                    user: None,
+                    error: Some("Invalid token".to_string()),
+                }),
+            );
+        }
+    };
+
+    // Update profile
+    if let Err(e) = state
+        .db
+        .update_user_profile(
+            user.id,
+            req.display_name.as_deref(),
+            req.avatar_id,
+        )
+        .await
+    {
+        tracing::error!("Failed to update profile: {:?}", e);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ProfileResponse {
+                ok: false,
+                user: None,
+                error: Some("Failed to update profile".to_string()),
+            }),
+        );
+    }
+
+    // Get updated user
+    match state.db.get_user_by_id(user.id).await {
+        Ok(Some(updated_user)) => (
+            StatusCode::OK,
+            Json(ProfileResponse {
+                ok: true,
+                user: Some(UserInfo {
+                    id: updated_user.id,
+                    email: updated_user.email,
+                    display_name: updated_user.display_name,
+                    avatar_id: updated_user.avatar_id,
+                    is_admin: if updated_user.is_admin { Some(true) } else { None },
+                }),
+                error: None,
+            }),
+        ),
+        _ => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ProfileResponse {
+                ok: false,
+                user: None,
+                error: Some("Failed to get updated profile".to_string()),
+            }),
+        ),
     }
 }
 
@@ -1297,6 +1473,7 @@ struct AdminPlayerInfo {
     total: i32,
     round_bank: i32,
     is_connected: bool,
+    avatar_id: i64,
 }
 
 async fn admin_list_rooms(
@@ -1317,6 +1494,7 @@ async fn admin_list_rooms(
                 total: p.total,
                 round_bank: p.round_bank,
                 is_connected: p.socket_id.is_some(),
+                avatar_id: p.avatar_id,
             }
         }).collect();
 
@@ -1888,6 +2066,7 @@ mod tests {
             email: "test@example.com".to_string(),
             password: "password1".to_string(),
             display_name: "Test User".to_string(),
+            avatar_id: 1,
             captcha_token: None,
         };
         assert!(valid_request.validate().is_ok());
@@ -1896,6 +2075,7 @@ mod tests {
             email: "test@example.com".to_string(),
             password: "short1".to_string(),
             display_name: "Test User".to_string(),
+            avatar_id: 1,
             captcha_token: None,
         };
         assert!(short_password.validate().is_err());
@@ -1904,6 +2084,7 @@ mod tests {
             email: "test@example.com".to_string(),
             password: "password1".to_string(),
             display_name: "a".to_string(),
+            avatar_id: 1,
             captcha_token: None,
         };
         assert!(short_display_name.validate().is_err());
@@ -1912,8 +2093,251 @@ mod tests {
             email: "test@example.com".to_string(),
             password: "password1".to_string(),
             display_name: "a".repeat(25),
+            avatar_id: 1,
             captcha_token: None,
         };
         assert!(long_display_name.validate().is_err());
+    }
+
+    // ========== PROFILE UPDATE REQUEST VALIDATION TESTS ==========
+
+    #[test]
+    fn test_profile_update_request_valid_display_name_only() {
+        let request = ProfileUpdateRequest {
+            display_name: Some("New Name".to_string()),
+            avatar_id: None,
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_profile_update_request_valid_avatar_only() {
+        let request = ProfileUpdateRequest {
+            display_name: None,
+            avatar_id: Some(5),
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_profile_update_request_valid_both_fields() {
+        let request = ProfileUpdateRequest {
+            display_name: Some("New Name".to_string()),
+            avatar_id: Some(7),
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_profile_update_request_valid_neither_field() {
+        let request = ProfileUpdateRequest {
+            display_name: None,
+            avatar_id: None,
+        };
+        // Both fields None is valid (no-op update)
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_profile_update_request_empty_display_name() {
+        let request = ProfileUpdateRequest {
+            display_name: Some("".to_string()),
+            avatar_id: None,
+        };
+        // Empty string should fail validation (too short)
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_profile_update_request_single_char_display_name() {
+        let request = ProfileUpdateRequest {
+            display_name: Some("a".to_string()),
+            avatar_id: None,
+        };
+        // Single character should fail (min is 2)
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_profile_update_request_two_char_display_name() {
+        let request = ProfileUpdateRequest {
+            display_name: Some("ab".to_string()),
+            avatar_id: None,
+        };
+        // Two characters should be valid (minimum)
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_profile_update_request_24_char_display_name() {
+        let request = ProfileUpdateRequest {
+            display_name: Some("a".repeat(24)),
+            avatar_id: None,
+        };
+        // 24 characters should be valid (maximum)
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_profile_update_request_25_char_display_name() {
+        let request = ProfileUpdateRequest {
+            display_name: Some("a".repeat(25)),
+            avatar_id: None,
+        };
+        // 25 characters should fail (over max)
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_profile_update_request_display_name_with_special_chars() {
+        // Valid special characters: space, hyphen, underscore, period
+        let valid_names = vec![
+            "John Doe",
+            "Player-1",
+            "user_name",
+            "Mr.Smith",
+            "A B-C_D.E",
+        ];
+        for name in valid_names {
+            let request = ProfileUpdateRequest {
+                display_name: Some(name.to_string()),
+                avatar_id: None,
+            };
+            assert!(
+                request.validate().is_ok(),
+                "Expected '{}' to be valid",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn test_profile_update_request_display_name_with_invalid_chars() {
+        // Invalid special characters
+        let invalid_names = vec![
+            "user@name",
+            "user<script>",
+            "name!",
+            "name#tag",
+            "user$money",
+        ];
+        for name in invalid_names {
+            let request = ProfileUpdateRequest {
+                display_name: Some(name.to_string()),
+                avatar_id: None,
+            };
+            assert!(
+                request.validate().is_err(),
+                "Expected '{}' to be invalid",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn test_profile_update_request_avatar_valid_range() {
+        // Valid avatar IDs are 1-12
+        for avatar_id in 1..=12 {
+            let request = ProfileUpdateRequest {
+                display_name: None,
+                avatar_id: Some(avatar_id),
+            };
+            // Note: The request validation doesn't validate avatar_id range,
+            // that's done at the database level with clamping
+            assert!(request.validate().is_ok());
+        }
+    }
+
+    #[test]
+    fn test_profile_update_request_avatar_zero() {
+        let request = ProfileUpdateRequest {
+            display_name: None,
+            avatar_id: Some(0),
+        };
+        // Note: Request validation passes, clamping happens at DB level
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_profile_update_request_avatar_negative() {
+        let request = ProfileUpdateRequest {
+            display_name: None,
+            avatar_id: Some(-1),
+        };
+        // Note: Request validation passes, clamping happens at DB level
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_profile_update_request_avatar_above_max() {
+        let request = ProfileUpdateRequest {
+            display_name: None,
+            avatar_id: Some(13),
+        };
+        // Note: Request validation passes, clamping happens at DB level
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_register_request_with_avatar_id() {
+        let request = RegisterRequest {
+            email: "test@example.com".to_string(),
+            password: "password1".to_string(),
+            display_name: "Test User".to_string(),
+            avatar_id: 5,
+            captcha_token: None,
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_register_request_default_avatar_id() {
+        // When avatar_id is not provided, it should default to 1
+        let json = r#"{"email":"test@example.com","password":"password1","display_name":"Test User"}"#;
+        let request: RegisterRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.avatar_id, 1);
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_register_request_with_explicit_avatar() {
+        let json = r#"{"email":"test@example.com","password":"password1","display_name":"Test User","avatar_id":7}"#;
+        let request: RegisterRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.avatar_id, 7);
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_user_info_includes_avatar_id() {
+        let user_info = UserInfo {
+            id: 1,
+            email: "test@example.com".to_string(),
+            display_name: "Test User".to_string(),
+            avatar_id: 5,
+            is_admin: None,
+        };
+        assert_eq!(user_info.avatar_id, 5);
+
+        // Test serialization includes avatar_id
+        let json = serde_json::to_string(&user_info).unwrap();
+        assert!(json.contains("\"avatar_id\":5"));
+    }
+
+    #[test]
+    fn test_profile_response_includes_avatar_id() {
+        let response = ProfileResponse {
+            ok: true,
+            user: Some(UserInfo {
+                id: 1,
+                email: "test@example.com".to_string(),
+                display_name: "Test User".to_string(),
+                avatar_id: 8,
+                is_admin: None,
+            }),
+            error: None,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"avatar_id\":8"));
     }
 }
