@@ -608,6 +608,7 @@ pub async fn index() -> Html<String> {
                 try {{
                     const user = JSON.parse(decodeURIComponent(userEncoded));
                     localStorage.setItem('user', JSON.stringify(user));
+                    localStorage.setItem('auth_token', authToken);
                     // Clear the hash and redirect to lobby
                     window.location.href = '/lobby';
                 }} catch (e) {{
@@ -705,6 +706,9 @@ pub async fn index() -> Html<String> {
                 const finishData = await finishRes.json();
                 if (finishRes.ok && finishData.user) {{
                     localStorage.setItem('user', JSON.stringify(finishData.user));
+                    if (finishData.token) {{
+                        localStorage.setItem('auth_token', finishData.token);
+                    }}
                     window.location.href = '/lobby';
                 }} else {{
                     errorDiv.textContent = finishData.error || 'Passkey login failed';
@@ -747,6 +751,9 @@ pub async fn index() -> Html<String> {
                         const data = await res.json();
                         if (res.ok && data.user) {{
                             localStorage.setItem('user', JSON.stringify(data.user));
+                            if (data.token) {{
+                                localStorage.setItem('auth_token', data.token);
+                            }}
                             window.location.href = '/lobby';
                         }} else {{
                             errorDiv.textContent = data.error || 'Google login failed';
@@ -808,6 +815,9 @@ pub async fn index() -> Html<String> {
 
                 if (res.ok && data.user) {{
                     localStorage.setItem('user', JSON.stringify(data.user));
+                    if (data.token) {{
+                        localStorage.setItem('auth_token', data.token);
+                    }}
                     window.location.href = '/lobby';
                 }} else {{
                     errorDiv.textContent = data.error || 'Login failed';
@@ -1130,6 +1140,9 @@ pub async fn register() -> Html<String> {
 
                 if (finishRes.ok && finishData.user) {{
                     localStorage.setItem('user', JSON.stringify(finishData.user));
+                    if (finishData.token) {{
+                        localStorage.setItem('auth_token', finishData.token);
+                    }}
                     window.location.href = '/lobby';
                 }} else {{
                     errorDiv.textContent = finishData.error || 'Passkey registration failed';
@@ -1190,6 +1203,9 @@ pub async fn register() -> Html<String> {
 
                 if (res.ok && data.user) {{
                     localStorage.setItem('user', JSON.stringify(data.user));
+                    if (data.token) {{
+                        localStorage.setItem('auth_token', data.token);
+                    }}
                     window.location.href = '/lobby';
                 }} else if (res.ok || data.ok) {{
                     // Registration succeeded but needs email verification
@@ -1906,6 +1922,7 @@ pub async fn lobby() -> Html<String> {
                 // Continue with local logout even if server call fails
             }}
             localStorage.removeItem('user');
+            localStorage.removeItem('auth_token');
             window.location.href = '/';
         }}
 
@@ -3936,8 +3953,8 @@ pub async fn game() -> Html<String> {
         const user = JSON.parse(localStorage.getItem('user') || 'null');
         if (!user) {{ window.location.href = '/'; }}
 
-        // Get auth token from cookie
-        const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1] || '';
+        // Get auth token from localStorage
+        const token = localStorage.getItem('auth_token') || '';
 
         const urlParams = new URLSearchParams(window.location.search);
         const room = urlParams.get('room') || 'main';
