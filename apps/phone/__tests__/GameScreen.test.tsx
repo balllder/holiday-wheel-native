@@ -37,13 +37,10 @@ jest.mock('react-native-svg', () => {
   };
 });
 
-// Mock logout function
-const mockLogout = jest.fn();
-
 // Mock shared services and stores
 jest.mock('@holiday-wheel/shared', () => {
   const mockUseAuthStore = jest.fn();
-  mockUseAuthStore.getState = jest.fn(() => ({ logout: mockLogout }));
+  mockUseAuthStore.getState = jest.fn(() => ({ logout: jest.fn() }));
   return {
     useGameStore: jest.fn(),
     useAuthStore: mockUseAuthStore,
@@ -66,6 +63,11 @@ jest.mock('@holiday-wheel/shared', () => {
     selectIsMyTurn: jest.fn((state) => state.isMyTurn),
     selectCanBuzz: jest.fn((state) => state.canBuzz),
     VOWELS: ['A', 'E', 'I', 'O', 'U'],
+    useToast: jest.fn(() => ({
+      showToast: jest.fn(),
+      hideToast: jest.fn(),
+      ToastComponent: () => null,
+    })),
   };
 });
 

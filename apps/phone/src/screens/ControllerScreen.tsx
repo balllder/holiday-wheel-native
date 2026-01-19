@@ -19,6 +19,7 @@ import {
   selectCanBuzz,
   selectMyPlayer,
   VOWELS,
+  useToast,
 } from '@holiday-wheel/shared';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -42,6 +43,7 @@ export function ControllerScreen({ navigation, route }: ControllerScreenProps): 
   const isMyTurn = useGameStore(selectIsMyTurn);
   const canBuzz = useGameStore(selectCanBuzz);
   const myPlayer = useGameStore(selectMyPlayer);
+  const { showToast, ToastComponent } = useToast();
 
   // Ref for auto-focusing letter input after spin
   const letterInputRef = useRef<TextInput>(null);
@@ -69,7 +71,7 @@ export function ControllerScreen({ navigation, route }: ControllerScreenProps): 
     // Set up toast handler with vibration
     socketService.setToastCallback((msg) => {
       Vibration.vibrate(100);
-      Alert.alert('Notice', msg);
+      showToast(msg);
     });
 
     // Set up session invalidation handler
@@ -96,7 +98,7 @@ export function ControllerScreen({ navigation, route }: ControllerScreenProps): 
     return () => {
       socketService.disconnect();
     };
-  }, [room, token, serverUrl, navigation]);
+  }, [room, token, serverUrl, navigation, showToast]);
 
   // Auto-join game when connected
   useEffect(() => {
@@ -162,6 +164,7 @@ export function ControllerScreen({ navigation, route }: ControllerScreenProps): 
   };
 
   return (
+    <View style={styles.wrapper}>
     <View style={styles.container}>
       {/* Status bar */}
       <View style={[styles.statusBar, connected ? styles.connected : styles.disconnected]}>
@@ -260,10 +263,15 @@ export function ControllerScreen({ navigation, route }: ControllerScreenProps): 
         )}
       </View>
     </View>
+    <ToastComponent />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: '#0d0628',

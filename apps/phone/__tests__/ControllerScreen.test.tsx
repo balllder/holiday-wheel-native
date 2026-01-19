@@ -12,13 +12,10 @@ import {
 jest.spyOn(Alert, 'alert');
 jest.spyOn(Vibration, 'vibrate');
 
-// Mock logout function
-const mockLogout = jest.fn();
-
 // Mock shared services and stores
 jest.mock('@holiday-wheel/shared', () => {
   const mockUseAuthStore = jest.fn();
-  mockUseAuthStore.getState = jest.fn(() => ({ logout: mockLogout }));
+  mockUseAuthStore.getState = jest.fn(() => ({ logout: jest.fn() }));
   return {
     useGameStore: jest.fn(),
     useAuthStore: mockUseAuthStore,
@@ -44,6 +41,11 @@ jest.mock('@holiday-wheel/shared', () => {
       state.myPlayerIdx !== null ? state.players[state.myPlayerIdx] : null
     ),
     VOWELS: ['A', 'E', 'I', 'O', 'U'],
+    useToast: jest.fn(() => ({
+      showToast: jest.fn(),
+      hideToast: jest.fn(),
+      ToastComponent: () => null,
+    })),
   };
 });
 
