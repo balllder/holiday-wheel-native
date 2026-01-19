@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::path::PathBuf;
 
@@ -25,6 +26,8 @@ pub struct AppState {
     pub db: db::Database,
     pub email: EmailService,
     pub io: OnceCell<SocketIo>,
+    /// Track socket IDs by user ID for session invalidation
+    pub user_sockets: RwLock<HashMap<i64, HashSet<String>>>,
 }
 
 #[tokio::main]
@@ -68,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
         db,
         email,
         io: OnceCell::new(),
+        user_sockets: RwLock::new(HashMap::new()),
     });
 
     // Set up Socket.IO

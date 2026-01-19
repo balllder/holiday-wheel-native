@@ -27,7 +27,7 @@ type ControllerScreenProps = {
   route: RouteProp<RootStackParamList, 'Controller'>;
 };
 
-export function ControllerScreen({ route }: ControllerScreenProps): React.JSX.Element {
+export function ControllerScreen({ navigation, route }: ControllerScreenProps): React.JSX.Element {
   const { room } = route.params;
   const [letterInput, setLetterInput] = useState('');
   const [solveInput, setSolveInput] = useState('');
@@ -60,6 +60,8 @@ export function ControllerScreen({ route }: ControllerScreenProps): React.JSX.El
   useEffect(() => {
     if (!serverUrl) return;
 
+    const logout = useAuthStore.getState().logout;
+
     // Connect to socket
     socketService.connect(serverUrl, token || undefined);
     socketService.joinRoom(room);
@@ -70,10 +72,31 @@ export function ControllerScreen({ route }: ControllerScreenProps): React.JSX.El
       Alert.alert('Notice', msg);
     });
 
+    // Set up session invalidation handler
+    socketService.setSessionInvalidatedCallback(() => {
+      Vibration.vibrate([0, 200, 100, 200]);
+      Alert.alert(
+        'Session Expired',
+        'You have been logged out because your account was accessed from another device.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              logout();
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Login' }],
+              });
+            },
+          },
+        ]
+      );
+    });
+
     return () => {
       socketService.disconnect();
     };
-  }, [room, token, serverUrl]);
+  }, [room, token, serverUrl, navigation]);
 
   // Auto-join game when connected
   useEffect(() => {

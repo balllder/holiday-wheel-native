@@ -5,6 +5,7 @@ import {
   StyleSheet,
   useTVEventHandler,
   BackHandler,
+  Alert,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -78,6 +79,8 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
   useEffect(() => {
     if (!serverUrl) return;
 
+    const logout = useAuthStore.getState().logout;
+
     socketService.connect(serverUrl, token || undefined);
     socketService.joinRoom(room);
 
@@ -85,6 +88,15 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
     const claimTimer = setTimeout(() => {
       socketService.claimHost(room, HOST_CODE);
     }, 500);
+
+    // Set up session invalidation handler
+    socketService.setSessionInvalidatedCallback(() => {
+      Alert.alert(
+        'Session Expired',
+        'You have been logged out because your account was accessed from another device.'
+      );
+      logout();
+    });
 
     return () => {
       clearTimeout(claimTimer);

@@ -2737,7 +2737,20 @@ pub async fn game() -> Html<String> {
 
             socket.on('connect', () => {{
                 console.log('Connected:', socket.id);
+                // Authenticate the socket for session management
+                socket.emit('auth', {{ token }});
                 socket.emit('join_game', {{ room, name: user.display_name || user.email }});
+            }});
+
+            // Handle session invalidation (logged in from another device)
+            socket.on('session_invalidated', (data) => {{
+                console.log('Session invalidated:', data);
+                // Clear stored credentials
+                localStorage.removeItem('auth_token');
+                document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+                // Show message and redirect to login
+                alert('You have been logged out because your account was accessed from another device.');
+                window.location.href = '/';
             }});
 
             socket.on('you', (data) => {{

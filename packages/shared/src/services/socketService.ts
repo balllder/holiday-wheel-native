@@ -3,10 +3,13 @@ import { useGameStore } from '../stores/gameStore';
 import type { ServerGameState } from '../types';
 
 type ToastCallback = (message: string) => void;
+type SessionInvalidatedCallback = (reason: string) => void;
 
 class SocketService {
   private socket: Socket | null = null;
   private onToast: ToastCallback | null = null;
+  private onSessionInvalidated: SessionInvalidatedCallback | null = null;
+  private currentToken: string | undefined = undefined;
 
   /**
    * Connect to the Socket.IO server
@@ -15,6 +18,8 @@ class SocketService {
     if (this.socket?.connected) {
       return;
     }
+
+    this.currentToken = token;
 
     this.socket = io(baseUrl, {
       transports: ['websocket', 'polling'],
@@ -45,6 +50,10 @@ class SocketService {
     this.socket.on('connect', () => {
       console.log('[Socket] Connected');
       useGameStore.getState().setConnected(true);
+      // Authenticate the socket for session management
+      if (this.currentToken) {
+        this.socket?.emit('auth', { token: this.currentToken });
+      }
     });
 
     this.socket.on('disconnect', () => {
@@ -54,6 +63,14 @@ class SocketService {
 
     this.socket.on('connect_error', (error) => {
       console.error('[Socket] Connection error:', error);
+    });
+
+    // Session invalidation (logged in from another device)
+    this.socket.on('session_invalidated', (data: { reason: string }) => {
+      console.log('[Socket] Session invalidated:', data.reason);
+      if (this.onSessionInvalidated) {
+        this.onSessionInvalidated(data.reason);
+      }
     });
 
     // Main game state update
@@ -84,6 +101,13 @@ class SocketService {
    */
   setToastCallback(callback: ToastCallback): void {
     this.onToast = callback;
+  }
+
+  /**
+   * Set session invalidated callback (for handling logout when logged in elsewhere)
+   */
+  setSessionInvalidatedCallback(callback: SessionInvalidatedCallback): void {
+    this.onSessionInvalidated = callback;
   }
 
   /**

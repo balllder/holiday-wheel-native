@@ -206,6 +206,25 @@ async fn api_login(
         }
     }
 
+    // Invalidate any existing sessions by emitting to the user's room
+    {
+        let user_room = format!("user:{}", user.id);
+        if let Some(io) = state.io.get() {
+            if let Some(ns) = io.of("/") {
+                tracing::info!("Emitting session_invalidated to room {}", user_room);
+                let _ = ns.to(user_room).emit("session_invalidated", &serde_json::json!({
+                    "reason": "logged_in_elsewhere"
+                }));
+            }
+        }
+    }
+
+    // Clear the user's sockets from tracking (they'll re-auth with new token)
+    {
+        let mut user_sockets = state.user_sockets.write().await;
+        user_sockets.remove(&user.id);
+    }
+
     // Generate new token
     let token = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
 

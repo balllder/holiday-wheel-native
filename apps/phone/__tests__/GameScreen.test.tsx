@@ -37,35 +37,44 @@ jest.mock('react-native-svg', () => {
   };
 });
 
+// Mock logout function
+const mockLogout = jest.fn();
+
 // Mock shared services and stores
-jest.mock('@holiday-wheel/shared', () => ({
-  useGameStore: jest.fn(),
-  useAuthStore: jest.fn(),
-  socketService: {
-    connect: jest.fn(),
-    disconnect: jest.fn(),
-    joinRoom: jest.fn(),
-    joinGame: jest.fn(),
-    setToastCallback: jest.fn(),
-    spin: jest.fn(),
-    guess: jest.fn(),
-    buyVowel: jest.fn(),
-    solve: jest.fn(),
-    buzz: jest.fn(),
-  },
-  configService: {
-    getServerUrl: jest.fn(() => Promise.resolve('http://localhost:5000')),
-  },
-  selectIsMyTurn: jest.fn((state) => state.isMyTurn),
-  selectCanBuzz: jest.fn((state) => state.canBuzz),
-  VOWELS: ['A', 'E', 'I', 'O', 'U'],
-}));
+jest.mock('@holiday-wheel/shared', () => {
+  const mockUseAuthStore = jest.fn();
+  mockUseAuthStore.getState = jest.fn(() => ({ logout: mockLogout }));
+  return {
+    useGameStore: jest.fn(),
+    useAuthStore: mockUseAuthStore,
+    socketService: {
+      connect: jest.fn(),
+      disconnect: jest.fn(),
+      joinRoom: jest.fn(),
+      joinGame: jest.fn(),
+      setToastCallback: jest.fn(),
+      setSessionInvalidatedCallback: jest.fn(),
+      spin: jest.fn(),
+      guess: jest.fn(),
+      buyVowel: jest.fn(),
+      solve: jest.fn(),
+      buzz: jest.fn(),
+    },
+    configService: {
+      getServerUrl: jest.fn(() => Promise.resolve('http://localhost:5000')),
+    },
+    selectIsMyTurn: jest.fn((state) => state.isMyTurn),
+    selectCanBuzz: jest.fn((state) => state.canBuzz),
+    VOWELS: ['A', 'E', 'I', 'O', 'U'],
+  };
+});
 
 // Create mock navigation and route
 const createMockNavigation = () => ({
   navigate: jest.fn(),
   replace: jest.fn(),
   goBack: jest.fn(),
+  reset: jest.fn(),
 });
 
 const createMockRoute = (room: string = 'test-room') => ({

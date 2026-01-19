@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -168,9 +169,44 @@ macro_rules! broadcast_state {
 
 // ========== REGISTER ALL HANDLERS ==========
 
+/// Request type for socket authentication
+#[derive(Debug, Deserialize)]
+pub struct AuthRequest {
+    pub token: String,
+}
+
 pub fn register_handlers(io: &SocketIo) {
     io.ns("/", |socket: SocketRef, State(_state): State<Arc<AppState>>| {
         info!("Client connected: {}", socket.id);
+
+        // ========== SOCKET AUTHENTICATION ==========
+
+        // Authenticate socket and register for session invalidation
+        socket.on(
+            "auth",
+            |socket: SocketRef, Data(req): Data<AuthRequest>, State(state): State<Arc<AppState>>| async move {
+                info!("Socket {} authenticating", socket.id);
+
+                // Verify token and get user
+                if let Ok(Some(user)) = state.db.get_user_by_token(&req.token).await {
+                    // Join a user-specific room for session invalidation broadcasts
+                    let user_room = format!("user:{}", user.id);
+                    socket.join(user_room.clone()).ok();
+
+                    // Also track in user_sockets for cleanup
+                    let mut user_sockets = state.user_sockets.write().await;
+                    user_sockets
+                        .entry(user.id)
+                        .or_insert_with(HashSet::new)
+                        .insert(socket.id.to_string());
+
+                    info!("Socket {} authenticated as user {} ({})", socket.id, user.id, user.display_name);
+                    socket.emit("auth_ok", &serde_json::json!({ "user_id": user.id })).ok();
+                } else {
+                    socket.emit("auth_error", &serde_json::json!({ "error": "Invalid token" })).ok();
+                }
+            },
+        );
 
         // ========== JOIN/LEAVE ==========
 
@@ -769,6 +805,16 @@ pub fn register_handlers(io: &SocketIo) {
 
         socket.on_disconnect(|socket: SocketRef, State(state): State<Arc<AppState>>| async move {
             info!("Client disconnected: {}", socket.id);
+
+            // Remove socket from user_sockets tracking
+            {
+                let mut user_sockets = state.user_sockets.write().await;
+                for sockets in user_sockets.values_mut() {
+                    sockets.remove(socket.id.as_str());
+                }
+                // Clean up empty entries
+                user_sockets.retain(|_, sockets| !sockets.is_empty());
+            }
 
             let mut manager = state.game_manager.write().await;
 
