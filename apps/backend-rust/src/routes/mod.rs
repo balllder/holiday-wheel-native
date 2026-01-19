@@ -1,21 +1,63 @@
-use axum::extract::Query;
-use axum::response::Html;
+use std::sync::Arc;
+use std::time::Instant;
+
+use axum::extract::{Query, State};
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse, Response};
 use axum::Json;
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+
+use crate::AppState;
+
+/// Server start time for uptime calculation
+static START_TIME: Lazy<Instant> = Lazy::new(Instant::now);
 
 /// Health check response
 #[derive(Serialize)]
 pub struct HealthResponse {
     pub status: &'static str,
     pub version: &'static str,
+    pub checks: HealthChecks,
+}
+
+/// Individual health checks
+#[derive(Serialize)]
+pub struct HealthChecks {
+    pub database: &'static str,
+    pub uptime_seconds: u64,
 }
 
 /// Health check endpoint
-pub async fn health() -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "ok",
+///
+/// Returns 200 if all critical checks pass, 503 if any fail.
+pub async fn health(State(state): State<Arc<AppState>>) -> Response {
+    // Initialize start time on first call
+    let uptime_seconds = START_TIME.elapsed().as_secs();
+
+    // Check database connectivity
+    let db_status = match state.db.ping().await {
+        Ok(()) => "ok",
+        Err(_) => "error",
+    };
+
+    let is_healthy = db_status == "ok";
+    let overall_status = if is_healthy { "healthy" } else { "unhealthy" };
+
+    let response = HealthResponse {
+        status: overall_status,
         version: env!("CARGO_PKG_VERSION"),
-    })
+        checks: HealthChecks {
+            database: db_status,
+            uptime_seconds,
+        },
+    };
+
+    if is_healthy {
+        (StatusCode::OK, Json(response)).into_response()
+    } else {
+        (StatusCode::SERVICE_UNAVAILABLE, Json(response)).into_response()
+    }
 }
 
 /// Join query parameters
@@ -4544,4 +4586,128 @@ pub async fn admin() -> Html<String> {
     </script>
 </body>
 </html>"#, common_styles = COMMON_STYLES))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::{HashMap, HashSet};
+
+    use axum::{body::Body, http::Request, Router, routing::get};
+    use tower::ServiceExt;
+    use tokio::sync::{OnceCell, RwLock};
+
+    use crate::db::Database;
+    use crate::email::EmailService;
+    use crate::game::GameManager;
+
+    /// Create a test app state with a temporary database
+    async fn create_test_state() -> Arc<AppState> {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap().to_string();
+        std::mem::forget(tmp); // Keep temp file alive
+
+        let db = Database::new(&path).await.unwrap();
+        let email = EmailService::from_env();
+        let game_manager = GameManager::new();
+
+        Arc::new(AppState {
+            game_manager: RwLock::new(game_manager),
+            db,
+            email,
+            io: OnceCell::new(),
+            user_sockets: RwLock::new(HashMap::new()),
+        })
+    }
+
+    #[tokio::test]
+    async fn test_health_returns_ok_when_healthy() {
+        let state = create_test_state().await;
+
+        let app = Router::new()
+            .route("/health", get(health))
+            .with_state(state);
+
+        let response = app
+            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["status"], "healthy");
+        assert_eq!(json["checks"]["database"], "ok");
+        assert!(json["checks"]["uptime_seconds"].as_u64().is_some());
+        assert!(json["version"].is_string());
+    }
+
+    #[tokio::test]
+    async fn test_health_response_structure() {
+        let state = create_test_state().await;
+
+        let app = Router::new()
+            .route("/health", get(health))
+            .with_state(state);
+
+        let response = app
+            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Verify response structure
+        assert!(json.get("status").is_some(), "Missing 'status' field");
+        assert!(json.get("version").is_some(), "Missing 'version' field");
+        assert!(json.get("checks").is_some(), "Missing 'checks' field");
+
+        let checks = json.get("checks").unwrap();
+        assert!(checks.get("database").is_some(), "Missing 'database' check");
+        assert!(checks.get("uptime_seconds").is_some(), "Missing 'uptime_seconds'");
+    }
+
+    #[tokio::test]
+    async fn test_health_uptime_increases() {
+        let state = create_test_state().await;
+
+        let app = Router::new()
+            .route("/health", get(health))
+            .with_state(state.clone());
+
+        // First request
+        let response1 = app.clone()
+            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body1 = axum::body::to_bytes(response1.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json1: serde_json::Value = serde_json::from_slice(&body1).unwrap();
+        let uptime1 = json1["checks"]["uptime_seconds"].as_u64().unwrap();
+
+        // Sleep briefly
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Second request
+        let response2 = app
+            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body2 = axum::body::to_bytes(response2.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json2: serde_json::Value = serde_json::from_slice(&body2).unwrap();
+        let uptime2 = json2["checks"]["uptime_seconds"].as_u64().unwrap();
+
+        // Uptime should be >= first measurement (may be same if < 1 second elapsed)
+        assert!(uptime2 >= uptime1, "Uptime should not decrease");
+    }
 }

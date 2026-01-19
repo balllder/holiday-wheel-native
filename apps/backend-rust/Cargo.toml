@@ -23,11 +23,15 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Validation
+validator = { version = "0.18", features = ["derive"] }
+
 # Utilities
+pin-project = "1"
 thiserror = "2"
 anyhow = "1"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 rand = "0.8"
 dotenvy = "0.15"
 regex = "1"
@@ -49,7 +53,7 @@ lettre = { version = "0.11", default-features = false, features = ["tokio1-rustl
 
 # WebAuthn/Passkeys
 webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation"] }
-uuid = { version = "1", features = ["v5"] }
+uuid = { version = "1", features = ["v4", "v5"] }
 
 # OAuth/JWT verification
 jsonwebtoken = "9"
@@ -72,6 +76,10 @@ utoipa-swagger-ui = { version = "9", features = ["axum"] }
 # Rate limiting
 tower_governor = "0.4"
 governor = "0.8"
+
+# Metrics
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
 
 # Build OpenSSL from source (required by webauthn-rs for x509 parsing)
 openssl = { version = "0.10", features = ["vendored"] }

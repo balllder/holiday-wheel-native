@@ -14,10 +14,13 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use rand::distributions::{Alphanumeric, DistString};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
+use validator::Validate;
 
 use crate::db::NewUser;
+use crate::validation::{
+    display_name_validator, email_validator, password_validator, ValidationErrorResponse,
+};
 use crate::AppState;
 
 /// Cookie name for auth token
@@ -28,9 +31,11 @@ pub mod passkey;
 
 // ========== REQUEST/RESPONSE TYPES ==========
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct LoginRequest {
+    #[validate(custom(function = "email_validator"))]
     pub email: String,
+    #[validate(length(min = 1, message = "Password is required"))]
     pub password: String,
 }
 
@@ -55,10 +60,13 @@ pub struct UserInfo {
 }
 
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct RegisterRequest {
+    #[validate(custom(function = "email_validator"))]
     pub email: String,
+    #[validate(custom(function = "password_validator"))]
     pub password: String,
+    #[validate(custom(function = "display_name_validator"))]
     pub display_name: String,
     #[serde(default)]
     #[allow(dead_code)]
@@ -158,6 +166,11 @@ async fn api_login(
     State(state): State<Arc<AppState>>,
     Json(req): Json<LoginRequest>,
 ) -> Response {
+    // Validate input
+    if let Err(errors) = req.validate() {
+        return ValidationErrorResponse::from_validation_errors(&errors).into_response();
+    }
+
     // Get user by email
     let user = match state.db.get_user_by_email(&req.email).await {
         Ok(Some(user)) => user,
@@ -294,30 +307,22 @@ async fn register_user(
     state: Arc<AppState>,
     req: RegisterRequest,
 ) -> Response {
-    let mut errors = Vec::new();
+    // Validate input using validator crate
+    if let Err(validation_errors) = req.validate() {
+        // Convert validation errors to the existing RegisterResponse format
+        let errors: Vec<String> = validation_errors
+            .field_errors()
+            .iter()
+            .flat_map(|(_, errs)| {
+                errs.iter().map(|e| {
+                    e.message
+                        .as_ref()
+                        .map(|m| m.to_string())
+                        .unwrap_or_else(|| "Invalid input".to_string())
+                })
+            })
+            .collect();
 
-    // Validate email
-    let email_regex = Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
-    let email = req.email.trim().to_lowercase();
-    if email.is_empty() || !email_regex.is_match(&email) {
-        errors.push("Valid email is required".to_string());
-    }
-
-    // Validate password
-    if req.password.len() < 8 {
-        errors.push("Password must be at least 8 characters".to_string());
-    }
-
-    // Validate display name
-    let display_name = req.display_name.trim();
-    if display_name.len() < 2 {
-        errors.push("Display name must be at least 2 characters".to_string());
-    }
-    if display_name.len() > 24 {
-        errors.push("Display name must be 24 characters or less".to_string());
-    }
-
-    if !errors.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
             Json(RegisterResponse {
@@ -328,6 +333,9 @@ async fn register_user(
             }),
         ).into_response();
     }
+
+    let email = req.email.trim().to_lowercase();
+    let display_name = req.display_name.trim();
 
     // Check if user exists
     match state.db.user_exists(&email).await {
@@ -1838,18 +1846,74 @@ mod tests {
     // ========== VALIDATION TESTS ==========
 
     #[test]
-    fn test_email_regex() {
-        let email_regex = Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
+    fn test_email_validation() {
+        use crate::validation::validate_email_format;
 
         // Valid emails
-        assert!(email_regex.is_match("test@example.com"));
-        assert!(email_regex.is_match("user.name@domain.org"));
-        assert!(email_regex.is_match("user+tag@sub.domain.com"));
+        assert!(validate_email_format("test@example.com"));
+        assert!(validate_email_format("user.name@domain.org"));
+        assert!(validate_email_format("user+tag@sub.domain.com"));
 
         // Invalid emails
-        assert!(!email_regex.is_match(""));
-        assert!(!email_regex.is_match("notanemail"));
-        assert!(!email_regex.is_match("@nodomain.com"));
-        assert!(!email_regex.is_match("noat.domain.com"));
+        assert!(!validate_email_format(""));
+        assert!(!validate_email_format("notanemail"));
+        assert!(!validate_email_format("@nodomain.com"));
+        assert!(!validate_email_format("noat.domain.com"));
+    }
+
+    #[test]
+    fn test_login_request_validation() {
+        let valid_request = LoginRequest {
+            email: "test@example.com".to_string(),
+            password: "password123".to_string(),
+        };
+        assert!(valid_request.validate().is_ok());
+
+        let invalid_email = LoginRequest {
+            email: "notanemail".to_string(),
+            password: "password123".to_string(),
+        };
+        assert!(invalid_email.validate().is_err());
+
+        let empty_password = LoginRequest {
+            email: "test@example.com".to_string(),
+            password: "".to_string(),
+        };
+        assert!(empty_password.validate().is_err());
+    }
+
+    #[test]
+    fn test_register_request_validation() {
+        let valid_request = RegisterRequest {
+            email: "test@example.com".to_string(),
+            password: "password1".to_string(),
+            display_name: "Test User".to_string(),
+            captcha_token: None,
+        };
+        assert!(valid_request.validate().is_ok());
+
+        let short_password = RegisterRequest {
+            email: "test@example.com".to_string(),
+            password: "short1".to_string(),
+            display_name: "Test User".to_string(),
+            captcha_token: None,
+        };
+        assert!(short_password.validate().is_err());
+
+        let short_display_name = RegisterRequest {
+            email: "test@example.com".to_string(),
+            password: "password1".to_string(),
+            display_name: "a".to_string(),
+            captcha_token: None,
+        };
+        assert!(short_display_name.validate().is_err());
+
+        let long_display_name = RegisterRequest {
+            email: "test@example.com".to_string(),
+            password: "password1".to_string(),
+            display_name: "a".repeat(25),
+            captcha_token: None,
+        };
+        assert!(long_display_name.validate().is_err());
     }
 }

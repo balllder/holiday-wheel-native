@@ -5,10 +5,65 @@ use tracing::info;
 
 use crate::game::{Puzzle, RoomConfig};
 
+// ============================================================================
+// DATABASE MIGRATIONS
+// ============================================================================
+//
+// This module uses sqlx migrations for schema management. Migrations are stored
+// in the `migrations/` directory at the crate root.
+//
+// ## Migration Process
+//
+// 1. **Creating new migrations:**
+//    ```bash
+//    # Using sqlx-cli (recommended)
+//    cargo install sqlx-cli
+//    sqlx migrate add <migration_name>
+//
+//    # Or manually create: migrations/NNNN_description.sql
+//    ```
+//
+// 2. **Running migrations:**
+//    Migrations run automatically on startup via `sqlx::migrate!()`.
+//    The `_sqlx_migrations` table tracks which migrations have been applied.
+//
+// 3. **Migration file naming:**
+//    - Format: `NNN_description.sql` (e.g., `001_initial_schema.sql`)
+//    - Files are executed in lexicographic order
+//    - Each migration runs in a transaction
+//
+// 4. **Checking migration status:**
+//    ```bash
+//    sqlx migrate info --database-url sqlite:puzzles.db
+//    ```
+//
+// 5. **Reverting migrations:**
+//    SQLx doesn't support down migrations by default. For rollbacks:
+//    - Create a new migration that reverses the changes
+//    - Or restore from backup
+//
+// ## Current Schema
+//
+// The initial migration (001_initial_schema.sql) creates:
+// - users: User accounts with auth data (email, password, tokens)
+// - rooms: Game room metadata
+// - packs: Puzzle pack definitions
+// - puzzles: Individual puzzles with categories
+// - used_puzzles: Per-room puzzle usage tracking
+// - room_config: Per-room game configuration
+// - passkey_credentials: WebAuthn/Passkey storage
+// - oauth_accounts: OAuth provider linkage
+// - webauthn_challenges: Temporary WebAuthn challenge storage
+//
+// ============================================================================
+
 #[derive(Error, Debug)]
 pub enum DbError {
     #[error("Database error: {0}")]
     Sqlx(#[from] sqlx::Error),
+
+    #[error("Migration error: {0}")]
+    Migration(#[from] sqlx::migrate::MigrateError),
 
     #[error("Not found")]
     NotFound,
@@ -120,7 +175,12 @@ fn now_secs() -> i64 {
 }
 
 impl Database {
-    /// Create a new database connection
+    /// Create a new database connection and run migrations
+    ///
+    /// This method:
+    /// 1. Creates the database file if it doesn't exist
+    /// 2. Runs any pending sqlx migrations from the `migrations/` directory
+    /// 3. Performs runtime initialization (admin bootstrap, default data)
     pub async fn new(db_path: &str) -> Result<Self, DbError> {
         // Handle both "sqlite:/path" and "/path" formats
         let db_url = if db_path.starts_with("sqlite:") {
@@ -140,8 +200,16 @@ impl Database {
 
         let pool = SqlitePool::connect(&db_url).await?;
 
+        // Run sqlx migrations from the migrations/ directory
+        // The migrate!() macro embeds migrations at compile time
+        info!("Running database migrations...");
+        sqlx::migrate!("./migrations").run(&pool).await?;
+        info!("Database migrations completed");
+
         let db = Self { pool };
-        db.init_tables().await?;
+
+        // Run runtime initialization (not in migrations because they depend on env vars)
+        db.init_runtime_data().await?;
 
         Ok(db)
     }
@@ -153,220 +221,22 @@ impl Database {
         Self::new(db_path).await
     }
 
-    /// Initialize all tables
-    async fn init_tables(&self) -> Result<(), DbError> {
-        // Users table
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-                password_hash TEXT,
-                display_name TEXT NOT NULL,
-                verified INTEGER NOT NULL DEFAULT 0,
-                verification_token TEXT,
-                verification_token_expires INTEGER,
-                reset_token TEXT,
-                reset_token_expires INTEGER,
-                created_at INTEGER NOT NULL,
-                last_login_at INTEGER,
-                remember_token TEXT,
-                is_admin INTEGER NOT NULL DEFAULT 0
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
+    /// Ping the database to verify connectivity
+    pub async fn ping(&self) -> Result<(), DbError> {
+        sqlx::query("SELECT 1").execute(&self.pool).await?;
+        Ok(())
+    }
 
-        // Add is_admin column if it doesn't exist (migration for existing databases)
-        sqlx::query("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
-            .execute(&self.pool)
-            .await
-            .ok(); // Ignore error if column already exists
-
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
-            .execute(&self.pool)
-            .await?;
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_users_verification_token ON users(verification_token)",
-        )
-        .execute(&self.pool)
-        .await?;
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_users_remember_token ON users(remember_token)")
-            .execute(&self.pool)
-            .await?;
-
-        // Rooms table
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS rooms (
-                name TEXT PRIMARY KEY,
-                created_by INTEGER,
-                created_at INTEGER NOT NULL,
-                last_activity_at INTEGER NOT NULL,
-                is_public INTEGER NOT NULL DEFAULT 1,
-                FOREIGN KEY(created_by) REFERENCES users(id)
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_rooms_last_activity ON rooms(last_activity_at)")
-            .execute(&self.pool)
-            .await?;
-
-        // Packs table
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS packs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        // Puzzles table
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS puzzles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                category TEXT NOT NULL,
-                answer TEXT NOT NULL,
-                pack_id INTEGER NOT NULL DEFAULT 1,
-                enabled INTEGER NOT NULL DEFAULT 1,
-                FOREIGN KEY(pack_id) REFERENCES packs(id)
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_puzzles_pack_id ON puzzles(pack_id)")
-            .execute(&self.pool)
-            .await?;
-
-        // Used puzzles tracking (per room)
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS used_puzzles (
-                room_name TEXT NOT NULL,
-                puzzle_id INTEGER NOT NULL,
-                used_at INTEGER NOT NULL,
-                PRIMARY KEY(room_name, puzzle_id),
-                FOREIGN KEY(puzzle_id) REFERENCES puzzles(id)
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        // Room config
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS room_config (
-                room_name TEXT PRIMARY KEY,
-                active_pack_id INTEGER,
-                vowel_cost INTEGER,
-                final_seconds INTEGER,
-                final_jackpot INTEGER,
-                prize_replace_csv TEXT,
-                puzzle_display_seconds INTEGER,
-                prize_wedge_names TEXT,
-                disconnect_timeout_secs INTEGER DEFAULT 300,
-                FOREIGN KEY(active_pack_id) REFERENCES packs(id)
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        // Add new columns if they don't exist (migration for existing databases)
-        sqlx::query("ALTER TABLE room_config ADD COLUMN puzzle_display_seconds INTEGER")
-            .execute(&self.pool)
-            .await
-            .ok();
-        sqlx::query("ALTER TABLE room_config ADD COLUMN prize_wedge_names TEXT")
-            .execute(&self.pool)
-            .await
-            .ok();
-        sqlx::query("ALTER TABLE room_config ADD COLUMN disconnect_timeout_secs INTEGER DEFAULT 300")
-            .execute(&self.pool)
-            .await
-            .ok();
-
-        // Passkey credentials table
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS passkey_credentials (
-                id TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                public_key BLOB NOT NULL,
-                counter INTEGER NOT NULL DEFAULT 0,
-                transports TEXT,
-                created_at INTEGER NOT NULL,
-                last_used_at INTEGER,
-                device_name TEXT,
-                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_passkey_user_id ON passkey_credentials(user_id)")
-            .execute(&self.pool)
-            .await?;
-
-        // OAuth accounts table
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS oauth_accounts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                provider TEXT NOT NULL,
-                provider_user_id TEXT NOT NULL,
-                email TEXT,
-                created_at INTEGER NOT NULL,
-                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-                UNIQUE(provider, provider_user_id)
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_oauth_user_id ON oauth_accounts(user_id)")
-            .execute(&self.pool)
-            .await?;
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_oauth_provider ON oauth_accounts(provider, provider_user_id)")
-            .execute(&self.pool)
-            .await?;
-
-        // WebAuthn challenges table (ephemeral)
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS webauthn_challenges (
-                challenge TEXT PRIMARY KEY,
-                user_id INTEGER,
-                email TEXT,
-                type TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                expires_at INTEGER NOT NULL
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        // Create default pack if none exists
-        sqlx::query("INSERT OR IGNORE INTO packs (id, name) VALUES (1, 'Default')")
-            .execute(&self.pool)
-            .await?;
-
+    /// Initialize runtime data that cannot be in migrations
+    ///
+    /// This handles:
+    /// - Admin user bootstrap from ADMIN_EMAIL env var
+    /// - Default puzzles if database is empty
+    ///
+    /// Note: Schema creation is now handled by sqlx migrations in ./migrations/
+    async fn init_runtime_data(&self) -> Result<(), DbError> {
         // Bootstrap admin from environment variable
+        // This runs on every startup to ensure the admin is always set
         if let Ok(admin_email) = std::env::var("ADMIN_EMAIL") {
             sqlx::query("UPDATE users SET is_admin = 1 WHERE email = ?")
                 .bind(admin_email.to_lowercase())
@@ -394,6 +264,7 @@ impl Database {
                 ("Event", "NEW YEARS EVE"),
             ];
 
+            let puzzle_count_inserted = default_puzzles.len();
             for (category, answer) in default_puzzles {
                 sqlx::query(
                     "INSERT INTO puzzles (category, answer, pack_id) VALUES (?, ?, 1)",
@@ -403,6 +274,7 @@ impl Database {
                 .execute(&self.pool)
                 .await?;
             }
+            info!("Inserted {} default puzzles", puzzle_count_inserted);
         }
 
         Ok(())

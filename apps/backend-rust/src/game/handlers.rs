@@ -2,12 +2,12 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use socketioxide::{
     extract::{Data, SocketRef, State},
     SocketIo,
 };
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::AppState;
 
@@ -174,6 +174,55 @@ macro_rules! broadcast_state {
 #[derive(Debug, Deserialize)]
 pub struct AuthRequest {
     pub token: String,
+}
+
+/// Response type for socket authentication
+#[derive(Debug, Serialize)]
+pub struct AuthResponse {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Validate a JWT/auth token and return user info if valid
+/// This is the core authentication logic used by the socket auth handler
+pub async fn validate_socket_auth_token(
+    state: &Arc<AppState>,
+    token: &str,
+) -> Result<(i64, String), &'static str> {
+    // Empty token is invalid
+    if token.is_empty() {
+        return Err("Token is required");
+    }
+
+    // Verify token against database
+    match state.db.get_user_by_token(token).await {
+        Ok(Some(user)) => {
+            // Check if user is verified
+            if !user.verified {
+                return Err("Account not verified");
+            }
+            Ok((user.id, user.display_name))
+        }
+        Ok(None) => Err("Invalid or expired token"),
+        Err(_) => Err("Database error during authentication"),
+    }
+}
+
+/// Look up the user_id associated with a socket from user_sockets tracking
+/// Returns Some(user_id) if the socket has been authenticated, None otherwise
+pub async fn get_socket_user_id(state: &Arc<AppState>, socket_id: &str) -> Option<i64> {
+    let user_sockets = state.user_sockets.read().await;
+    for (user_id, sockets) in user_sockets.iter() {
+        if sockets.contains(socket_id) {
+            return Some(*user_id);
+        }
+    }
+    None
 }
 
 // ========== TESTABLE HELPER FUNCTIONS ==========
@@ -378,28 +427,63 @@ pub fn register_handlers(io: &SocketIo) {
         // ========== SOCKET AUTHENTICATION ==========
 
         // Authenticate socket and register for session invalidation
+        // This handler validates the JWT token and associates the user_id with the connection
         socket.on(
             "auth",
             |socket: SocketRef, Data(req): Data<AuthRequest>, State(state): State<Arc<AppState>>| async move {
-                info!("Socket {} authenticating", socket.id);
+                info!("Socket {} authenticating with token", socket.id);
 
-                // Verify token and get user
-                if let Ok(Some(user)) = state.db.get_user_by_token(&req.token).await {
-                    // Join a user-specific room for session invalidation broadcasts
-                    let user_room = format!("user:{}", user.id);
-                    socket.join(user_room.clone()).ok();
+                // Validate the token using our helper function
+                match validate_socket_auth_token(&state, &req.token).await {
+                    Ok((user_id, display_name)) => {
+                        // Join a user-specific room for session invalidation broadcasts
+                        let user_room = format!("user:{}", user_id);
+                        if let Err(e) = socket.join(user_room.clone()) {
+                            warn!("Failed to join user room: {:?}", e);
+                        }
 
-                    // Also track in user_sockets for cleanup
-                    let mut user_sockets = state.user_sockets.write().await;
-                    user_sockets
-                        .entry(user.id)
-                        .or_insert_with(HashSet::new)
-                        .insert(socket.id.to_string());
+                        // Track socket in user_sockets for cleanup and session management
+                        {
+                            let mut user_sockets = state.user_sockets.write().await;
+                            user_sockets
+                                .entry(user_id)
+                                .or_insert_with(HashSet::new)
+                                .insert(socket.id.to_string());
+                        }
 
-                    info!("Socket {} authenticated as user {} ({})", socket.id, user.id, user.display_name);
-                    socket.emit("auth_ok", &serde_json::json!({ "user_id": user.id })).ok();
-                } else {
-                    socket.emit("auth_error", &serde_json::json!({ "error": "Invalid token" })).ok();
+                        info!(
+                            "Socket {} authenticated as user {} ({})",
+                            socket.id, user_id, display_name
+                        );
+
+                        // Send success response with user info
+                        let response = AuthResponse {
+                            ok: true,
+                            user_id: Some(user_id),
+                            display_name: Some(display_name),
+                            error: None,
+                        };
+                        socket.emit("auth_ok", &response).ok();
+                    }
+                    Err(error_msg) => {
+                        warn!(
+                            "Socket {} authentication failed: {}",
+                            socket.id, error_msg
+                        );
+
+                        // Send error response
+                        let response = AuthResponse {
+                            ok: false,
+                            user_id: None,
+                            display_name: None,
+                            error: Some(error_msg.to_string()),
+                        };
+                        socket.emit("auth_error", &response).ok();
+
+                        // Optionally disconnect the socket after auth failure
+                        // This is commented out to allow retry, but can be enabled for stricter security
+                        // socket.disconnect().ok();
+                    }
                 }
             },
         );
@@ -422,18 +506,29 @@ pub fn register_handlers(io: &SocketIo) {
         );
 
         // Join as a player
+        // Associates the authenticated user_id with the player if socket was authenticated
         socket.on(
             "join_game",
             |socket: SocketRef, Data(req): Data<JoinGameRequest>, State(state): State<Arc<AppState>>| async move {
                 info!("Socket {} joining game in room {}", socket.id, req.room);
                 socket.join(req.room.clone()).ok();
 
+                // Look up user_id from authenticated socket (if they called auth first)
+                let user_id = get_socket_user_id(&state, socket.id.as_str()).await;
+                if user_id.is_some() {
+                    info!("Socket {} is authenticated as user_id {:?}", socket.id, user_id);
+                }
+
                 let mut manager = state.game_manager.write().await;
                 let game = manager.get_or_create_room(&req.room);
 
                 // Check if already in game with this socket
                 if let Some(idx) = game.player_idx_by_socket(socket.id.as_str()) {
-                    socket.emit("you", &serde_json::json!({ "player_idx": idx })).ok();
+                    // Update user_id association if missing
+                    if game.players[idx].user_id.is_none() && user_id.is_some() {
+                        game.players[idx].user_id = user_id;
+                    }
+                    socket.emit("you", &serde_json::json!({ "player_idx": idx, "user_id": user_id })).ok();
                     broadcast_state!(socket, req.room, game.get_state());
                     return;
                 }
@@ -441,24 +536,34 @@ pub fn register_handlers(io: &SocketIo) {
                 let name = req.name.unwrap_or_else(|| format!("Player {}", game.players.len() + 1));
 
                 // Check if there's a disconnected player with the same name to reconnect
+                // Also check by user_id if authenticated
                 let existing_idx = game.players.iter().position(|p| {
-                    p.name == name && p.socket_id.is_none()
+                    // Match by name AND disconnected socket
+                    let name_match = p.name == name && p.socket_id.is_none();
+                    // OR match by user_id if both are present and socket disconnected
+                    let user_match = user_id.is_some() && p.user_id == user_id && p.socket_id.is_none();
+                    name_match || user_match
                 });
 
                 if let Some(idx) = existing_idx {
                     // Reconnect to existing player slot
                     game.players[idx].socket_id = Some(socket.id.to_string());
                     game.players[idx].disconnected_at = None; // Clear disconnect timestamp
-                    socket.emit("you", &serde_json::json!({ "player_idx": idx })).ok();
-                    toast!(socket, &format!("Reconnected as {}!", name));
+                    // Update user_id if newly authenticated
+                    if game.players[idx].user_id.is_none() && user_id.is_some() {
+                        game.players[idx].user_id = user_id;
+                    }
+                    let reconnected_name = game.players[idx].name.clone();
+                    socket.emit("you", &serde_json::json!({ "player_idx": idx, "user_id": user_id })).ok();
+                    toast!(socket, &format!("Reconnected as {}!", reconnected_name));
                     broadcast_state!(socket, req.room, game.get_state());
                     return;
                 }
 
-                // Add new player
-                let player_idx = game.add_player(name.clone(), Some(socket.id.to_string()), None);
+                // Add new player with user_id association
+                let player_idx = game.add_player(name.clone(), Some(socket.id.to_string()), user_id);
 
-                socket.emit("you", &serde_json::json!({ "player_idx": player_idx })).ok();
+                socket.emit("you", &serde_json::json!({ "player_idx": player_idx, "user_id": user_id })).ok();
                 toast!(socket, &format!("Joined as {}!", name));
                 broadcast_state!(socket, req.room, game.get_state());
             },
@@ -1755,5 +1860,144 @@ mod tests {
         assert_eq!(room_b.players.len(), 1);
         assert_eq!(room_a.players[0].name, "Alice");
         assert_eq!(room_b.players[0].name, "Bob");
+    }
+
+    // ========== AUTH RESPONSE TESTS ==========
+
+    #[test]
+    fn test_auth_response_success_serialization() {
+        let response = super::AuthResponse {
+            ok: true,
+            user_id: Some(42),
+            display_name: Some("TestUser".to_string()),
+            error: None,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"ok\":true"));
+        assert!(json.contains("\"user_id\":42"));
+        assert!(json.contains("\"display_name\":\"TestUser\""));
+        // error should be skipped when None
+        assert!(!json.contains("\"error\""));
+    }
+
+    #[test]
+    fn test_auth_response_error_serialization() {
+        let response = super::AuthResponse {
+            ok: false,
+            user_id: None,
+            display_name: None,
+            error: Some("Invalid token".to_string()),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"ok\":false"));
+        assert!(json.contains("\"error\":\"Invalid token\""));
+        // user_id and display_name should be skipped when None
+        assert!(!json.contains("\"user_id\""));
+        assert!(!json.contains("\"display_name\""));
+    }
+
+    #[test]
+    fn test_auth_request_deserialization() {
+        let json = r#"{"token": "test-token-123"}"#;
+        let req: super::AuthRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.token, "test-token-123");
+    }
+
+    // ========== USER ID ASSOCIATION TESTS ==========
+
+    #[test]
+    fn test_player_with_user_id() {
+        let mut manager = create_test_manager();
+        let game = manager.get_or_create_room("test-room");
+
+        // Add player with user_id
+        let player_idx = game.add_player(
+            "AuthUser".to_string(),
+            Some("socket1".to_string()),
+            Some(123),
+        );
+
+        assert_eq!(player_idx, 0);
+        assert_eq!(game.players[0].user_id, Some(123));
+        assert_eq!(game.players[0].name, "AuthUser");
+    }
+
+    #[test]
+    fn test_reconnect_by_user_id() {
+        let mut manager = create_test_manager();
+        let game = manager.get_or_create_room("test-room");
+
+        // Add player with user_id
+        game.add_player(
+            "AuthUser".to_string(),
+            Some("socket1".to_string()),
+            Some(123),
+        );
+
+        // Disconnect the player
+        game.players[0].socket_id = None;
+        game.players[0].disconnected_at = Some(1000);
+
+        // Verify player is disconnected
+        assert!(game.players[0].socket_id.is_none());
+
+        // Player can reconnect - find by user_id
+        let reconnect_idx = game.players.iter().position(|p| {
+            p.user_id == Some(123) && p.socket_id.is_none()
+        });
+
+        assert_eq!(reconnect_idx, Some(0));
+
+        // Simulate reconnection
+        if let Some(idx) = reconnect_idx {
+            game.players[idx].socket_id = Some("socket2".to_string());
+            game.players[idx].disconnected_at = None;
+        }
+
+        assert_eq!(game.players[0].socket_id, Some("socket2".to_string()));
+        assert!(game.players[0].disconnected_at.is_none());
+    }
+
+    #[test]
+    fn test_player_without_user_id() {
+        let mut manager = create_test_manager();
+        let game = manager.get_or_create_room("test-room");
+
+        // Add player without user_id (anonymous/unauthenticated)
+        let player_idx = game.add_player(
+            "GuestPlayer".to_string(),
+            Some("socket1".to_string()),
+            None,
+        );
+
+        assert_eq!(player_idx, 0);
+        assert_eq!(game.players[0].user_id, None);
+        assert_eq!(game.players[0].name, "GuestPlayer");
+    }
+
+    #[test]
+    fn test_mixed_authenticated_and_anonymous_players() {
+        let mut manager = create_test_manager();
+        let game = manager.get_or_create_room("test-room");
+
+        // Add authenticated player
+        game.add_player(
+            "AuthUser".to_string(),
+            Some("socket1".to_string()),
+            Some(123),
+        );
+
+        // Add anonymous player
+        game.add_player(
+            "GuestPlayer".to_string(),
+            Some("socket2".to_string()),
+            None,
+        );
+
+        assert_eq!(game.players.len(), 2);
+        assert_eq!(game.players[0].user_id, Some(123));
+        assert_eq!(game.players[1].user_id, None);
     }
 }
