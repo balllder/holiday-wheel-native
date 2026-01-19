@@ -9,12 +9,13 @@
 # Using Rust 1.85+ which supports edition 2024 (required by home crate v0.5.12)
 FROM rust:1.85-slim AS builder
 
-# Install build dependencies for OpenSSL (vendored) and SQLite
+# Install build dependencies for OpenSSL (vendored), SQLite, and Swagger UI download
 RUN apt-get update && apt-get install -y \
     build-essential \
     pkg-config \
     libssl-dev \
     perl \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
