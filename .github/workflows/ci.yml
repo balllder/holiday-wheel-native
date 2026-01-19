@@ -56,7 +56,7 @@ jobs:
         run: npm run check-types
 
       - name: Run tests with coverage
-        run: npm test -- -- --coverage --passWithNoTests
+        run: npx turbo run test --filter='!@holiday-wheel/e2e' -- --coverage --passWithNoTests
 
       - name: Upload coverage reports
         if: success()
