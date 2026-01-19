@@ -149,6 +149,7 @@ pub struct FinalPickRequest {
 pub struct SetActivePack {
     pub room: String,
     pub pack_id: Option<i64>,
+    pub pack_name: Option<String>,
 }
 
 // ========== HELPER MACROS ==========
@@ -862,8 +863,9 @@ pub fn register_handlers(io: &SocketIo) {
                     let pack_name = if req.pack_id.is_none() || req.pack_id == Some(0) {
                         "All Packs".to_string()
                     } else {
-                        format!("Pack {}", req.pack_id.unwrap())
+                        req.pack_name.clone().unwrap_or_else(|| format!("Pack {}", req.pack_id.unwrap()))
                     };
+                    game.active_pack_name = Some(pack_name.clone());
 
                     toast!(socket, &format!("Puzzle pack changed to: {}", pack_name));
                     broadcast_state!(socket, req.room, game.get_state());

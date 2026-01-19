@@ -3731,6 +3731,7 @@ pub async fn game() -> Html<String> {
                 </div>
 
                 <div class="puzzle-section">
+                    <div class="theme" id="theme" style="color: #888; font-size: 12px; text-align: center; margin-bottom: 4px;"></div>
                     <div class="category">Category: <span id="category">-</span></div>
                     <div class="puzzle-board" id="puzzleBoard">
                         <p style="color: #fff;">Connecting to game...</p>
@@ -4920,7 +4921,15 @@ pub async fn game() -> Html<String> {
             // Phase display
             document.getElementById('phase').textContent = phase;
 
-            // Category
+            // Theme (pack name) and Category
+            const packName = gameState.active_pack_name;
+            const themeEl = document.getElementById('theme');
+            if (packName && packName !== 'All Packs') {{
+                themeEl.textContent = packName;
+                themeEl.style.display = 'block';
+            }} else {{
+                themeEl.style.display = 'none';
+            }}
             document.getElementById('category').textContent = gameState.puzzle?.category || '-';
 
             // ========== ROUND PROGRESS ==========
@@ -5531,7 +5540,8 @@ pub async fn game() -> Html<String> {
         function changePack() {{
             const select = document.getElementById('packSelect');
             const packId = select.value ? parseInt(select.value) : null;
-            socket.emit('set_pack', {{ room, pack_id: packId }});
+            const packName = select.options[select.selectedIndex]?.textContent?.split(' (')[0] || 'All Packs';
+            socket.emit('set_pack', {{ room, pack_id: packId, pack_name: packName }});
         }}
 
         async function loadPacks() {{

@@ -198,6 +198,7 @@ pub struct Game {
     // Configuration
     pub config: RoomConfig,
     pub active_pack_id: Option<i64>,
+    pub active_pack_name: Option<String>,
 
     // Toss-up state
     pub tossup: TossupState,
@@ -226,6 +227,7 @@ impl Game {
             host_sid: None,
             config: RoomConfig::default(),
             active_pack_id: None,
+            active_pack_name: None,
             tossup: TossupState::default(),
             final_state: FinalState::default(),
         }
@@ -919,6 +921,7 @@ impl Game {
             },
             config: self.config.clone(),
             active_pack_id: self.active_pack_id,
+            active_pack_name: self.active_pack_name.clone(),
             tossup: TossupStateClient {
                 controller_player_idx: tossup_controller_idx,
                 locked_player_idxs: tossup_locked_idxs,
@@ -1021,6 +1024,7 @@ pub struct GameState {
     pub host: HostState,
     pub config: RoomConfig,
     pub active_pack_id: Option<i64>,
+    pub active_pack_name: Option<String>,
     pub tossup: TossupStateClient,
     #[serde(rename = "final")]
     pub final_round: FinalStateClient,
