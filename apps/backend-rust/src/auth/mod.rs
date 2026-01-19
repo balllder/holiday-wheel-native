@@ -142,6 +142,10 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/admin/rooms", get(admin_list_rooms))
         .route("/api/admin/rooms", post(admin_create_room))
         .route("/api/admin/rooms/{name}", axum::routing::delete(admin_delete_room))
+        .route("/api/admin/rooms/{room}/players/{idx}", axum::routing::delete(admin_kick_player))
+        .route("/api/admin/rooms/{room}/players/{idx}/reset", post(admin_reset_player_score))
+        .route("/api/admin/rooms/{room}/kick-user/{user_id}", post(admin_kick_user))
+        .route("/api/admin/rooms/{room}/new-game", post(admin_new_game))
         .route("/api/admin/settings/{room}", get(admin_get_settings))
         .route("/api/admin/settings/{room}", post(admin_save_settings))
 }
@@ -1208,7 +1212,6 @@ struct AdminRoomInfo {
     revealed_count: usize,
     total_letters: usize,
     current_wedge: Option<String>,
-    round_number: Option<i32>,
 }
 
 #[derive(Serialize)]
@@ -1217,7 +1220,6 @@ struct AdminPlayerInfo {
     total: i32,
     round_bank: i32,
     is_connected: bool,
-    wild_cards: i32,
 }
 
 async fn admin_list_rooms(
@@ -1238,7 +1240,6 @@ async fn admin_list_rooms(
                 total: p.total,
                 round_bank: p.round_bank,
                 is_connected: p.socket_id.is_some(),
-                wild_cards: p.wild_cards,
             }
         }).collect();
 
@@ -1267,7 +1268,6 @@ async fn admin_list_rooms(
             revealed_count,
             total_letters,
             current_wedge,
-            round_number: game.round.as_ref().map(|r| r.number),
         }
     }).collect();
 
@@ -1350,6 +1350,134 @@ async fn admin_delete_room(
 
     (StatusCode::OK, Json(SimpleResponse {
         ok: true, message: Some("Room deleted".to_string()), error: None
+    }))
+}
+
+#[derive(Deserialize)]
+struct PlayerIdxPath {
+    room: String,
+    idx: usize,
+}
+
+async fn admin_kick_player(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(path): Path<PlayerIdxPath>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    let mut manager = state.game_manager.write().await;
+    if let Some(game) = manager.get_room_mut(&path.room) {
+        if path.idx < game.players.len() {
+            let player_name = game.players[path.idx].name.clone();
+            game.players.remove(path.idx);
+            // Adjust active_idx if needed
+            if game.active_idx >= game.players.len() && !game.players.is_empty() {
+                game.active_idx = 0;
+            }
+            return (StatusCode::OK, Json(SimpleResponse {
+                ok: true, message: Some(format!("Player '{}' kicked", player_name)), error: None
+            }));
+        }
+    }
+
+    (StatusCode::NOT_FOUND, Json(SimpleResponse {
+        ok: false, message: None, error: Some("Player not found".to_string())
+    }))
+}
+
+async fn admin_reset_player_score(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(path): Path<PlayerIdxPath>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    let mut manager = state.game_manager.write().await;
+    if let Some(game) = manager.get_room_mut(&path.room) {
+        if path.idx < game.players.len() {
+            game.players[path.idx].total = 0;
+            game.players[path.idx].round_bank = 0;
+            return (StatusCode::OK, Json(SimpleResponse {
+                ok: true, message: Some("Score reset".to_string()), error: None
+            }));
+        }
+    }
+
+    (StatusCode::NOT_FOUND, Json(SimpleResponse {
+        ok: false, message: None, error: Some("Player not found".to_string())
+    }))
+}
+
+#[derive(Deserialize)]
+struct KickUserPath {
+    room: String,
+    user_id: i64,
+}
+
+async fn admin_kick_user(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(path): Path<KickUserPath>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    // Find the player by user_id and remove them
+    let mut manager = state.game_manager.write().await;
+    if let Some(game) = manager.get_room_mut(&path.room) {
+        // Find player with matching user_id
+        if let Some(idx) = game.players.iter().position(|p| p.user_id == Some(path.user_id)) {
+            let player_name = game.players[idx].name.clone();
+            game.players.remove(idx);
+            // Adjust active_idx if needed
+            if game.active_idx >= game.players.len() && !game.players.is_empty() {
+                game.active_idx = 0;
+            }
+            return (StatusCode::OK, Json(SimpleResponse {
+                ok: true, message: Some(format!("User '{}' kicked from room", player_name)), error: None
+            }));
+        }
+    }
+
+    (StatusCode::NOT_FOUND, Json(SimpleResponse {
+        ok: false, message: None, error: Some("User not found in room".to_string())
+    }))
+}
+
+async fn admin_new_game(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(room_name): Path<String>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    let mut manager = state.game_manager.write().await;
+    if let Some(game) = manager.get_room_mut(&room_name) {
+        // Reset the game state
+        game.reset_game();
+        return (StatusCode::OK, Json(SimpleResponse {
+            ok: true, message: Some("New game started".to_string()), error: None
+        }));
+    }
+
+    (StatusCode::NOT_FOUND, Json(SimpleResponse {
+        ok: false, message: None, error: Some("Room not found".to_string())
     }))
 }
 

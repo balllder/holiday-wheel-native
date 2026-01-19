@@ -4195,10 +4195,6 @@ pub async fn admin() -> Html<String> {
                                         <div class="detail-value green">${{r.current_wedge || '--'}}</div>
                                     </div>
                                     <div class="detail-item">
-                                        <div class="detail-label">Round</div>
-                                        <div class="detail-value">${{r.round_number || 1}}</div>
-                                    </div>
-                                    <div class="detail-item">
                                         <div class="detail-label">Letters Revealed</div>
                                         <div class="detail-value">${{r.revealed_count}} / ${{r.total_letters}}</div>
                                     </div>
