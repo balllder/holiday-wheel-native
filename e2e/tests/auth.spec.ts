@@ -42,7 +42,8 @@ test.describe('Authentication', () => {
     await registerLink.click();
 
     await expect(page).toHaveURL(/\/register/);
-    await expect(page.locator('h1')).toContainText('Register');
+    // The page h1 contains the app name, verify we're on the register page by checking for form fields
+    await expect(page.locator('#displayName')).toBeVisible();
   });
 
   test('registration form has required fields', async ({ page }) => {

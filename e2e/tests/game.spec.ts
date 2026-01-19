@@ -31,7 +31,9 @@ test.describe('Game Page', () => {
 
     // If at lobby, join a room
     if (page.url().includes('/lobby')) {
-      await page.fill('#roomName', roomName);
+      // Fill in room name - the lobby has input#roomName
+      const lobbyRoomInput = page.locator('input#roomName');
+      await lobbyRoomInput.fill(roomName);
       const joinButton = page.locator('button:has-text("Join"), button:has-text("Play")');
       await joinButton.first().click();
     } else {
@@ -41,9 +43,10 @@ test.describe('Game Page', () => {
 
     // Wait for game page to load
     await page.waitForURL(/\/game\?room=/, { timeout: 10000 });
+    await page.waitForLoadState('networkidle');
 
-    // Check game elements exist
-    await expect(page.locator('#roomName, .room-name')).toContainText(roomName);
+    // Check game elements exist - the game page has span#roomName that shows the room
+    await expect(page.locator('span#roomName')).toContainText(roomName, { timeout: 10000 });
   });
 
   test('displays wheel element', async ({ page }) => {

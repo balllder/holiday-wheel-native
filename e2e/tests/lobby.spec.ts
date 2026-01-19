@@ -32,7 +32,8 @@ test.describe('Lobby', () => {
 
     // If we're at lobby, verify elements
     if (page.url().includes('/lobby')) {
-      await expect(page.locator('h1')).toContainText('Lobby');
+      // Verify we're on the lobby page by checking for lobby-specific elements
+      await expect(page.locator('#roomName')).toBeVisible();
       await expect(page.locator('#userName')).toContainText('Lobby Tester');
     }
   });
