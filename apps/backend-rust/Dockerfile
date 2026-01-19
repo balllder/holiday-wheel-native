@@ -55,8 +55,9 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean
 
 # Create non-root user for security
-RUN groupadd --gid 1000 appgroup && \
-    useradd --uid 1000 --gid appgroup --shell /bin/bash --create-home appuser
+# Using uid 99 and gid 100 for Unraid compatibility (nobody:users)
+RUN groupadd --gid 100 appgroup && \
+    useradd --uid 99 --gid appgroup --shell /bin/bash --create-home appuser
 
 WORKDIR /app
 
