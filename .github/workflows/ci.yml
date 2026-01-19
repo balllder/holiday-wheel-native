@@ -56,7 +56,7 @@ jobs:
         run: npm run check-types
 
       - name: Run tests with coverage
-        run: npm test -- --coverage --passWithNoTests
+        run: npm test -- -- --coverage --passWithNoTests
 
       - name: Upload coverage reports
         if: success()
