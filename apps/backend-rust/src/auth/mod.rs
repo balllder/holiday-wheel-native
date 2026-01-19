@@ -158,6 +158,7 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/profile", get(api_get_profile))
         .route("/api/profile", post(api_update_profile))
         .route("/api/rooms", get(api_rooms))
+        .route("/api/packs", get(api_packs))
         .route("/rooms", get(list_rooms))
         // Passkey endpoints
         .nest("/api/passkey", passkey::routes())
@@ -883,6 +884,74 @@ async fn api_rooms(
             error: None,
         }),
     )
+}
+
+#[derive(Serialize)]
+struct PacksResponse {
+    ok: bool,
+    packs: Option<Vec<PackInfo>>,
+    error: Option<String>,
+}
+
+async fn api_packs(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> (StatusCode, Json<PacksResponse>) {
+    // Verify auth (supports both Bearer token and cookie)
+    let token = match extract_auth_token(&headers) {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(PacksResponse {
+                    ok: false,
+                    packs: None,
+                    error: Some("No token provided".to_string()),
+                }),
+            );
+        }
+    };
+
+    if state.db.get_user_by_token(&token).await.ok().flatten().is_none() {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(PacksResponse {
+                ok: false,
+                packs: None,
+                error: Some("Invalid token".to_string()),
+            }),
+        );
+    }
+
+    // Get packs with puzzle counts from database
+    match state.db.get_puzzle_counts().await {
+        Ok(packs) => {
+            let pack_list: Vec<PackInfo> = packs
+                .into_iter()
+                .map(|(id, name, count)| PackInfo {
+                    id,
+                    name,
+                    puzzle_count: count,
+                })
+                .collect();
+            (
+                StatusCode::OK,
+                Json(PacksResponse {
+                    ok: true,
+                    packs: Some(pack_list),
+                    error: None,
+                }),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(PacksResponse {
+                ok: false,
+                packs: None,
+                error: Some(format!("Failed to fetch packs: {}", e)),
+            }),
+        ),
+    }
 }
 
 async fn list_rooms(

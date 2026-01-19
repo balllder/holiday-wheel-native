@@ -3706,15 +3706,18 @@ pub async fn game() -> Html<String> {
             </div>
 
             <div class="guess-input" id="guessArea">
-                <label class="guess-label" for="letterInput">Enter Letter</label>
-                <input type="text" id="letterInput" maxlength="1" placeholder="A-Z">
+                <label class="guess-label" for="letterInput">Select a Consonant</label>
+                <input type="text" id="letterInput" maxlength="1" placeholder="A-Z" style="font-size: 24px; padding: 0;">
             </div>
 
             <div class="host-controls" id="hostControls" style="display: none; margin-top: 20px; padding-top: 16px; border-top: 1px solid #333;">
                 <p style="color: #d4af37; margin-bottom: 12px; font-weight: bold;">Host Controls</p>
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                     <button class="btn" onclick="newGame()">New Game</button>
                     <button class="btn btn-secondary" onclick="revealAll()">Reveal All</button>
+                    <select id="packSelect" onchange="changePack()" style="padding: 8px 12px; border-radius: 8px; background: #1a1a2e; color: #fff; border: 2px solid #333; font-size: 14px; cursor: pointer;">
+                        <option value="">All Packs</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -4812,6 +4815,9 @@ pub async fn game() -> Html<String> {
                 console.log('Host granted:', data);
                 isHost = data.granted === true;
                 updateHostUI();
+                if (isHost) {{
+                    loadPacks();
+                }}
             }});
 
             socket.on('toast', (data) => {{
@@ -5469,6 +5475,40 @@ pub async fn game() -> Html<String> {
             socket.emit('reveal_all', {{ room }});
         }}
 
+        function changePack() {{
+            const select = document.getElementById('packSelect');
+            const packId = select.value ? parseInt(select.value) : null;
+            socket.emit('set_pack', {{ room, pack_id: packId }});
+        }}
+
+        async function loadPacks() {{
+            try {{
+                const token = localStorage.getItem('auth_token');
+                const response = await fetch('/api/packs', {{
+                    headers: {{
+                        'Authorization': `Bearer ${{token}}`
+                    }}
+                }});
+                const data = await response.json();
+                if (data.ok && data.packs) {{
+                    const select = document.getElementById('packSelect');
+                    // Clear existing options except the first one
+                    while (select.options.length > 1) {{
+                        select.remove(1);
+                    }}
+                    // Add pack options
+                    data.packs.forEach(pack => {{
+                        const option = document.createElement('option');
+                        option.value = pack.id;
+                        option.textContent = `${{pack.name}} (${{pack.puzzle_count}})`;
+                        select.appendChild(option);
+                    }});
+                }}
+            }} catch (e) {{
+                console.error('Failed to load packs:', e);
+            }}
+        }}
+
         function updateHostUI() {{
             document.getElementById('hostControls').style.display = isHost ? 'block' : 'none';
             document.getElementById('claimHostSection').style.display = isHost ? 'none' : 'block';
@@ -5590,6 +5630,7 @@ pub async fn game() -> Html<String> {
         }}
 
         connect();
+        loadPacks(); // Pre-load packs so they're ready when user becomes host
     </script>
 </body>
 </html>"##, common_styles = COMMON_STYLES))

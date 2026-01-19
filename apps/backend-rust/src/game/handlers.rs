@@ -146,7 +146,6 @@ pub struct FinalPickRequest {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct SetActivePack {
     pub room: String,
     pub pack_id: Option<i64>,
@@ -845,6 +844,33 @@ pub fn register_handlers(io: &SocketIo) {
             },
         );
 
+        // Set active puzzle pack for the room
+        socket.on(
+            "set_pack",
+            |socket: SocketRef, Data(req): Data<SetActivePack>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    if !game.is_host(socket.id.as_str()) {
+                        toast!(socket, "Host only.");
+                        return;
+                    }
+
+                    // Set the active pack (None or 0 means all packs)
+                    game.config.pack_id = req.pack_id;
+                    game.active_pack_id = req.pack_id;
+
+                    let pack_name = if req.pack_id.is_none() || req.pack_id == Some(0) {
+                        "All Packs".to_string()
+                    } else {
+                        format!("Pack {}", req.pack_id.unwrap())
+                    };
+
+                    toast!(socket, &format!("Puzzle pack changed to: {}", pack_name));
+                    broadcast_state!(socket, req.room, game.get_state());
+                }
+            },
+        );
+
         // ========== GAME ACTIONS ==========
 
         // Spin the wheel
@@ -874,6 +900,8 @@ pub fn register_handlers(io: &SocketIo) {
                             super::WedgeValue::Prize { name, .. } => format!("{}! Guess a consonant to win it.", name),
                         };
                         toast!(socket, &msg);
+                        // Broadcast to entire room (including spectators)
+                        let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": &msg }));
                     }
                     broadcast_state!(socket, req.room, game.get_state());
                 }
@@ -909,6 +937,8 @@ pub fn register_handlers(io: &SocketIo) {
                             GuessResult::NeedToSpin => "Spin before guessing a consonant".to_string(),
                         };
                         toast!(socket, &msg);
+                        // Broadcast to entire room (including spectators)
+                        let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": &msg }));
                         broadcast_state!(socket, req.room, game.get_state());
                     }
                 }
@@ -944,6 +974,8 @@ pub fn register_handlers(io: &SocketIo) {
                             GuessResult::NeedToSpin => "Cannot buy vowel now".to_string(),
                         };
                         toast!(socket, &msg);
+                        // Broadcast to entire room (including spectators)
+                        let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": &msg }));
                         broadcast_state!(socket, req.room, game.get_state());
                     }
                 }
@@ -978,6 +1010,8 @@ pub fn register_handlers(io: &SocketIo) {
                                     "Incorrect, sorry!"
                                 };
                                 toast!(socket, msg);
+                                // Broadcast to entire room (including spectators)
+                                let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
                             }
                             GamePhase::Tossup => {
                                 // During tossup, the controller can solve
@@ -990,10 +1024,14 @@ pub fn register_handlers(io: &SocketIo) {
                                     game.tossup_correct_answer();
                                     // Schedule auto-advance after puzzle display time
                                     auto_advance_delay = Some(game.config.puzzle_display_seconds as u64);
-                                    toast!(socket, "Correct! You win the toss-up!");
+                                    let msg = "Correct! You win the toss-up!";
+                                    toast!(socket, msg);
+                                    let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
                                 } else {
                                     game.tossup_wrong_answer();
-                                    toast!(socket, "Incorrect! You're locked out.");
+                                    let msg = "Incorrect! Locked out.";
+                                    toast!(socket, msg);
+                                    let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
                                 }
                             }
                             GamePhase::Final => {
@@ -1008,6 +1046,8 @@ pub fn register_handlers(io: &SocketIo) {
                                     "Incorrect!".to_string()
                                 };
                                 toast!(socket, &msg);
+                                // Broadcast to entire room (including spectators)
+                                let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": &msg }));
                                 // No auto-advance for final round
                             }
                         }
