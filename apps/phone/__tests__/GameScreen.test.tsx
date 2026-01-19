@@ -40,6 +40,15 @@ jest.mock('react-native-svg', () => {
 // Mock logout function
 const mockLogout = jest.fn();
 
+// Mock useToast hook
+const MockToastComponent = () => null;
+const mockShowToast = jest.fn();
+const mockUseToast = jest.fn(() => ({
+  showToast: mockShowToast,
+  hideToast: jest.fn(),
+  ToastComponent: MockToastComponent,
+}));
+
 // Mock shared services and stores
 jest.mock('@holiday-wheel/shared', () => {
   const mockUseAuthStore = jest.fn();
@@ -66,6 +75,7 @@ jest.mock('@holiday-wheel/shared', () => {
     selectIsMyTurn: jest.fn((state) => state.isMyTurn),
     selectCanBuzz: jest.fn((state) => state.canBuzz),
     VOWELS: ['A', 'E', 'I', 'O', 'U'],
+    useToast: mockUseToast,
   };
 });
 
