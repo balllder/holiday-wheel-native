@@ -12,9 +12,6 @@ import {
 jest.spyOn(Alert, 'alert');
 jest.spyOn(Vibration, 'vibrate');
 
-// Mock logout function
-const mockLogout = jest.fn();
-
 // Mock shared services and stores
 jest.mock('@holiday-wheel/shared', () => {
   const mockUseAuthStore = jest.fn();

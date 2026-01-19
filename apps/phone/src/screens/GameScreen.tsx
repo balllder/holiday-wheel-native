@@ -433,7 +433,7 @@ export function GameScreen({ navigation, route }: GameScreenProps): React.JSX.El
   );
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={styles.wrapper}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {/* Connection status */}
       <View style={[styles.statusBar, connected ? styles.connected : styles.disconnected]}>
@@ -529,6 +529,9 @@ export function GameScreen({ navigation, route }: GameScreenProps): React.JSX.El
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: '#0d0628',

@@ -37,9 +37,6 @@ jest.mock('react-native-svg', () => {
   };
 });
 
-// Mock logout function
-const mockLogout = jest.fn();
-
 // Mock shared services and stores
 jest.mock('@holiday-wheel/shared', () => {
   const mockUseAuthStore = jest.fn();

@@ -164,7 +164,7 @@ export function ControllerScreen({ navigation, route }: ControllerScreenProps): 
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={styles.wrapper}>
     <View style={styles.container}>
       {/* Status bar */}
       <View style={[styles.statusBar, connected ? styles.connected : styles.disconnected]}>
@@ -269,6 +269,9 @@ export function ControllerScreen({ navigation, route }: ControllerScreenProps): 
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: '#0d0628',
