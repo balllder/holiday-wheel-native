@@ -2427,6 +2427,9 @@ pub async fn game() -> Html<String> {
         const user = JSON.parse(localStorage.getItem('user') || 'null');
         if (!user) {{ window.location.href = '/'; }}
 
+        // Get auth token from cookie
+        const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1] || '';
+
         const urlParams = new URLSearchParams(window.location.search);
         const room = urlParams.get('room') || 'main';
         document.getElementById('roomName').textContent = room;
