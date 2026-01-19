@@ -15,6 +15,8 @@ interface AuthStore {
   setError: (error: string | null) => void;
   setAuth: (user: User, token: string) => void;
   clearAuth: () => void;
+  /** Alias for clearAuth - clears user, token, and error */
+  logout: () => void;
 }
 
 export const useAuthStore = create<AuthStore>((set) => ({
@@ -34,6 +36,8 @@ export const useAuthStore = create<AuthStore>((set) => ({
   setAuth: (user, token) => set({ user, token, error: null }),
 
   clearAuth: () => set({ user: null, token: null, error: null }),
+
+  logout: () => set({ user: null, token: null, error: null }),
 }));
 
 // Selectors

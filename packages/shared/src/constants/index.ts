@@ -1,5 +1,8 @@
 // Constants matching the Flask backend
 
+// Theme exports
+export * from './theme';
+
 export const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 export const VOWELS = 'AEIOU';
 export const CONSONANTS = ALPHABET.split('').filter((c) => !VOWELS.includes(c)).join('');
@@ -134,6 +137,10 @@ export const MODERN_THEME = {
     letterTile: '#ffffff',
     letterText: '#1a1a2e',
     wheelPointer: '#d4af37',
+
+    // Aliases for backward compatibility
+    gold: '#d4af37',
+    goldLight: '#ffd700',
   },
 
   // Gradient definitions (for use with LinearGradient components)
@@ -258,6 +265,7 @@ export const MODERN_THEME = {
     fontSize: {
       xs: 10,
       sm: 12,
+      base: 14,
       md: 14,
       lg: 16,
       xl: 18,

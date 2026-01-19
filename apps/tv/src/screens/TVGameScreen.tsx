@@ -114,8 +114,10 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
   const formatWedge = (wedge: WedgeValue | null): string => {
     if (!wedge) return '--';
     if (typeof wedge === 'number') return `$${wedge}`;
-    if (typeof wedge === 'object') return wedge.name;
-    return wedge;
+    if (typeof wedge === 'string') return wedge;
+    if (wedge?.type === 'PRIZE') return wedge.name || 'PRIZE';
+    if (wedge?.type) return wedge.type;
+    return '--';
   };
 
   // Format number as cash with commas

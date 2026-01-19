@@ -1,5 +1,16 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, ViewStyle, TextStyle } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  withSequence,
+  withDelay,
+  runOnJS,
+  interpolate,
+  Easing,
+} from 'react-native-reanimated';
 
 export type LetterState = 'hidden' | 'revealing' | 'revealed' | 'empty' | 'space';
 
@@ -33,18 +44,18 @@ const SIZE_CONFIG = {
 };
 
 /**
- * LetterCell - Individual letter tile with reveal animation
+ * LetterCell - Individual letter tile with reveal animation using react-native-reanimated
  *
  * Supports three animation types:
- * - pop: Scale from 0 to 1.1 to 1 with bounce
- * - flip: Rotate on Y axis (simulated with scaleX)
+ * - pop: Scale from 0 to 1.15 to 1 with spring bounce
+ * - flip: 3D rotate on Y-axis (card flip effect)
  * - fade: Simple fade in
  *
  * @example
  * <LetterCell
  *   char="A"
  *   state="revealing"
- *   animationType="pop"
+ *   animationType="flip"
  *   onAnimationComplete={() => setRevealed(true)}
  * />
  */
@@ -60,10 +71,11 @@ export function LetterCell({
   textStyle,
   testID,
 }: LetterCellProps): React.JSX.Element {
-  const scale = useRef(new Animated.Value(state === 'revealing' ? 0 : 1)).current;
-  const opacity = useRef(new Animated.Value(state === 'revealing' ? 0 : 1)).current;
-  const scaleX = useRef(new Animated.Value(state === 'revealing' ? 0 : 1)).current;
-  const glowOpacity = useRef(new Animated.Value(0)).current;
+  // Animation shared values
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(1);
+  const rotateY = useSharedValue(0); // 0 = showing back (blank), 180 = showing front (letter)
+  const glowOpacity = useSharedValue(0);
 
   const sizeConfig = SIZE_CONFIG[size];
   const isLetter = char !== null && char !== ' ' && /[A-Z]/i.test(char);
@@ -71,127 +83,152 @@ export function LetterCell({
   const isEmpty = char === null;
   const isSpace = char === ' ';
 
-  useEffect(() => {
-    if (state !== 'revealing') return;
+  // Helper to call completion callback on JS thread
+  const handleComplete = () => {
+    onAnimationComplete?.();
+  };
 
-    const animationTimeout = setTimeout(() => {
-      let animation: Animated.CompositeAnimation;
-
-      switch (animationType) {
-        case 'pop':
-          animation = Animated.sequence([
-            // Start glow
-            Animated.timing(glowOpacity, {
-              toValue: 1,
-              duration: 50,
-              useNativeDriver: true,
-            }),
-            // Pop effect
-            Animated.parallel([
-              Animated.timing(opacity, {
-                toValue: 1,
-                duration: animationDuration * 0.3,
-                useNativeDriver: true,
-              }),
-              Animated.sequence([
-                // Scale up past 1
-                Animated.spring(scale, {
-                  toValue: 1.15,
-                  friction: 6,
-                  tension: 200,
-                  useNativeDriver: true,
-                }),
-                // Settle to 1
-                Animated.spring(scale, {
-                  toValue: 1,
-                  friction: 4,
-                  tension: 150,
-                  useNativeDriver: true,
-                }),
-              ]),
-            ]),
-            // Fade glow
-            Animated.timing(glowOpacity, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]);
-          break;
-
-        case 'flip':
-          animation = Animated.sequence([
-            Animated.timing(glowOpacity, {
-              toValue: 1,
-              duration: 50,
-              useNativeDriver: true,
-            }),
-            Animated.parallel([
-              Animated.timing(opacity, {
-                toValue: 1,
-                duration: animationDuration * 0.5,
-                useNativeDriver: true,
-              }),
-              Animated.timing(scaleX, {
-                toValue: 1,
-                duration: animationDuration,
-                useNativeDriver: true,
-              }),
-            ]),
-            Animated.timing(glowOpacity, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]);
-          break;
-
-        case 'fade':
-        default:
-          animation = Animated.parallel([
-            Animated.timing(opacity, {
-              toValue: 1,
-              duration: animationDuration,
-              useNativeDriver: true,
-            }),
-            Animated.timing(scale, {
-              toValue: 1,
-              duration: animationDuration,
-              useNativeDriver: true,
-            }),
-          ]);
-          break;
-      }
-
-      animation.start(() => {
-        onAnimationComplete?.();
-      });
-    }, animationDelay);
-
-    return () => clearTimeout(animationTimeout);
-  }, [state, animationType, animationDuration, animationDelay, onAnimationComplete, scale, opacity, scaleX, glowOpacity]);
-
-  // Reset animation values when state changes back to hidden
   useEffect(() => {
     if (state === 'hidden') {
-      scale.setValue(1);
-      opacity.setValue(1);
-      scaleX.setValue(1);
-      glowOpacity.setValue(0);
+      // Reset to initial hidden state
+      scale.value = 1;
+      opacity.value = 1;
+      rotateY.value = 0;
+      glowOpacity.value = 0;
     } else if (state === 'revealing') {
-      // Reset to initial revealing state
+      // Reset values for animation start
       if (animationType === 'flip') {
-        scale.setValue(1);
-        opacity.setValue(0);
-        scaleX.setValue(0);
+        rotateY.value = 0;
+        opacity.value = 1;
+        scale.value = 1;
+      } else if (animationType === 'pop') {
+        scale.value = 0;
+        opacity.value = 0;
       } else {
-        scale.setValue(0);
-        opacity.setValue(0);
-        scaleX.setValue(1);
+        // fade
+        scale.value = 1;
+        opacity.value = 0;
       }
-      glowOpacity.setValue(0);
+      glowOpacity.value = 0;
+
+      // Start reveal animation after delay
+      const startAnimation = () => {
+        switch (animationType) {
+          case 'flip':
+            // Start glow
+            glowOpacity.value = withTiming(1, { duration: 50 });
+
+            // Flip animation - rotate 180 degrees on Y axis
+            rotateY.value = withDelay(
+              50,
+              withTiming(180, {
+                duration: animationDuration,
+                easing: Easing.inOut(Easing.ease),
+              }, (finished) => {
+                if (finished) {
+                  // Fade glow after flip completes
+                  glowOpacity.value = withTiming(0, { duration: 200 });
+                  runOnJS(handleComplete)();
+                }
+              })
+            );
+            break;
+
+          case 'pop':
+            // Start glow
+            glowOpacity.value = withTiming(1, { duration: 50 });
+
+            // Pop animation with spring
+            opacity.value = withTiming(1, { duration: animationDuration * 0.3 });
+            scale.value = withSequence(
+              withSpring(1.15, { damping: 6, stiffness: 200 }),
+              withSpring(1, { damping: 4, stiffness: 150 }, (finished) => {
+                if (finished) {
+                  glowOpacity.value = withTiming(0, { duration: 200 });
+                  runOnJS(handleComplete)();
+                }
+              })
+            );
+            break;
+
+          case 'fade':
+          default:
+            opacity.value = withTiming(1, { duration: animationDuration }, (finished) => {
+              if (finished) {
+                runOnJS(handleComplete)();
+              }
+            });
+            scale.value = withTiming(1, { duration: animationDuration });
+            break;
+        }
+      };
+
+      if (animationDelay > 0) {
+        const timeout = setTimeout(startAnimation, animationDelay);
+        return () => clearTimeout(timeout);
+      } else {
+        startAnimation();
+      }
     }
-  }, [state, animationType, scale, opacity, scaleX, glowOpacity]);
+  }, [state, animationType, animationDuration, animationDelay]);
+
+  // Animated style for the front face (shows the letter)
+  const frontFaceStyle = useAnimatedStyle(() => {
+    if (animationType !== 'flip') {
+      return {
+        opacity: opacity.value,
+        transform: [{ scale: scale.value }],
+      };
+    }
+
+    // For flip animation, front face starts hidden (rotated -180) and becomes visible as rotateY approaches 180
+    const frontRotation = rotateY.value - 180;
+    const frontOpacity = interpolate(
+      rotateY.value,
+      [0, 89, 90, 180],
+      [0, 0, 1, 1]
+    );
+
+    return {
+      opacity: frontOpacity,
+      transform: [
+        { perspective: 1000 },
+        { rotateY: `${frontRotation}deg` },
+      ],
+      backfaceVisibility: 'hidden',
+    };
+  });
+
+  // Animated style for the back face (blank tile)
+  const backFaceStyle = useAnimatedStyle(() => {
+    if (animationType !== 'flip') {
+      // For non-flip animations, back face is visible when hidden
+      return {
+        opacity: state === 'hidden' ? 1 : 1 - opacity.value,
+      };
+    }
+
+    // For flip animation, back face starts visible and hides when rotated past 90 degrees
+    const backOpacity = interpolate(
+      rotateY.value,
+      [0, 89, 90, 180],
+      [1, 1, 0, 0]
+    );
+
+    return {
+      opacity: backOpacity,
+      transform: [
+        { perspective: 1000 },
+        { rotateY: `${rotateY.value}deg` },
+      ],
+      backfaceVisibility: 'hidden',
+    };
+  });
+
+  // Animated style for glow overlay
+  const glowAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: glowOpacity.value,
+  }));
 
   const getCellStyle = (): ViewStyle[] => {
     const baseStyle: ViewStyle = {
@@ -200,53 +237,59 @@ export function LetterCell({
       borderRadius: size === 'large' ? 6 : size === 'medium' ? 4 : 3,
     };
 
-    if (isEmpty || isSpace) {
-      return [styles.cell, baseStyle, styles.emptyCell, style];
+    const styleArray: ViewStyle[] = isEmpty || isSpace
+      ? [styles.cell, baseStyle, styles.emptyCell]
+      : [styles.cell, baseStyle, styles.letterCell];
+
+    if (style) {
+      styleArray.push(style);
     }
 
-    if (state === 'hidden') {
-      return [styles.cell, baseStyle, styles.hiddenCell, style];
-    }
-
-    return [styles.cell, baseStyle, styles.revealedCell, style];
-  };
-
-  const getTransform = () => {
-    const transforms: { scale: Animated.Value }[] | { scaleX: Animated.Value }[] = [];
-
-    if (animationType === 'flip') {
-      return [{ scaleX }];
-    }
-
-    return [{ scale }];
+    return styleArray;
   };
 
   const showLetter = (state === 'revealing' || state === 'revealed') && (isLetter || isPunctuation);
 
+  // For non-letter cells (empty/space), render simple view
+  if (isEmpty || isSpace) {
+    return <View style={getCellStyle()} testID={testID} />;
+  }
+
   return (
     <View style={getCellStyle()} testID={testID}>
-      {/* Glow overlay for reveal effect */}
-      {state === 'revealing' && (
-        <Animated.View
-          style={[
-            styles.glowOverlay,
-            {
-              opacity: glowOpacity,
-              borderRadius: size === 'large' ? 6 : size === 'medium' ? 4 : 3,
-            },
-          ]}
-        />
-      )}
+      {/* Back face - blank white tile */}
+      <Animated.View
+        style={[
+          styles.face,
+          styles.backFace,
+          {
+            borderRadius: size === 'large' ? 6 : size === 'medium' ? 4 : 3,
+          },
+          backFaceStyle,
+        ]}
+      />
 
-      {/* Letter content */}
+      {/* Glow overlay for reveal effect */}
+      <Animated.View
+        style={[
+          styles.glowOverlay,
+          {
+            borderRadius: size === 'large' ? 6 : size === 'medium' ? 4 : 3,
+          },
+          glowAnimatedStyle,
+        ]}
+      />
+
+      {/* Front face - letter content */}
       {showLetter && (
         <Animated.View
           style={[
-            styles.letterContainer,
+            styles.face,
+            styles.frontFace,
             {
-              opacity,
-              transform: getTransform(),
+              borderRadius: size === 'large' ? 6 : size === 'medium' ? 4 : 3,
             },
+            frontFaceStyle,
           ]}
         >
           <Text
@@ -259,6 +302,19 @@ export function LetterCell({
             {char?.toUpperCase()}
           </Text>
         </Animated.View>
+      )}
+
+      {/* Hidden state - show blank tile */}
+      {state === 'hidden' && (
+        <View
+          style={[
+            styles.face,
+            styles.hiddenFace,
+            {
+              borderRadius: size === 'large' ? 6 : size === 'medium' ? 4 : 3,
+            },
+          ]}
+        />
       )}
     </View>
   );
@@ -274,15 +330,26 @@ const styles = StyleSheet.create({
   emptyCell: {
     backgroundColor: '#228b22',
   },
-  hiddenCell: {
-    backgroundColor: '#fff',
+  letterCell: {
+    backgroundColor: 'transparent',
   },
-  revealedCell: {
-    backgroundColor: '#fff',
-  },
-  letterContainer: {
+  face: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  backFace: {
+    backgroundColor: '#fff',
+  },
+  frontFace: {
+    backgroundColor: '#fff',
+  },
+  hiddenFace: {
+    backgroundColor: '#fff',
   },
   letter: {
     fontWeight: 'bold',

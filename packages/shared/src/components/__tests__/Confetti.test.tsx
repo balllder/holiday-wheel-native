@@ -1,6 +1,8 @@
 import React from 'react';
 import { create, act, ReactTestRenderer } from 'react-test-renderer';
-import { Confetti, useConfetti } from '../Confetti';
+import { Confetti } from '../Confetti';
+import type { ConfettiVariant } from '../Confetti';
+import { useConfettiSimple } from '../../hooks/useConfetti';
 
 describe('Confetti', () => {
   beforeEach(() => {
@@ -48,6 +50,45 @@ describe('Confetti', () => {
         );
       });
 
+      expect(tree).toBeDefined();
+    });
+  });
+
+  describe('variants', () => {
+    it('accepts solve variant', () => {
+      let tree: ReactTestRenderer | undefined;
+      act(() => {
+        tree = create(<Confetti active={true} variant="solve" />);
+      });
+
+      expect(tree).toBeDefined();
+    });
+
+    it('accepts roundWin variant', () => {
+      let tree: ReactTestRenderer | undefined;
+      act(() => {
+        tree = create(<Confetti active={true} variant="roundWin" />);
+      });
+
+      expect(tree).toBeDefined();
+    });
+
+    it('accepts gameWin variant', () => {
+      let tree: ReactTestRenderer | undefined;
+      act(() => {
+        tree = create(<Confetti active={true} variant="gameWin" />);
+      });
+
+      expect(tree).toBeDefined();
+    });
+
+    it('defaults to solve variant when not specified', () => {
+      let tree: ReactTestRenderer | undefined;
+      act(() => {
+        tree = create(<Confetti active={true} />);
+      });
+
+      // Should mount without throwing (using default solve variant)
       expect(tree).toBeDefined();
     });
   });
@@ -159,13 +200,15 @@ describe('Confetti', () => {
   });
 });
 
-describe('useConfetti', () => {
+describe('useConfettiSimple', () => {
   function TestComponent({ autoHideDuration }: { autoHideDuration?: number }) {
-    const { showConfetti, triggerConfetti, hideConfetti } = useConfetti(autoHideDuration);
+    const { showConfetti, variant, triggerConfetti, hideConfetti } = useConfettiSimple(autoHideDuration);
     return (
       <>
         <div data-testid="show-state">{showConfetti.toString()}</div>
-        <button data-testid="trigger" onClick={triggerConfetti} />
+        <div data-testid="variant-state">{variant}</div>
+        <button data-testid="trigger" onClick={() => triggerConfetti()} />
+        <button data-testid="trigger-game-win" onClick={() => triggerConfetti('gameWin')} />
         <button data-testid="hide" onClick={hideConfetti} />
       </>
     );
@@ -202,6 +245,21 @@ describe('useConfetti', () => {
 
     const showState = tree?.root.findByProps({ 'data-testid': 'show-state' });
     expect(showState?.props.children).toBe('true');
+  });
+
+  it('triggerConfetti with variant sets the correct variant', () => {
+    let tree: ReactTestRenderer | undefined;
+    act(() => {
+      tree = create(<TestComponent />);
+    });
+
+    const trigger = tree?.root.findByProps({ 'data-testid': 'trigger-game-win' });
+    act(() => {
+      trigger?.props.onClick();
+    });
+
+    const variantState = tree?.root.findByProps({ 'data-testid': 'variant-state' });
+    expect(variantState?.props.children).toBe('gameWin');
   });
 
   it('hideConfetti sets showConfetti to false', () => {

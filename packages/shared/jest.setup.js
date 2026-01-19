@@ -100,6 +100,75 @@ jest.mock('react-native', () => {
   };
 });
 
+// Mock react-native-reanimated
+jest.mock('react-native-reanimated', () => {
+  const React = require('react');
+  const mockComponent = (name) => {
+    return ({ children, ...props }) =>
+      React.createElement(name, props, children);
+  };
+
+  // Mock shared value that stores and returns values
+  const mockUseSharedValue = (initialValue) => {
+    const ref = { value: initialValue };
+    return ref;
+  };
+
+  // Mock animated style that returns empty object
+  const mockUseAnimatedStyle = (styleGetter) => {
+    // In tests, return an empty object
+    return {};
+  };
+
+  // Mock animation functions that immediately complete
+  const mockWithTiming = (toValue, config, callback) => {
+    if (callback) callback(true);
+    return toValue;
+  };
+
+  const mockWithSpring = (toValue, config, callback) => {
+    if (callback) callback(true);
+    return toValue;
+  };
+
+  const mockWithSequence = (...values) => {
+    return values[values.length - 1];
+  };
+
+  const mockWithDelay = (delay, value) => {
+    return value;
+  };
+
+  const mockRunOnJS = (fn) => fn;
+
+  const mockInterpolate = (value, inputRange, outputRange) => {
+    return outputRange[0];
+  };
+
+  return {
+    __esModule: true,
+    default: {
+      View: mockComponent('Animated.View'),
+      Text: mockComponent('Animated.Text'),
+      Image: mockComponent('Animated.Image'),
+      createAnimatedComponent: (component) => component,
+    },
+    useSharedValue: mockUseSharedValue,
+    useAnimatedStyle: mockUseAnimatedStyle,
+    withTiming: mockWithTiming,
+    withSpring: mockWithSpring,
+    withSequence: mockWithSequence,
+    withDelay: mockWithDelay,
+    runOnJS: mockRunOnJS,
+    interpolate: mockInterpolate,
+    Easing: {
+      linear: jest.fn(),
+      ease: jest.fn(),
+      inOut: jest.fn(() => jest.fn()),
+    },
+  };
+});
+
 // Mock react-native-svg
 jest.mock('react-native-svg', () => {
   const React = require('react');

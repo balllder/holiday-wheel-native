@@ -20,6 +20,7 @@ import {
   selectCanBuzz,
   VOWELS,
 } from '@holiday-wheel/shared';
+import type { WedgeValue } from '@holiday-wheel/shared';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
 type GameScreenProps = {
@@ -202,6 +203,16 @@ export function GameScreen({ navigation, route }: GameScreenProps): React.JSX.El
     return '$' + amount.toLocaleString();
   };
 
+  // Format wedge value for display
+  const getWedgeLabel = (slot: WedgeValue | null): string => {
+    if (!slot) return '';
+    if (typeof slot === 'number') return `$${slot}`;
+    if (typeof slot === 'string') return slot;
+    if (slot?.type === 'PRIZE') return slot.name || 'PRIZE';
+    if (slot?.type) return slot.type;
+    return '';
+  };
+
   // Wheel colors matching the TV show
   const WHEEL_COLORS = [
     '#c41e3a', '#0047ab', '#ff8c00', '#ffcc00', '#9932cc', '#ff1493',
@@ -216,14 +227,6 @@ export function GameScreen({ navigation, route }: GameScreenProps): React.JSX.El
     const radius = size / 2 - 5;
     const centerX = size / 2;
     const centerY = size / 2;
-
-    const getWedgeLabel = (slot: any): string => {
-      if (typeof slot === 'number') return `$${slot}`;
-      if (typeof slot === 'string') return slot;
-      if (slot?.type === 'PRIZE') return slot.name || 'PRIZE';
-      if (slot?.type) return slot.type;
-      return '';
-    };
 
     const elements: React.ReactElement[] = [];
 
@@ -445,11 +448,7 @@ export function GameScreen({ navigation, route }: GameScreenProps): React.JSX.El
       {currentWedge && (
         <View style={styles.wedgeDisplay}>
           <Text style={styles.wedgeText}>
-            {typeof currentWedge === 'number'
-              ? `$${currentWedge}`
-              : typeof currentWedge === 'object'
-              ? currentWedge.name
-              : currentWedge}
+            {getWedgeLabel(currentWedge)}
           </Text>
         </View>
       )}

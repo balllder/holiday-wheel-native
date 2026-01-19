@@ -4,6 +4,22 @@ export * from './types';
 // Constants
 export * from './constants';
 
+// UI Components (Modern Theme)
+export {
+  GradientBackground,
+  SimpleGradient,
+  GlassCard,
+  GlassCardHeader,
+  GlassCardContent,
+  GlassCardFooter,
+  GoldButton,
+} from './components/ui';
+export type {
+  GradientBackgroundProps,
+  GlassCardProps,
+  GoldButtonProps,
+} from './components/ui';
+
 // Components
 export { AnimatedWheel } from './components/AnimatedWheel';
 export { AnimatedScore, useScoreAnimation } from './components/AnimatedScore';
@@ -14,8 +30,12 @@ export { LetterCell } from './components/LetterCell';
 export type { LetterCellProps, LetterState } from './components/LetterCell';
 export { PuzzleBoard } from './components/PuzzleBoard';
 export type { PuzzleBoardProps } from './components/PuzzleBoard';
-export { Confetti, useConfetti } from './components/Confetti';
-export type { ConfettiProps } from './components/Confetti';
+export { Confetti } from './components/Confetti';
+export type { ConfettiProps, ConfettiRef, ConfettiVariant } from './components/Confetti';
+
+// Hooks
+export { useConfetti, useConfettiSimple } from './hooks/useConfetti';
+export type { UseConfettiOptions, UseConfettiReturn } from './hooks/useConfetti';
 export { PhaseTransition, usePhaseTransition } from './components/PhaseTransition';
 export type { PhaseTransitionProps, GamePhase } from './components/PhaseTransition';
 export { MysteryWedgeModal } from './components/MysteryWedgeModal';
