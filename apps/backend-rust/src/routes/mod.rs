@@ -2724,6 +2724,8 @@ pub async fn game() -> Html<String> {
                 const msg = pendingToasts.shift();
                 showNotification(msg);
             }}
+            // Focus the letter input so user is ready to guess
+            document.getElementById('letterInput').focus();
         }}
 
         function connect() {{
