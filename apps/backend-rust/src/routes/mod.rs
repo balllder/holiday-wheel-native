@@ -262,6 +262,34 @@ const COMMON_STYLES: &str = r#"
         max-width: 400px;
     }
     .container.wide { max-width: 900px; }
+    /* Seasonal Theme System */
+    :root {
+        /* Default/Christmas theme */
+        --theme-color-1: #ff4444;
+        --theme-color-2: #d4af37;
+        --theme-color-3: #22c55e;
+        --theme-decorator: "❄";
+        --theme-decorator-color: #87ceeb;
+    }
+    /* Christmas (Dec 1-25) */
+    body.theme-christmas { --theme-color-1: #ff4444; --theme-color-2: #d4af37; --theme-color-3: #22c55e; --theme-decorator: "❄"; --theme-decorator-color: #87ceeb; }
+    /* New Year (Dec 26 - Jan 7) */
+    body.theme-newyear { --theme-color-1: #ffd700; --theme-color-2: #c0c0c0; --theme-color-3: #ffffff; --theme-decorator: "✨"; --theme-decorator-color: #ffd700; }
+    /* Valentine's (Feb 1-14) */
+    body.theme-valentines { --theme-color-1: #ff69b4; --theme-color-2: #ff1493; --theme-color-3: #ffffff; --theme-decorator: "❤"; --theme-decorator-color: #ff69b4; }
+    /* St. Patrick's (Mar 10-17) */
+    body.theme-stpatricks { --theme-color-1: #22c55e; --theme-color-2: #ffd700; --theme-color-3: #16a34a; --theme-decorator: "☘"; --theme-decorator-color: #22c55e; }
+    /* Easter (variable, approx Mar 20 - Apr 20) */
+    body.theme-easter { --theme-color-1: #ffb6c1; --theme-color-2: #98fb98; --theme-color-3: #dda0dd; --theme-decorator: "🐣"; --theme-decorator-color: #ffeb3b; }
+    /* Independence Day (Jun 25 - Jul 10) */
+    body.theme-july4th { --theme-color-1: #ff4444; --theme-color-2: #ffffff; --theme-color-3: #3b82f6; --theme-decorator: "🎆"; --theme-decorator-color: #ff4444; }
+    /* Halloween (Oct 1-31) */
+    body.theme-halloween { --theme-color-1: #ff6b00; --theme-color-2: #9333ea; --theme-color-3: #1a1a1a; --theme-decorator: "🎃"; --theme-decorator-color: #ff6b00; }
+    /* Thanksgiving (Nov 15-30) */
+    body.theme-thanksgiving { --theme-color-1: #d97706; --theme-color-2: #92400e; --theme-color-3: #fbbf24; --theme-decorator: "🦃"; --theme-decorator-color: #d97706; }
+    /* Summer default (May-Sep when no holiday) */
+    body.theme-summer { --theme-color-1: #f59e0b; --theme-color-2: #ef4444; --theme-color-3: #eab308; --theme-decorator: "☀"; --theme-decorator-color: #fbbf24; }
+
     h1 {
         text-align: center;
         margin-bottom: 8px;
@@ -270,11 +298,11 @@ const COMMON_STYLES: &str = r#"
         font-weight: 700;
         background: linear-gradient(
             135deg,
-            #ff4444 0%,
-            #d4af37 25%,
-            #22c55e 50%,
-            #d4af37 75%,
-            #ff4444 100%
+            var(--theme-color-1) 0%,
+            var(--theme-color-2) 25%,
+            var(--theme-color-3) 50%,
+            var(--theme-color-2) 75%,
+            var(--theme-color-1) 100%
         );
         background-size: 200% auto;
         -webkit-background-clip: text;
@@ -288,32 +316,32 @@ const COMMON_STYLES: &str = r#"
         letter-spacing: 2px;
     }
     h1::before {
-        content: "❄";
+        content: var(--theme-decorator);
         position: absolute;
         left: 0;
         top: 50%;
         transform: translateY(-50%);
         font-size: 20px;
-        -webkit-text-fill-color: #87ceeb;
-        animation: snowflakeSpin 6s linear infinite;
+        -webkit-text-fill-color: var(--theme-decorator-color);
+        animation: decoratorSpin 6s linear infinite;
         opacity: 0.8;
     }
     h1::after {
-        content: "❄";
+        content: var(--theme-decorator);
         position: absolute;
         right: 0;
         top: 50%;
         transform: translateY(-50%);
         font-size: 20px;
-        -webkit-text-fill-color: #87ceeb;
-        animation: snowflakeSpin 6s linear infinite reverse;
+        -webkit-text-fill-color: var(--theme-decorator-color);
+        animation: decoratorSpin 6s linear infinite reverse;
         opacity: 0.8;
     }
     @keyframes festiveShimmer {
         0% { background-position: 0% center; }
         100% { background-position: 200% center; }
     }
-    @keyframes snowflakeSpin {
+    @keyframes decoratorSpin {
         0% { transform: translateY(-50%) rotate(0deg); }
         100% { transform: translateY(-50%) rotate(360deg); }
     }
@@ -496,6 +524,34 @@ pub async fn index() -> Html<String> {
     </style>
 </head>
 <body>
+    <script>
+        // Seasonal theme detection
+        (function() {{
+            const now = new Date();
+            const month = now.getMonth() + 1; // 1-12
+            const day = now.getDate();
+            let theme = 'theme-summer'; // default
+
+            // Christmas: Dec 1-25
+            if (month === 12 && day <= 25) theme = 'theme-christmas';
+            // New Year: Dec 26 - Jan 7
+            else if ((month === 12 && day >= 26) || (month === 1 && day <= 7)) theme = 'theme-newyear';
+            // Valentine's: Feb 1-14
+            else if (month === 2 && day <= 14) theme = 'theme-valentines';
+            // St. Patrick's: Mar 10-17
+            else if (month === 3 && day >= 10 && day <= 17) theme = 'theme-stpatricks';
+            // Easter: approx Mar 20 - Apr 20
+            else if ((month === 3 && day >= 20) || (month === 4 && day <= 20)) theme = 'theme-easter';
+            // Independence Day: Jun 25 - Jul 10
+            else if ((month === 6 && day >= 25) || (month === 7 && day <= 10)) theme = 'theme-july4th';
+            // Halloween: Oct 1-31
+            else if (month === 10) theme = 'theme-halloween';
+            // Thanksgiving: Nov 15-30
+            else if (month === 11 && day >= 15) theme = 'theme-thanksgiving';
+
+            document.body.classList.add(theme);
+        }})();
+    </script>
     <div class="container">
         <h1>🎡 Holiday Wheel</h1>
         <p class="subtitle">Sign in to play</p>
@@ -864,6 +920,24 @@ pub async fn register() -> Html<String> {
     </style>
 </head>
 <body>
+    <script>
+        // Seasonal theme detection
+        (function() {{
+            const now = new Date();
+            const month = now.getMonth() + 1;
+            const day = now.getDate();
+            let theme = 'theme-summer';
+            if (month === 12 && day <= 25) theme = 'theme-christmas';
+            else if ((month === 12 && day >= 26) || (month === 1 && day <= 7)) theme = 'theme-newyear';
+            else if (month === 2 && day <= 14) theme = 'theme-valentines';
+            else if (month === 3 && day >= 10 && day <= 17) theme = 'theme-stpatricks';
+            else if ((month === 3 && day >= 20) || (month === 4 && day <= 20)) theme = 'theme-easter';
+            else if ((month === 6 && day >= 25) || (month === 7 && day <= 10)) theme = 'theme-july4th';
+            else if (month === 10) theme = 'theme-halloween';
+            else if (month === 11 && day >= 15) theme = 'theme-thanksgiving';
+            document.body.classList.add(theme);
+        }})();
+    </script>
     <div class="container">
         <h1>🎡 Holiday Wheel</h1>
         <p class="subtitle">Create your account</p>
@@ -1485,6 +1559,24 @@ pub async fn lobby() -> Html<String> {
     </style>
 </head>
 <body>
+    <script>
+        // Seasonal theme detection
+        (function() {{
+            const now = new Date();
+            const month = now.getMonth() + 1;
+            const day = now.getDate();
+            let theme = 'theme-summer';
+            if (month === 12 && day <= 25) theme = 'theme-christmas';
+            else if ((month === 12 && day >= 26) || (month === 1 && day <= 7)) theme = 'theme-newyear';
+            else if (month === 2 && day <= 14) theme = 'theme-valentines';
+            else if (month === 3 && day >= 10 && day <= 17) theme = 'theme-stpatricks';
+            else if ((month === 3 && day >= 20) || (month === 4 && day <= 20)) theme = 'theme-easter';
+            else if ((month === 6 && day >= 25) || (month === 7 && day <= 10)) theme = 'theme-july4th';
+            else if (month === 10) theme = 'theme-halloween';
+            else if (month === 11 && day >= 15) theme = 'theme-thanksgiving';
+            document.body.classList.add(theme);
+        }})();
+    </script>
     <div class="container wide">
         <div class="lobby-header">
             <h1>🎡 Holiday Wheel</h1>
@@ -2055,6 +2147,13 @@ pub async fn game() -> Html<String> {
 
         /* ========== MODERN THEME COLORS ========== */
         :root {{
+            /* Seasonal theme defaults (overridden by body class) */
+            --theme-color-1: #ff4444;
+            --theme-color-2: #d4af37;
+            --theme-color-3: #22c55e;
+            --theme-decorator: "❄";
+            --theme-decorator-color: #87ceeb;
+            /* App colors */
             --color-primary: #d4af37;
             --color-primary-light: #ffd700;
             --color-primary-dark: #b8860b;
@@ -2075,6 +2174,16 @@ pub async fn game() -> Html<String> {
             --color-board-bg: #1a5cb8;
             --color-empty-cell: #228b22;
         }}
+        /* Seasonal Theme Classes */
+        body.theme-christmas {{ --theme-color-1: #ff4444; --theme-color-2: #d4af37; --theme-color-3: #22c55e; --theme-decorator: "❄"; --theme-decorator-color: #87ceeb; }}
+        body.theme-newyear {{ --theme-color-1: #ffd700; --theme-color-2: #c0c0c0; --theme-color-3: #ffffff; --theme-decorator: "✨"; --theme-decorator-color: #ffd700; }}
+        body.theme-valentines {{ --theme-color-1: #ff69b4; --theme-color-2: #ff1493; --theme-color-3: #ffffff; --theme-decorator: "❤"; --theme-decorator-color: #ff69b4; }}
+        body.theme-stpatricks {{ --theme-color-1: #22c55e; --theme-color-2: #ffd700; --theme-color-3: #16a34a; --theme-decorator: "☘"; --theme-decorator-color: #22c55e; }}
+        body.theme-easter {{ --theme-color-1: #ffb6c1; --theme-color-2: #98fb98; --theme-color-3: #dda0dd; --theme-decorator: "🐣"; --theme-decorator-color: #ffeb3b; }}
+        body.theme-july4th {{ --theme-color-1: #ff4444; --theme-color-2: #ffffff; --theme-color-3: #3b82f6; --theme-decorator: "🎆"; --theme-decorator-color: #ff4444; }}
+        body.theme-halloween {{ --theme-color-1: #ff6b00; --theme-color-2: #9333ea; --theme-color-3: #1a1a1a; --theme-decorator: "🎃"; --theme-decorator-color: #ff6b00; }}
+        body.theme-thanksgiving {{ --theme-color-1: #d97706; --theme-color-2: #92400e; --theme-color-3: #fbbf24; --theme-decorator: "🦃"; --theme-decorator-color: #d97706; }}
+        body.theme-summer {{ --theme-color-1: #f59e0b; --theme-color-2: #ef4444; --theme-color-3: #eab308; --theme-decorator: "☀"; --theme-decorator-color: #fbbf24; }}
 
         .game-container {{
             width: 100%;
@@ -2877,11 +2986,11 @@ pub async fn game() -> Html<String> {
             font-weight: 700;
             background: linear-gradient(
                 135deg,
-                #ff4444 0%,
-                #d4af37 25%,
-                #22c55e 50%,
-                #d4af37 75%,
-                #ff4444 100%
+                var(--theme-color-1) 0%,
+                var(--theme-color-2) 25%,
+                var(--theme-color-3) 50%,
+                var(--theme-color-2) 75%,
+                var(--theme-color-1) 100%
             );
             background-size: 200% auto;
             -webkit-background-clip: text;
@@ -3386,6 +3495,24 @@ pub async fn game() -> Html<String> {
     </style>
 </head>
 <body>
+    <script>
+        // Seasonal theme detection
+        (function() {{
+            const now = new Date();
+            const month = now.getMonth() + 1;
+            const day = now.getDate();
+            let theme = 'theme-summer';
+            if (month === 12 && day <= 25) theme = 'theme-christmas';
+            else if ((month === 12 && day >= 26) || (month === 1 && day <= 7)) theme = 'theme-newyear';
+            else if (month === 2 && day <= 14) theme = 'theme-valentines';
+            else if (month === 3 && day >= 10 && day <= 17) theme = 'theme-stpatricks';
+            else if ((month === 3 && day >= 20) || (month === 4 && day <= 20)) theme = 'theme-easter';
+            else if ((month === 6 && day >= 25) || (month === 7 && day <= 10)) theme = 'theme-july4th';
+            else if (month === 10) theme = 'theme-halloween';
+            else if (month === 11 && day >= 15) theme = 'theme-thanksgiving';
+            document.body.classList.add(theme);
+        }})();
+    </script>
     <!-- Confetti Container -->
     <div id="confetti-container"></div>
 
