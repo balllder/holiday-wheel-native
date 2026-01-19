@@ -15,19 +15,10 @@ jest.spyOn(Vibration, 'vibrate');
 // Mock logout function
 const mockLogout = jest.fn();
 
-// Mock useToast hook
-const MockToastComponent = () => null;
-const mockShowToast = jest.fn();
-const mockUseToast = jest.fn(() => ({
-  showToast: mockShowToast,
-  hideToast: jest.fn(),
-  ToastComponent: MockToastComponent,
-}));
-
 // Mock shared services and stores
 jest.mock('@holiday-wheel/shared', () => {
   const mockUseAuthStore = jest.fn();
-  mockUseAuthStore.getState = jest.fn(() => ({ logout: mockLogout }));
+  mockUseAuthStore.getState = jest.fn(() => ({ logout: jest.fn() }));
   return {
     useGameStore: jest.fn(),
     useAuthStore: mockUseAuthStore,
@@ -53,7 +44,11 @@ jest.mock('@holiday-wheel/shared', () => {
       state.myPlayerIdx !== null ? state.players[state.myPlayerIdx] : null
     ),
     VOWELS: ['A', 'E', 'I', 'O', 'U'],
-    useToast: mockUseToast,
+    useToast: jest.fn(() => ({
+      showToast: jest.fn(),
+      hideToast: jest.fn(),
+      ToastComponent: () => null,
+    })),
   };
 });
 
