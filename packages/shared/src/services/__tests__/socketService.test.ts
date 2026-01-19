@@ -1,12 +1,18 @@
 import { socketService } from '../socketService';
 import { useGameStore } from '../../stores/gameStore';
 
+// Mock the io manager (for reconnection events)
+const mockIoManager = {
+  on: jest.fn(),
+};
+
 // Mock socket.io-client
 const mockSocket = {
   connected: false,
   on: jest.fn(),
   emit: jest.fn(),
   disconnect: jest.fn(),
+  io: mockIoManager,
 };
 
 jest.mock('socket.io-client', () => ({
@@ -23,6 +29,7 @@ describe('socketService', () => {
     mockSocket.on.mockReset();
     mockSocket.emit.mockReset();
     mockSocket.disconnect.mockReset();
+    mockIoManager.on.mockReset();
     useGameStore.getState().reset();
     // Reset the socket service internal state
     socketService.disconnect();
@@ -36,8 +43,10 @@ describe('socketService', () => {
         transports: ['websocket', 'polling'],
         auth: { token: 'my-token' },
         reconnection: true,
-        reconnectionAttempts: 10,
+        reconnectionAttempts: 15,
         reconnectionDelay: 1000,
+        reconnectionDelayMax: 30000,
+        randomizationFactor: 0.3,
       });
     });
 
@@ -48,8 +57,10 @@ describe('socketService', () => {
         transports: ['websocket', 'polling'],
         auth: undefined,
         reconnection: true,
-        reconnectionAttempts: 10,
+        reconnectionAttempts: 15,
         reconnectionDelay: 1000,
+        reconnectionDelayMax: 30000,
+        randomizationFactor: 0.3,
       });
     });
 
@@ -83,11 +94,12 @@ describe('socketService', () => {
       expect(mockSocket.disconnect).toHaveBeenCalled();
     });
 
-    it('sets connected state to false', () => {
+    it('sets connection status to disconnected', () => {
       socketService.connect('http://localhost:5000');
-      useGameStore.getState().setConnected(true);
+      useGameStore.getState().setConnectionStatus('connected');
       socketService.disconnect();
 
+      expect(useGameStore.getState().connectionStatus).toBe('disconnected');
       expect(useGameStore.getState().connected).toBe(false);
     });
   });
@@ -109,11 +121,21 @@ describe('socketService', () => {
       expect(useGameStore.getState().connected).toBe(true);
     });
 
-    it('handles disconnect event', () => {
-      useGameStore.getState().setConnected(true);
-      eventHandlers['disconnect']();
+    it('handles disconnect event with io client disconnect reason', () => {
+      useGameStore.getState().setConnectionStatus('connected');
+      eventHandlers['disconnect']('io client disconnect');
 
+      expect(useGameStore.getState().connectionStatus).toBe('disconnected');
       expect(useGameStore.getState().connected).toBe(false);
+    });
+
+    it('handles disconnect event with server disconnect reason', () => {
+      useGameStore.getState().setConnectionStatus('connected');
+      eventHandlers['disconnect']('transport close');
+
+      // When server disconnects, socket.io will reconnect automatically
+      // so we keep the current status
+      expect(useGameStore.getState().connectionStatus).toBe('connected');
     });
 
     it('handles state event', () => {

@@ -1,15 +1,67 @@
 import { io, Socket } from 'socket.io-client';
-import { useGameStore } from '../stores/gameStore';
+import { useGameStore, ConnectionStatus } from '../stores/gameStore';
 import type { ServerGameState } from '../types';
 
 type ToastCallback = (message: string) => void;
 type SessionInvalidatedCallback = (reason: string) => void;
+type ConnectionStatusCallback = (
+  status: ConnectionStatus,
+  attempt?: number
+) => void;
+
+/**
+ * Reconnection configuration with exponential backoff
+ */
+interface ReconnectionConfig {
+  /** Initial delay before first reconnection attempt (ms) */
+  initialDelay: number;
+  /** Maximum delay between reconnection attempts (ms) */
+  maxDelay: number;
+  /** Multiplier for exponential backoff */
+  factor: number;
+  /** Maximum number of reconnection attempts (0 = unlimited) */
+  maxAttempts: number;
+  /** Add randomness to prevent thundering herd (0-1) */
+  jitter: number;
+}
+
+const DEFAULT_RECONNECTION_CONFIG: ReconnectionConfig = {
+  initialDelay: 1000, // Start with 1 second
+  maxDelay: 30000, // Cap at 30 seconds
+  factor: 2, // Double each time
+  maxAttempts: 15, // Try 15 times before giving up
+  jitter: 0.3, // Add up to 30% randomness
+};
 
 class SocketService {
   private socket: Socket | null = null;
   private onToast: ToastCallback | null = null;
   private onSessionInvalidated: SessionInvalidatedCallback | null = null;
+  private onConnectionStatusChange: ConnectionStatusCallback | null = null;
   private currentToken: string | undefined = undefined;
+  private currentBaseUrl: string = '';
+  private reconnectionConfig: ReconnectionConfig = DEFAULT_RECONNECTION_CONFIG;
+  private manualDisconnect: boolean = false;
+
+  /**
+   * Calculate delay with exponential backoff and jitter
+   */
+  private calculateBackoffDelay(attempt: number): number {
+    const { initialDelay, maxDelay, factor, jitter } = this.reconnectionConfig;
+    const exponentialDelay = initialDelay * Math.pow(factor, attempt - 1);
+    const cappedDelay = Math.min(exponentialDelay, maxDelay);
+    // Add jitter to prevent all clients reconnecting simultaneously
+    const jitterRange = cappedDelay * jitter;
+    const randomJitter = Math.random() * jitterRange - jitterRange / 2;
+    return Math.round(cappedDelay + randomJitter);
+  }
+
+  /**
+   * Configure reconnection parameters
+   */
+  setReconnectionConfig(config: Partial<ReconnectionConfig>): void {
+    this.reconnectionConfig = { ...this.reconnectionConfig, ...config };
+  }
 
   /**
    * Connect to the Socket.IO server
@@ -19,14 +71,24 @@ class SocketService {
       return;
     }
 
+    this.manualDisconnect = false;
     this.currentToken = token;
+    this.currentBaseUrl = baseUrl;
+
+    const store = useGameStore.getState();
+    store.setConnectionStatus('connecting');
+    store.setReconnectAttempt(0);
+
+    this.notifyConnectionStatus('connecting');
 
     this.socket = io(baseUrl, {
       transports: ['websocket', 'polling'],
       auth: token ? { token } : undefined,
       reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
+      reconnectionAttempts: this.reconnectionConfig.maxAttempts,
+      reconnectionDelay: this.reconnectionConfig.initialDelay,
+      reconnectionDelayMax: this.reconnectionConfig.maxDelay,
+      randomizationFactor: this.reconnectionConfig.jitter,
     });
 
     this.setupListeners();
@@ -36,9 +98,38 @@ class SocketService {
    * Disconnect from the server
    */
   disconnect(): void {
+    this.manualDisconnect = true;
     this.socket?.disconnect();
     this.socket = null;
-    useGameStore.getState().setConnected(false);
+    const store = useGameStore.getState();
+    store.setConnectionStatus('disconnected');
+    store.setReconnectAttempt(0);
+    this.notifyConnectionStatus('disconnected');
+  }
+
+  /**
+   * Manually trigger a reconnection attempt
+   */
+  reconnect(): void {
+    if (this.socket?.connected) {
+      return;
+    }
+
+    if (this.currentBaseUrl) {
+      this.connect(this.currentBaseUrl, this.currentToken);
+    }
+  }
+
+  /**
+   * Notify connection status change
+   */
+  private notifyConnectionStatus(
+    status: ConnectionStatus,
+    attempt?: number
+  ): void {
+    if (this.onConnectionStatusChange) {
+      this.onConnectionStatusChange(status, attempt);
+    }
   }
 
   /**
@@ -49,20 +140,74 @@ class SocketService {
 
     this.socket.on('connect', () => {
       console.log('[Socket] Connected');
-      useGameStore.getState().setConnected(true);
+      const store = useGameStore.getState();
+      store.setConnectionStatus('connected');
+      store.setReconnectAttempt(0);
+      this.notifyConnectionStatus('connected');
+
       // Authenticate the socket for session management
       if (this.currentToken) {
         this.socket?.emit('auth', { token: this.currentToken });
       }
     });
 
-    this.socket.on('disconnect', () => {
-      console.log('[Socket] Disconnected');
-      useGameStore.getState().setConnected(false);
+    this.socket.on('disconnect', (reason) => {
+      console.log('[Socket] Disconnected:', reason);
+      const store = useGameStore.getState();
+
+      // Only set to disconnected if it was intentional
+      if (this.manualDisconnect || reason === 'io client disconnect') {
+        store.setConnectionStatus('disconnected');
+        store.setReconnectAttempt(0);
+        this.notifyConnectionStatus('disconnected');
+      }
+      // Otherwise socket.io will handle reconnection automatically
     });
 
     this.socket.on('connect_error', (error) => {
-      console.error('[Socket] Connection error:', error);
+      console.error('[Socket] Connection error:', error.message);
+      // Socket.io handles reconnection automatically
+    });
+
+    // Track reconnection attempts
+    this.socket.io.on('reconnect_attempt', (attempt) => {
+      const delay = this.calculateBackoffDelay(attempt);
+      console.log(
+        `[Socket] Reconnection attempt ${attempt}/${this.reconnectionConfig.maxAttempts}, delay: ${delay}ms`
+      );
+      const store = useGameStore.getState();
+      store.setConnectionStatus('reconnecting');
+      store.setReconnectAttempt(attempt);
+      this.notifyConnectionStatus('reconnecting', attempt);
+    });
+
+    this.socket.io.on('reconnect', (attempt) => {
+      console.log(`[Socket] Reconnected after ${attempt} attempt(s)`);
+      const store = useGameStore.getState();
+      store.setConnectionStatus('connected');
+      store.setReconnectAttempt(0);
+      this.notifyConnectionStatus('connected');
+    });
+
+    this.socket.io.on('reconnect_error', (error) => {
+      console.error('[Socket] Reconnection error:', error.message);
+    });
+
+    this.socket.io.on('reconnect_failed', () => {
+      console.error(
+        '[Socket] Reconnection failed after max attempts:',
+        this.reconnectionConfig.maxAttempts
+      );
+      const store = useGameStore.getState();
+      store.setConnectionStatus('disconnected');
+      this.notifyConnectionStatus('disconnected');
+
+      // Notify via toast if callback is set
+      if (this.onToast) {
+        this.onToast(
+          'Connection lost. Please check your network and try again.'
+        );
+      }
     });
 
     // Session invalidation (logged in from another device)
@@ -108,6 +253,27 @@ class SocketService {
    */
   setSessionInvalidatedCallback(callback: SessionInvalidatedCallback): void {
     this.onSessionInvalidated = callback;
+  }
+
+  /**
+   * Set connection status change callback
+   */
+  setConnectionStatusCallback(callback: ConnectionStatusCallback): void {
+    this.onConnectionStatusChange = callback;
+  }
+
+  /**
+   * Get current reconnection attempt count
+   */
+  getReconnectAttempt(): number {
+    return useGameStore.getState().reconnectAttempt;
+  }
+
+  /**
+   * Get current connection status
+   */
+  getConnectionStatus(): ConnectionStatus {
+    return useGameStore.getState().connectionStatus;
   }
 
   /**

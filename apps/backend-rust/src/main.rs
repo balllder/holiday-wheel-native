@@ -16,10 +16,12 @@ mod db;
 mod docs;
 mod email;
 mod game;
+mod rate_limit;
 mod routes;
 
 use email::EmailService;
 use game::GameManager;
+use rate_limit::{create_api_rate_limiter, create_auth_rate_limiter};
 
 /// Application state shared across handlers
 pub struct AppState {
@@ -115,6 +117,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Build HTTP routes
     // Note: /docs routes don't need state, so we merge them separately
+    // Auth routes get stricter rate limiting (10 req/s, 20 burst)
+    let auth_routes = auth::routes().layer(create_auth_rate_limiter());
+
     let app = Router::new()
         .route("/", get(routes::index))
         .route("/register", get(routes::register))
@@ -123,11 +128,13 @@ async fn main() -> anyhow::Result<()> {
         .route("/join", get(routes::join))
         .route("/admin", get(routes::admin))
         .route("/health", get(routes::health))
-        .nest("/auth", auth::routes())
+        .nest("/auth", auth_routes)
         .with_state(state)
         .nest("/docs", docs::routes())
         .layer(socket_layer)
-        .layer(CorsLayer::permissive());
+        .layer(CorsLayer::permissive())
+        // Apply general rate limiting (100 req/s, 250 burst) to all routes
+        .layer(create_api_rate_limiter());
 
     // Start server
     let port = std::env::var("PORT")

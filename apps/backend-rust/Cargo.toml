@@ -69,6 +69,10 @@ time = "0.3"
 utoipa = { version = "5", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
 
+# Rate limiting
+tower_governor = "0.4"
+governor = "0.8"
+
 # Build OpenSSL from source (required by webauthn-rs for x509 parsing)
 openssl = { version = "0.10", features = ["vendored"] }
 

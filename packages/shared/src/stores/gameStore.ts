@@ -13,10 +13,18 @@ import type {
   TossupConfig,
 } from '../types';
 
+export type ConnectionStatus =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting';
+
 interface GameStore {
   // Connection state
   room: string;
   connected: boolean;
+  connectionStatus: ConnectionStatus;
+  reconnectAttempt: number;
 
   // Game state (from server)
   phase: GamePhase;
@@ -47,6 +55,8 @@ interface GameStore {
   // Actions
   setRoom: (room: string) => void;
   setConnected: (connected: boolean) => void;
+  setConnectionStatus: (status: ConnectionStatus) => void;
+  setReconnectAttempt: (attempt: number) => void;
   setMyPlayerIdx: (idx: number | null) => void;
   setIsHost: (isHost: boolean) => void;
   updateFromServer: (state: ServerGameState) => void;
@@ -56,6 +66,8 @@ interface GameStore {
 const initialState = {
   room: 'main',
   connected: false,
+  connectionStatus: 'disconnected' as ConnectionStatus,
+  reconnectAttempt: 0,
   phase: 'normal' as GamePhase,
   puzzle: { id: 0, category: '', answer: '' },
   revealed: new Set<string>(),
@@ -114,6 +126,14 @@ export const useGameStore = create<GameStore>((set) => ({
   setRoom: (room) => set({ room }),
 
   setConnected: (connected) => set({ connected }),
+
+  setConnectionStatus: (status) =>
+    set({
+      connectionStatus: status,
+      connected: status === 'connected',
+    }),
+
+  setReconnectAttempt: (attempt) => set({ reconnectAttempt: attempt }),
 
   setMyPlayerIdx: (idx) => set({ myPlayerIdx: idx }),
 
