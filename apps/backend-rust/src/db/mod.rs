@@ -1256,6 +1256,86 @@ impl Database {
             .await?;
         Ok(())
     }
+
+    // ========== DATABASE BROWSER (Admin Debugging) ==========
+
+    /// List all tables in the database
+    pub async fn list_tables(&self) -> Result<Vec<String>, DbError> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_sqlx_%' ORDER BY name"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(|(name,)| name).collect())
+    }
+
+    /// Get data from a specific table with pagination
+    pub async fn get_table_data(
+        &self,
+        table_name: &str,
+        page: i32,
+        page_size: i32,
+    ) -> Result<(Vec<String>, Vec<serde_json::Value>, i64), DbError> {
+        // Get column info using PRAGMA
+        let pragma_query = format!("PRAGMA table_info({})", table_name);
+        let columns: Vec<(i32, String, String, i32, Option<String>, i32)> = sqlx::query_as(&pragma_query)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let column_names: Vec<String> = columns.iter().map(|(_, name, _, _, _, _)| name.clone()).collect();
+
+        if column_names.is_empty() {
+            return Err(DbError::NotFound);
+        }
+
+        // Get total count
+        let count_query = format!("SELECT COUNT(*) FROM {}", table_name);
+        let (total_count,): (i64,) = sqlx::query_as(&count_query)
+            .fetch_one(&self.pool)
+            .await?;
+
+        // Get paginated data
+        let offset = (page - 1) * page_size;
+        let select_query = format!(
+            "SELECT * FROM {} LIMIT {} OFFSET {}",
+            table_name, page_size, offset
+        );
+
+        let rows = sqlx::query(&select_query)
+            .fetch_all(&self.pool)
+            .await?;
+
+        // Convert rows to JSON values
+        let json_rows: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|row| {
+                let mut obj = serde_json::Map::new();
+                for (idx, col_name) in column_names.iter().enumerate() {
+                    // Try to get value as different types
+                    let value: serde_json::Value = if let Ok(v) = row.try_get::<i64, _>(idx) {
+                        serde_json::Value::Number(v.into())
+                    } else if let Ok(v) = row.try_get::<f64, _>(idx) {
+                        serde_json::Number::from_f64(v)
+                            .map(serde_json::Value::Number)
+                            .unwrap_or(serde_json::Value::Null)
+                    } else if let Ok(v) = row.try_get::<String, _>(idx) {
+                        serde_json::Value::String(v)
+                    } else if let Ok(v) = row.try_get::<bool, _>(idx) {
+                        serde_json::Value::Bool(v)
+                    } else if let Ok(v) = row.try_get::<Option<String>, _>(idx) {
+                        v.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null)
+                    } else {
+                        serde_json::Value::Null
+                    };
+                    obj.insert(col_name.clone(), value);
+                }
+                serde_json::Value::Object(obj)
+            })
+            .collect();
+
+        Ok((column_names, json_rows, total_count))
+    }
 }
 
 #[cfg(test)]

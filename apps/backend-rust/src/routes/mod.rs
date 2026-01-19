@@ -6234,6 +6234,7 @@ pub async fn admin() -> Html<String> {
                 <button class="tab" onclick="showTab('packs')">Puzzle Packs</button>
                 <button class="tab" onclick="showTab('puzzles')">Puzzles</button>
                 <button class="tab" onclick="showTab('rooms')">Rooms</button>
+                <button class="tab" onclick="showTab('database')">Database</button>
             </div>
 
             <div class="error-msg" id="errorMsg"></div>
@@ -6336,6 +6337,40 @@ pub async fn admin() -> Html<String> {
             <div class="panel" id="panel-rooms">
                 <h2 style="color: #fff; margin-bottom: 16px;">Active Rooms</h2>
                 <div id="roomsContainer"></div>
+            </div>
+
+            <!-- Database Panel -->
+            <div class="panel" id="panel-database">
+                <h2 style="color: #fff; margin-bottom: 16px;">Database Browser</h2>
+                <p style="color: #888; margin-bottom: 16px;">Browse database tables for debugging purposes. Data is read-only.</p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Select Table</label>
+                        <select id="dbTableSelect" onchange="loadTableData()" style="width:100%;padding:12px;background:#0d0628;color:#fff;border:2px solid #333;border-radius:8px;">
+                            <option value="">-- Select a table --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Rows per page</label>
+                        <select id="dbPageSize" onchange="loadTableData()" style="width:100%;padding:12px;background:#0d0628;color:#fff;border:2px solid #333;border-radius:8px;">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                            <option value="250">250</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="dbTableInfo" style="margin: 16px 0; color: #888;"></div>
+
+                <div style="overflow-x: auto;">
+                    <table id="dbDataTable" style="min-width: 100%;">
+                        <thead id="dbTableHead"></thead>
+                        <tbody id="dbTableBody"></tbody>
+                    </table>
+                </div>
+
+                <div id="dbPagination" style="margin-top: 16px; display: flex; gap: 8px; align-items: center; justify-content: center;"></div>
             </div>
         </div>
     </div>
@@ -7038,6 +7073,124 @@ pub async fn admin() -> Html<String> {
                 }}
             }} catch (e) {{
                 showError('Failed to create room');
+            }}
+        }}
+
+        // ========== DATABASE BROWSER FUNCTIONS ==========
+        let dbCurrentPage = 1;
+
+        async function loadTables() {{
+            try {{
+                const res = await fetch('/auth/api/admin/database/tables', {{
+                    credentials: 'include'
+                }});
+                const data = await res.json();
+                if (data.ok && data.tables) {{
+                    const select = document.getElementById('dbTableSelect');
+                    select.innerHTML = '<option value="">-- Select a table --</option>';
+                    data.tables.forEach(table => {{
+                        const option = document.createElement('option');
+                        option.value = table;
+                        option.textContent = table;
+                        select.appendChild(option);
+                    }});
+                }}
+            }} catch (e) {{
+                console.error('Failed to load tables:', e);
+            }}
+        }}
+
+        async function loadTableData(page = 1) {{
+            const tableName = document.getElementById('dbTableSelect').value;
+            if (!tableName) {{
+                document.getElementById('dbTableHead').innerHTML = '';
+                document.getElementById('dbTableBody').innerHTML = '';
+                document.getElementById('dbTableInfo').textContent = '';
+                document.getElementById('dbPagination').innerHTML = '';
+                return;
+            }}
+
+            dbCurrentPage = page;
+            const pageSize = document.getElementById('dbPageSize').value;
+
+            try {{
+                const res = await fetch(`/auth/api/admin/database/tables/${{tableName}}?page=${{page}}&page_size=${{pageSize}}`, {{
+                    credentials: 'include'
+                }});
+                const data = await res.json();
+                if (data.ok) {{
+                    renderTableData(data);
+                }} else {{
+                    showError('Failed to load table data');
+                }}
+            }} catch (e) {{
+                console.error('Failed to load table data:', e);
+                showError('Failed to load table data');
+            }}
+        }}
+
+        function renderTableData(data) {{
+            const thead = document.getElementById('dbTableHead');
+            const tbody = document.getElementById('dbTableBody');
+            const info = document.getElementById('dbTableInfo');
+            const pagination = document.getElementById('dbPagination');
+
+            // Render header
+            thead.innerHTML = '<tr>' + data.columns.map(col => `<th>${{col}}</th>`).join('') + '</tr>';
+
+            // Render rows
+            if (data.rows.length === 0) {{
+                tbody.innerHTML = '<tr><td colspan="' + data.columns.length + '" style="text-align:center;color:#888;padding:24px;">No data</td></tr>';
+            }} else {{
+                tbody.innerHTML = data.rows.map(row => {{
+                    return '<tr>' + data.columns.map(col => {{
+                        let val = row[col];
+                        if (val === null || val === undefined) {{
+                            return '<td style="color:#666;">NULL</td>';
+                        }}
+                        // Truncate long values
+                        let display = String(val);
+                        if (display.length > 100) {{
+                            display = display.substring(0, 100) + '...';
+                        }}
+                        // Escape HTML
+                        display = display.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        return `<td>${{display}}</td>`;
+                    }}).join('') + '</tr>';
+                }}).join('');
+            }}
+
+            // Info
+            const totalPages = Math.ceil(data.total_count / data.page_size);
+            const startRow = (data.page - 1) * data.page_size + 1;
+            const endRow = Math.min(data.page * data.page_size, data.total_count);
+            info.textContent = `Table: ${{data.table}} | Showing ${{startRow}}-${{endRow}} of ${{data.total_count}} rows | Page ${{data.page}} of ${{totalPages}}`;
+
+            // Pagination
+            let paginationHtml = '';
+            if (data.page > 1) {{
+                paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="loadTableData(1)">First</button>`;
+                paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="loadTableData(${{data.page - 1}})">Prev</button>`;
+            }}
+            paginationHtml += `<span style="color:#888;margin:0 12px;">Page ${{data.page}} / ${{totalPages}}</span>`;
+            if (data.page < totalPages) {{
+                paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="loadTableData(${{data.page + 1}})">Next</button>`;
+                paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="loadTableData(${{totalPages}})">Last</button>`;
+            }}
+            pagination.innerHTML = paginationHtml;
+        }}
+
+        // Override showTab to load tables when switching to database tab
+        const originalShowTab = showTab;
+        function showTab(tab) {{
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            document.querySelector(`[onclick="showTab('${{tab}}')"]`).classList.add('active');
+            document.getElementById('panel-' + tab).classList.add('active');
+
+            // Load tables when switching to database tab
+            if (tab === 'database') {{
+                loadTables();
             }}
         }}
 

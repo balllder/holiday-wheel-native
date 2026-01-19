@@ -6,7 +6,7 @@ use argon2::{
     Argon2,
 };
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -185,6 +185,9 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/admin/rooms/{room}/new-game", post(admin_new_game))
         .route("/api/admin/settings/{room}", get(admin_get_settings))
         .route("/api/admin/settings/{room}", post(admin_save_settings))
+        // Database browser
+        .route("/api/admin/database/tables", get(admin_list_tables))
+        .route("/api/admin/database/tables/{table}", get(admin_get_table_data))
 }
 
 // ========== LOGIN ENDPOINTS ==========
@@ -1896,6 +1899,107 @@ async fn admin_save_settings(
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
             ok: false, message: None, error: Some(format!("Failed to save settings: {}", e))
+        })),
+    }
+}
+
+// ========== DATABASE BROWSER (Admin Debugging) ==========
+
+#[derive(Serialize)]
+struct TableListResponse {
+    ok: bool,
+    tables: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct TableDataResponse {
+    ok: bool,
+    table: String,
+    columns: Vec<String>,
+    rows: Vec<serde_json::Value>,
+    total_count: i64,
+    page: i32,
+    page_size: i32,
+}
+
+/// List all tables in the database
+async fn admin_list_tables(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> (StatusCode, Json<TableListResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(TableListResponse {
+            ok: false, tables: vec![]
+        }));
+    }
+
+    match state.db.list_tables().await {
+        Ok(tables) => (StatusCode::OK, Json(TableListResponse { ok: true, tables })),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(TableListResponse {
+            ok: false, tables: vec![]
+        })),
+    }
+}
+
+#[derive(Deserialize)]
+struct TableQueryParams {
+    page: Option<i32>,
+    page_size: Option<i32>,
+}
+
+/// Get data from a specific table with pagination
+async fn admin_get_table_data(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(table_name): Path<String>,
+    Query(params): Query<TableQueryParams>,
+) -> (StatusCode, Json<TableDataResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(TableDataResponse {
+            ok: false,
+            table: table_name,
+            columns: vec![],
+            rows: vec![],
+            total_count: 0,
+            page: 1,
+            page_size: 50,
+        }));
+    }
+
+    // Validate table name (prevent SQL injection)
+    if !table_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return (StatusCode::BAD_REQUEST, Json(TableDataResponse {
+            ok: false,
+            table: table_name,
+            columns: vec![],
+            rows: vec![],
+            total_count: 0,
+            page: 1,
+            page_size: 50,
+        }));
+    }
+
+    let page = params.page.unwrap_or(1).max(1);
+    let page_size = params.page_size.unwrap_or(50).min(500).max(1);
+
+    match state.db.get_table_data(&table_name, page, page_size).await {
+        Ok((columns, rows, total_count)) => (StatusCode::OK, Json(TableDataResponse {
+            ok: true,
+            table: table_name,
+            columns,
+            rows,
+            total_count,
+            page,
+            page_size,
+        })),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(TableDataResponse {
+            ok: false,
+            table: table_name,
+            columns: vec![],
+            rows: vec![],
+            total_count: 0,
+            page,
+            page_size,
         })),
     }
 }
