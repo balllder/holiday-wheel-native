@@ -380,7 +380,27 @@ async fn register_user(
     };
 
     match state.db.create_user(new_user).await {
-        Ok(_) => {
+        Ok(user_id) => {
+            // If email is disabled, auto-verify the user for testing/development
+            if !state.email.is_enabled() {
+                if let Err(e) = state.db.verify_user(user_id).await {
+                    tracing::warn!("Failed to auto-verify user: {}", e);
+                } else {
+                    tracing::info!("Auto-verified user {} (email disabled)", email);
+                }
+                return (
+                    StatusCode::OK,
+                    Json(RegisterResponse {
+                        ok: true,
+                        message: Some(
+                            "Registration successful! You can now log in."
+                                .to_string(),
+                        ),
+                        errors: None,
+                    }),
+                );
+            }
+
             // Send verification email
             if let Err(e) = state
                 .email

@@ -3,14 +3,15 @@ import { test, expect, Page } from '@playwright/test';
 // Helper to create a test user and login
 async function registerAndLogin(page: Page, email: string, displayName: string): Promise<void> {
   await page.goto('/register');
+  await page.waitForLoadState('networkidle');
 
   await page.fill('#displayName', displayName);
   await page.fill('#email', email);
   await page.fill('#password', 'testpassword123');
   await page.fill('#confirmPassword', 'testpassword123');
-  await page.click('button[type="submit"]');
+  await page.locator('button[type="submit"]').click();
 
-  // Wait for redirect to lobby (may need email verification in some setups)
+  // Wait for redirect to lobby (auto-verified in test mode when email disabled)
   await page.waitForURL(/\/(lobby|$)/, { timeout: 15000 });
 }
 

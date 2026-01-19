@@ -58,6 +58,11 @@ impl EmailService {
         Self::new(EmailConfig::from_env())
     }
 
+    /// Check if email service is enabled
+    pub fn is_enabled(&self) -> bool {
+        self.config.enabled
+    }
+
     /// Send an email
     async fn send_email(
         &self,

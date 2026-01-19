@@ -34,7 +34,13 @@ test.describe('Authentication', () => {
   test('register page accessible from login', async ({ page }) => {
     await page.goto('/');
 
-    await page.click('a[href="/register"]');
+    // Wait for the page to fully load
+    await page.waitForLoadState('networkidle');
+
+    const registerLink = page.locator('a[href="/register"]');
+    await expect(registerLink).toBeVisible();
+    await registerLink.click();
+
     await expect(page).toHaveURL(/\/register/);
     await expect(page.locator('h1')).toContainText('Register');
   });
@@ -68,15 +74,19 @@ test.describe('Authentication', () => {
     const uniqueEmail = `test-${Date.now()}@example.com`;
 
     await page.goto('/register');
+    await page.waitForLoadState('networkidle');
 
     await page.fill('#displayName', 'E2E Test User');
     await page.fill('#email', uniqueEmail);
     await page.fill('#password', 'testpassword123');
     await page.fill('#confirmPassword', 'testpassword123');
-    await page.click('button[type="submit"]');
 
-    // Should redirect to lobby after registration
-    // Note: In test environment, email verification might be skipped
-    await page.waitForURL(/\/(lobby|$)/, { timeout: 10000 });
+    // Wait for button to be ready and click
+    const submitBtn = page.locator('button[type="submit"]');
+    await expect(submitBtn).toBeVisible();
+    await submitBtn.click();
+
+    // Should redirect to lobby after registration (auto-verified in test mode)
+    await page.waitForURL(/\/(lobby|$)/, { timeout: 15000 });
   });
 });

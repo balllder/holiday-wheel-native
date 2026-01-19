@@ -2,11 +2,12 @@ import { test, expect, Page } from '@playwright/test';
 
 async function registerUser(page: Page, email: string, displayName: string): Promise<void> {
   await page.goto('/register');
+  await page.waitForLoadState('networkidle');
   await page.fill('#displayName', displayName);
   await page.fill('#email', email);
   await page.fill('#password', 'testpassword123');
   await page.fill('#confirmPassword', 'testpassword123');
-  await page.click('button[type="submit"]');
+  await page.locator('button[type="submit"]').click();
   await page.waitForURL(/\/(lobby|$)/, { timeout: 15000 });
 }
 
@@ -30,19 +31,21 @@ test.describe('Admin Panel', () => {
     await expect(accessDenied).toBeVisible({ timeout: 5000 });
   });
 
-  test('admin page loads with correct structure', async ({ page }) => {
+  test('admin page shows access denied with link to lobby', async ({ page }) => {
     const uniqueEmail = `admin-structure-${Date.now()}@example.com`;
 
     await registerUser(page, uniqueEmail, 'Structure Tester');
 
     await page.goto('/admin');
+    await page.waitForLoadState('networkidle');
 
-    // Should have admin header
-    await expect(page.locator('h1')).toContainText(/Admin/i);
+    // Regular user should see access denied
+    const accessDenied = page.locator('#accessDenied');
+    await expect(accessDenied).toBeVisible({ timeout: 10000 });
 
-    // Should have back to lobby link
-    const backLink = page.locator('a[href="/lobby"]');
-    await expect(backLink).toBeVisible();
+    // Should have link back to lobby
+    const lobbyLink = accessDenied.locator('a[href="/lobby"]');
+    await expect(lobbyLink).toBeVisible();
   });
 
   test('admin button hidden in lobby for regular users', async ({ page }) => {

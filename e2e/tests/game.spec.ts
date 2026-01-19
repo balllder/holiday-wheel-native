@@ -4,12 +4,15 @@ async function setupAuthenticatedUser(page: Page): Promise<string> {
   const uniqueEmail = `game-test-${Date.now()}@example.com`;
 
   await page.goto('/register');
+  await page.waitForLoadState('networkidle');
+
   await page.fill('#displayName', 'Game Tester');
   await page.fill('#email', uniqueEmail);
   await page.fill('#password', 'testpassword123');
   await page.fill('#confirmPassword', 'testpassword123');
-  await page.click('button[type="submit"]');
+  await page.locator('button[type="submit"]').click();
 
+  // Wait for redirect to lobby (auto-verified in test mode when email disabled)
   await page.waitForURL(/\/(lobby|$)/, { timeout: 15000 });
   return uniqueEmail;
 }
