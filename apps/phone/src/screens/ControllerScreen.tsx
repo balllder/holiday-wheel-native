@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -38,9 +38,14 @@ export function ControllerScreen({ route }: ControllerScreenProps): React.JSX.El
   const phase = useGameStore((state) => state.phase);
   const puzzle = useGameStore((state) => state.puzzle);
   const myPlayerIdx = useGameStore((state) => state.myPlayerIdx);
+  const currentWedge = useGameStore((state) => state.currentWedge);
   const isMyTurn = useGameStore(selectIsMyTurn);
   const canBuzz = useGameStore(selectCanBuzz);
   const myPlayer = useGameStore(selectMyPlayer);
+
+  // Ref for auto-focusing letter input after spin
+  const letterInputRef = useRef<TextInput>(null);
+  const prevWedgeRef = useRef(currentWedge);
 
   // Load server URL on mount
   useEffect(() => {
@@ -76,6 +81,17 @@ export function ControllerScreen({ route }: ControllerScreenProps): React.JSX.El
       socketService.joinGame(room);
     }
   }, [connected, myPlayerIdx, room]);
+
+  // Focus letter input when spin result comes back
+  useEffect(() => {
+    if (currentWedge !== null && currentWedge !== prevWedgeRef.current) {
+      prevWedgeRef.current = currentWedge;
+      // Small delay to ensure UI has updated
+      setTimeout(() => {
+        letterInputRef.current?.focus();
+      }, 100);
+    }
+  }, [currentWedge]);
 
   const handleSpin = () => {
     Vibration.vibrate(50);
@@ -158,6 +174,7 @@ export function ControllerScreen({ route }: ControllerScreenProps): React.JSX.El
 
             <View style={styles.letterRow}>
               <TextInput
+                ref={letterInputRef}
                 style={styles.letterInput}
                 placeholder="?"
                 placeholderTextColor="#666"

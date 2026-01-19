@@ -51,6 +51,7 @@ export function GameScreen({ route }: GameScreenProps): React.JSX.Element {
   const [wheelRotation, setWheelRotation] = useState(0);
   const prevSpinIdx = useRef<number | null>(null);
   const animationRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const letterInputRef = useRef<TextInput>(null);
 
   // Animate wheel when spin index changes
   useEffect(() => {
@@ -89,6 +90,8 @@ export function GameScreen({ route }: GameScreenProps): React.JSX.Element {
             clearInterval(animationRef.current);
             animationRef.current = null;
           }
+          // Focus the letter input so user is ready to guess
+          letterInputRef.current?.focus();
         }
       }, 16);
     }
@@ -429,6 +432,7 @@ export function GameScreen({ route }: GameScreenProps): React.JSX.Element {
 
             <View style={styles.inputRow}>
               <TextInput
+                ref={letterInputRef}
                 style={styles.letterInput}
                 placeholder="Letter"
                 placeholderTextColor="#888"
