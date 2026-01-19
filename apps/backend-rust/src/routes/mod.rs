@@ -1839,13 +1839,57 @@ pub async fn game() -> Html<String> {
         }}
         .guess-input input {{ flex: 1; text-transform: uppercase; }}
         .notification {{
-            background: #d4af37;
-            color: #0d0628;
-            padding: 12px;
-            border-radius: 8px;
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(26, 10, 62, 0.95);
+            color: #ffffff;
+            padding: 16px 24px;
+            border-radius: 12px;
             text-align: center;
-            margin-bottom: 16px;
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            border: 2px solid rgba(212, 175, 55, 0.5);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            z-index: 1000;
             display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            max-width: 90%;
+            min-width: 280px;
+        }}
+        .notification.show {{
+            display: block;
+            opacity: 1;
+            animation: slideDown 0.3s ease forwards;
+        }}
+        .notification.hide {{
+            animation: slideUp 0.2s ease forwards;
+        }}
+        .notification.success {{
+            border-color: rgba(34, 197, 94, 0.7);
+            background: linear-gradient(135deg, rgba(26, 10, 62, 0.95), rgba(34, 197, 94, 0.15));
+        }}
+        .notification.error {{
+            border-color: rgba(239, 68, 68, 0.7);
+            background: linear-gradient(135deg, rgba(26, 10, 62, 0.95), rgba(239, 68, 68, 0.15));
+        }}
+        .notification.warning {{
+            border-color: rgba(245, 158, 11, 0.7);
+            background: linear-gradient(135deg, rgba(26, 10, 62, 0.95), rgba(245, 158, 11, 0.15));
+        }}
+        .notification .icon {{
+            margin-right: 8px;
+        }}
+        @keyframes slideDown {{
+            from {{ opacity: 0; transform: translateX(-50%) translateY(-20px); }}
+            to {{ opacity: 1; transform: translateX(-50%) translateY(0); }}
+        }}
+        @keyframes slideUp {{
+            from {{ opacity: 1; transform: translateX(-50%) translateY(0); }}
+            to {{ opacity: 0; transform: translateX(-50%) translateY(-20px); }}
         }}
         .phase-indicator {{
             text-align: center;
@@ -3118,15 +3162,64 @@ pub async fn game() -> Html<String> {
             wildcardBtn.classList.toggle('available', isMyTurn && hasWildCard && !isTossup);
         }}
 
-        function showNotification(msg) {{
+        let notificationTimeout = null;
+
+        function showNotification(msg, type = 'info', duration = 4000) {{
             const notif = document.getElementById('notification');
-            notif.textContent = msg;
+
+            // Clear any existing timeout
+            if (notificationTimeout) {{
+                clearTimeout(notificationTimeout);
+            }}
+
+            // Remove previous classes
+            notif.classList.remove('show', 'hide', 'success', 'error', 'warning');
+
+            // Detect type from message content if not specified
+            let detectedType = type;
+            const msgLower = msg.toLowerCase();
+            if (msgLower.includes('correct') || msgLower.includes('solved') || msgLower.includes('win') || msgLower.includes('🎉')) {{
+                detectedType = 'success';
+            }} else if (msgLower.includes('bankrupt') || msgLower.includes('incorrect') || msgLower.includes('error') || msgLower.includes('failed') || msgLower.includes('invalid')) {{
+                detectedType = 'error';
+            }} else if (msgLower.includes('lose a turn') || msgLower.includes('locked out') || msgLower.includes('warning')) {{
+                detectedType = 'warning';
+            }}
+
+            // Add icon based on type
+            let icon = 'ℹ️';
+            if (detectedType === 'success') icon = '✓';
+            else if (detectedType === 'error') icon = '✗';
+            else if (detectedType === 'warning') icon = '⚠';
+
+            // Set content with icon
+            notif.innerHTML = `<span class="icon">${{icon}}</span>${{msg}}`;
+
+            // Add type class
+            if (detectedType !== 'info') {{
+                notif.classList.add(detectedType);
+            }}
+
+            // Show with animation
             notif.style.display = 'block';
-            // Notification persists until next action or new notification
+            // Force reflow for animation
+            void notif.offsetWidth;
+            notif.classList.add('show');
+
+            // Auto-hide after duration
+            notificationTimeout = setTimeout(() => {{
+                hideNotification();
+            }}, duration);
         }}
 
         function hideNotification() {{
-            document.getElementById('notification').style.display = 'none';
+            const notif = document.getElementById('notification');
+            notif.classList.remove('show');
+            notif.classList.add('hide');
+            setTimeout(() => {{
+                notif.style.display = 'none';
+                notif.classList.remove('hide');
+            }}, 200);
         }}
 
         function spin() {{

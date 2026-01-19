@@ -32,10 +32,14 @@ export { PuzzleBoard } from './components/PuzzleBoard';
 export type { PuzzleBoardProps } from './components/PuzzleBoard';
 export { Confetti } from './components/Confetti';
 export type { ConfettiProps, ConfettiRef, ConfettiVariant } from './components/Confetti';
+export { Toast } from './components/Toast';
+export type { ToastProps, ToastType } from './components/Toast';
 
 // Hooks
 export { useConfetti, useConfettiSimple } from './hooks/useConfetti';
 export type { UseConfettiOptions, UseConfettiReturn } from './hooks/useConfetti';
+export { useToast, useToastHelpers } from './hooks/useToast';
+export type { UseToastOptions, UseToastReturn, ToastState } from './hooks/useToast';
 export { PhaseTransition, usePhaseTransition } from './components/PhaseTransition';
 export type { PhaseTransitionProps, GamePhase } from './components/PhaseTransition';
 export { MysteryWedgeModal } from './components/MysteryWedgeModal';
