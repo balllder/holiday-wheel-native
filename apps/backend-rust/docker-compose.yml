@@ -1,14 +1,90 @@
+# =============================================================================
+# Docker Compose for Holiday Wheel Rust Backend
+# Production-ready configuration with volumes, health checks, and security
+# =============================================================================
+
 services:
-  app:
-    build: .
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: holiday-wheel-backend
     ports:
-      - "5000:5000"
+      - "${PORT:-5000}:5000"
     volumes:
-      - ./data:/app/data
+      # Persist SQLite database
+      - backend-data:/app/data
+      # Optional: mount certificates for SSL
+      - ./certs:/app/certs:ro
     environment:
+      # Server configuration
       - PORT=5000
-      - RUST_LOG=info
-      - HOST_CODE=holiday
-      - DATABASE_URL=sqlite:/app/data/puzzles.db
-      - EMAIL_ENABLED=false
+      - HOST=0.0.0.0
+      - RUST_LOG=${RUST_LOG:-info}
+      - HOST_CODE=${HOST_CODE:-holiday}
+
+      # Database
+      - DB_PATH=/app/data/puzzles.db
+
+      # Admin (optional)
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
+
+      # SSL/TLS (optional)
+      - SSL_ENABLED=${SSL_ENABLED:-false}
+      - SSL_CERT=/app/certs/cert.pem
+      - SSL_KEY=/app/certs/key.pem
+
+      # Email (optional)
+      - EMAIL_ENABLED=${EMAIL_ENABLED:-false}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - FROM_EMAIL=${FROM_EMAIL:-}
+      - BASE_URL=${BASE_URL:-http://localhost:5000}
+
+      # WebAuthn/Passkeys
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-localhost}
+      - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-Holiday Wheel}
+      - WEBAUTHN_RP_ORIGIN=${WEBAUTHN_RP_ORIGIN:-http://localhost:5000}
+
+      # OAuth - Google
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_ID_IOS=${GOOGLE_CLIENT_ID_IOS:-}
+      - GOOGLE_CLIENT_ID_ANDROID=${GOOGLE_CLIENT_ID_ANDROID:-}
+
+      # OAuth - Apple
+      - APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-}
+      - APPLE_CLIENT_ID_WEB=${APPLE_CLIENT_ID_WEB:-}
+      - APPLE_REDIRECT_URI=${APPLE_REDIRECT_URI:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=64M
+
+volumes:
+  backend-data:
+    name: holiday-wheel-data
+
+# Optional: Production with reverse proxy
+# networks:
+#   default:
+#     name: holiday-wheel-network

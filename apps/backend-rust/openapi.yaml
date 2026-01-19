@@ -1,0 +1,2616 @@
+openapi: 3.0.3
+info:
+  title: Holiday Wheel API
+  description: |
+    REST API for the Holiday Wheel game backend. This API provides authentication,
+    game room management, and administrative functions for the Wheel of Fortune-style game.
+
+    ## Authentication
+
+    The API supports multiple authentication methods:
+    - **Bearer Token**: Pass the token in the `Authorization: Bearer <token>` header
+    - **Cookie**: Auth token is automatically set in an HttpOnly cookie named `auth_token`
+
+    Both methods are supported for most authenticated endpoints.
+
+    ## OAuth Providers
+
+    - Google Sign-In (mobile apps via ID token, web via access token)
+    - Apple Sign-In (mobile apps and web redirect flow)
+
+    ## WebAuthn/Passkeys
+
+    Full WebAuthn support for passwordless authentication using passkeys.
+  version: 1.0.0
+  contact:
+    name: Holiday Wheel Support
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+  - url: https://api.example.com
+    description: Production server
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Authentication
+    description: User authentication (login, register, logout)
+  - name: OAuth
+    description: OAuth provider authentication (Google, Apple)
+  - name: Passkey
+    description: WebAuthn/Passkey authentication
+  - name: User
+    description: Current user operations
+  - name: Rooms
+    description: Game room operations
+  - name: Admin - Users
+    description: Administrative user management
+  - name: Admin - Packs
+    description: Administrative puzzle pack management
+  - name: Admin - Puzzles
+    description: Administrative puzzle management
+  - name: Admin - Rooms
+    description: Administrative room management
+  - name: Admin - Settings
+    description: Administrative room settings
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns the health status of the API server
+      operationId: getHealth
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                version: "1.0.0"
+
+  /auth/api/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login with email and password
+      description: |
+        Authenticates a user with email and password. On success, returns an auth token
+        and sets an HttpOnly cookie for web clients.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: user@example.com
+              password: securepassword123
+      responses:
+        '200':
+          description: Login successful
+          headers:
+            Set-Cookie:
+              description: HttpOnly auth cookie
+              schema:
+                type: string
+                example: auth_token=abc123; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              example:
+                ok: true
+                token: "abc123def456..."
+                user:
+                  id: 1
+                  email: user@example.com
+                  display_name: User
+        '401':
+          description: Invalid credentials or unverified email
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              examples:
+                invalid_credentials:
+                  summary: Invalid email or password
+                  value:
+                    ok: false
+                    error: Invalid email or password
+                unverified:
+                  summary: Email not verified
+                  value:
+                    ok: false
+                    error: Please verify your email first
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login with email and password (alias)
+      description: Alias for `/auth/api/login`
+      operationId: loginAlias
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+
+  /auth/api/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: |
+        Creates a new user account. If email verification is enabled, sends a verification
+        email. If email is disabled (development mode), auto-verifies and returns user data
+        for immediate login.
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              email: newuser@example.com
+              password: securepassword123
+              display_name: New User
+      responses:
+        '200':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              examples:
+                with_email:
+                  summary: Email verification required
+                  value:
+                    ok: true
+                    message: Registration successful! Please check your email to verify your account.
+                without_email:
+                  summary: Auto-verified (email disabled)
+                  value:
+                    ok: true
+                    user:
+                      id: 1
+                      email: newuser@example.com
+                      display_name: New User
+        '400':
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              example:
+                ok: false
+                errors:
+                  - Valid email is required
+                  - Password must be at least 8 characters
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              example:
+                ok: false
+                errors:
+                  - Email already registered
+
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user (alias)
+      description: Alias for `/auth/api/register`
+      operationId: registerAlias
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+
+  /auth/api/verify:
+    get:
+      tags:
+        - Authentication
+      summary: Verify auth token
+      description: Validates the provided Bearer token and returns user information
+      operationId: verifyToken
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Token valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyResponse'
+              example:
+                ok: true
+                user:
+                  id: 1
+                  email: user@example.com
+                  display_name: User
+        '401':
+          description: Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyResponse'
+              example:
+                ok: false
+                error: Invalid token
+
+  /auth/verify/{token}:
+    get:
+      tags:
+        - Authentication
+      summary: Verify email address
+      description: Verifies a user's email address using the token sent via email
+      operationId: verifyEmail
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Email verification token
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: Email verified successfully! You can now log in.
+        '400':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Invalid or expired verification link
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout current user
+      description: Clears the auth token from the database and cookie
+      operationId: logout
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Logged out successfully
+          headers:
+            Set-Cookie:
+              description: Cleared auth cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: Logged out
+
+  /auth/me:
+    get:
+      tags:
+        - User
+      summary: Get current user info
+      description: Returns information about the currently authenticated user
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyResponse'
+              example:
+                ok: true
+                user:
+                  id: 1
+                  email: user@example.com
+                  display_name: User
+                  is_admin: true
+
+  /auth/api/rooms:
+    get:
+      tags:
+        - Rooms
+      summary: List available game rooms
+      description: Returns a list of all available game rooms with player counts
+      operationId: listRooms
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: List of rooms
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomsResponse'
+              example:
+                ok: true
+                rooms:
+                  - name: main
+                    player_count: 3
+                    total_slots: 8
+                  - name: family
+                    player_count: 5
+                    total_slots: 8
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomsResponse'
+              example:
+                ok: false
+                error: No token provided
+
+  /auth/rooms:
+    get:
+      tags:
+        - Rooms
+      summary: List available game rooms (alias)
+      description: Alias for `/auth/api/rooms`
+      operationId: listRoomsAlias
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: List of rooms
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomsResponse'
+
+  # OAuth Endpoints
+  /auth/api/oauth/google:
+    post:
+      tags:
+        - OAuth
+      summary: Authenticate with Google
+      description: |
+        Authenticate using Google Sign-In. Supports two flows:
+        - Mobile apps: Send the ID token (JWT) from Google Sign-In SDK
+        - Web apps: Send the access token from OAuth flow
+
+        Creates a new account if the user doesn't exist.
+      operationId: googleAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleAuthRequest'
+            examples:
+              mobile:
+                summary: Mobile app (ID token)
+                value:
+                  id_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6..."
+              web:
+                summary: Web app (access token)
+                value:
+                  access_token: "ya29.a0AfH6SMC..."
+      responses:
+        '200':
+          description: Authentication successful
+          headers:
+            Set-Cookie:
+              description: HttpOnly auth cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResponse'
+              example:
+                ok: true
+                token: "abc123def456..."
+                user:
+                  id: 1
+                  email: user@gmail.com
+                  display_name: John Doe
+                is_new_user: false
+        '400':
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResponse'
+              example:
+                ok: false
+                error: No token provided. Send id_token or access_token
+        '401':
+          description: Token verification failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResponse'
+              example:
+                ok: false
+                error: Invalid ID token
+        '503':
+          description: Google Sign-In not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResponse'
+              example:
+                ok: false
+                error: Google Sign-In not configured
+
+  /auth/api/oauth/apple:
+    post:
+      tags:
+        - OAuth
+      summary: Authenticate with Apple (mobile)
+      description: |
+        Authenticate using Apple Sign-In for mobile apps. Send the identity token
+        received from the Apple Sign-In SDK.
+
+        Note: Apple only provides email and name on first authorization.
+      operationId: appleAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppleAuthRequest'
+            example:
+              identity_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6..."
+              email: user@privaterelay.appleid.com
+              full_name:
+                given_name: John
+                family_name: Doe
+      responses:
+        '200':
+          description: Authentication successful
+          headers:
+            Set-Cookie:
+              description: HttpOnly auth cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResponse'
+              example:
+                ok: true
+                token: "abc123def456..."
+                user:
+                  id: 1
+                  email: user@privaterelay.appleid.com
+                  display_name: John Doe
+                is_new_user: true
+        '401':
+          description: Token verification failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResponse'
+              example:
+                ok: false
+                error: Invalid token
+        '503':
+          description: Apple Sign-In not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResponse'
+              example:
+                ok: false
+                error: Apple Sign-In not configured
+
+  /auth/api/oauth/apple/authorize:
+    get:
+      tags:
+        - OAuth
+      summary: Start Apple Sign-In web flow
+      description: |
+        Initiates Apple Sign-In by redirecting to Apple's authorization page.
+        After authentication, Apple redirects back to the callback endpoint.
+      operationId: appleAuthorize
+      parameters:
+        - name: redirect
+          in: query
+          description: URL to redirect to after successful authentication (default /lobby)
+          schema:
+            type: string
+            default: /lobby
+      responses:
+        '302':
+          description: Redirect to Apple authorization
+          headers:
+            Location:
+              description: Apple authorization URL
+              schema:
+                type: string
+        '503':
+          description: Apple Sign-In not configured
+
+  /auth/api/oauth/apple/callback:
+    post:
+      tags:
+        - OAuth
+      summary: Apple Sign-In callback
+      description: |
+        Handles Apple's callback after user authentication. Apple POSTs form data
+        with the ID token and optional user info. On success, redirects to the
+        originally requested page with auth token in URL fragment.
+      operationId: appleCallback
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  description: Authorization code (not used)
+                id_token:
+                  type: string
+                  description: JWT ID token
+                state:
+                  type: string
+                  description: CSRF state token
+                user:
+                  type: string
+                  description: User info JSON (only on first auth)
+                error:
+                  type: string
+                  description: Error from Apple
+      responses:
+        '302':
+          description: Redirect to success page with auth token
+          headers:
+            Location:
+              description: Redirect URL with auth token in fragment
+              schema:
+                type: string
+                example: "/lobby#auth_token=abc123&user=%7B%22id%22%3A1%7D"
+            Set-Cookie:
+              description: HttpOnly auth cookie
+              schema:
+                type: string
+
+  # Passkey Endpoints
+  /auth/api/passkey/register/start:
+    post:
+      tags:
+        - Passkey
+      summary: Start passkey registration
+      description: |
+        Initiates WebAuthn registration for a new user. Returns the credential
+        creation options to pass to `navigator.credentials.create()`.
+      operationId: passkeyRegisterStart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyRegisterStartRequest'
+            example:
+              email: user@example.com
+              display_name: User
+      responses:
+        '200':
+          description: Registration options
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyStartResponse'
+              example:
+                ok: true
+                options:
+                  publicKey:
+                    rp:
+                      name: Holiday Wheel
+                      id: localhost
+                    user:
+                      id: "base64-encoded-id"
+                      name: user@example.com
+                      displayName: User
+                    challenge: "base64-encoded-challenge"
+                    pubKeyCredParams:
+                      - type: public-key
+                        alg: -7
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyStartResponse'
+              example:
+                ok: false
+                error: Email already registered. Try logging in instead.
+
+  /auth/api/passkey/register/finish:
+    post:
+      tags:
+        - Passkey
+      summary: Complete passkey registration
+      description: |
+        Completes WebAuthn registration with the credential from
+        `navigator.credentials.create()`. Creates the user account and returns
+        an auth token.
+      operationId: passkeyRegisterFinish
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyRegisterFinishRequest'
+            example:
+              email: user@example.com
+              credential:
+                id: "credential-id"
+                rawId: "base64-raw-id"
+                type: public-key
+                response:
+                  clientDataJSON: "base64-encoded"
+                  attestationObject: "base64-encoded"
+      responses:
+        '200':
+          description: Registration successful
+          headers:
+            Set-Cookie:
+              description: HttpOnly auth cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyAuthResponse'
+              example:
+                ok: true
+                token: "abc123def456..."
+                user:
+                  id: 1
+                  email: user@example.com
+                  display_name: user
+        '400':
+          description: Invalid credential or challenge
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyAuthResponse'
+              example:
+                ok: false
+                error: Challenge expired or not found
+
+  /auth/api/passkey/login/start:
+    post:
+      tags:
+        - Passkey
+      summary: Start passkey login
+      description: |
+        Initiates WebAuthn authentication. Returns the credential request options
+        to pass to `navigator.credentials.get()`. Email is required.
+      operationId: passkeyLoginStart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyLoginStartRequest'
+            example:
+              email: user@example.com
+      responses:
+        '200':
+          description: Authentication options
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyStartResponse'
+              example:
+                ok: true
+                options:
+                  publicKey:
+                    challenge: "base64-encoded-challenge"
+                    timeout: 60000
+                    rpId: localhost
+                    allowCredentials:
+                      - type: public-key
+                        id: "base64-credential-id"
+        '400':
+          description: No passkeys registered or email required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyStartResponse'
+              example:
+                ok: false
+                error: No passkeys registered for this account
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyStartResponse'
+              example:
+                ok: false
+                error: Account not found
+
+  /auth/api/passkey/login/finish:
+    post:
+      tags:
+        - Passkey
+      summary: Complete passkey login
+      description: |
+        Completes WebAuthn authentication with the credential from
+        `navigator.credentials.get()`. Returns an auth token on success.
+      operationId: passkeyLoginFinish
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyLoginFinishRequest'
+            example:
+              credential:
+                id: "credential-id"
+                rawId: "base64-raw-id"
+                type: public-key
+                response:
+                  clientDataJSON: "base64-encoded"
+                  authenticatorData: "base64-encoded"
+                  signature: "base64-encoded"
+      responses:
+        '200':
+          description: Authentication successful
+          headers:
+            Set-Cookie:
+              description: HttpOnly auth cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyAuthResponse'
+              example:
+                ok: true
+                token: "abc123def456..."
+                user:
+                  id: 1
+                  email: user@example.com
+                  display_name: User
+        '400':
+          description: Invalid credential or challenge
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyAuthResponse'
+              example:
+                ok: false
+                error: Authentication failed
+        '404':
+          description: Passkey not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyAuthResponse'
+              example:
+                ok: false
+                error: Passkey not found
+
+  /auth/api/passkey/list:
+    post:
+      tags:
+        - Passkey
+      summary: List user's passkeys
+      description: Returns all passkeys registered for the authenticated user
+      operationId: listPasskeys
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: List of passkeys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyListResponse'
+              example:
+                ok: true
+                passkeys:
+                  - id: "credential-id-1"
+                    device_name: iPhone 15 Pro
+                    created_at: 1704067200
+                    last_used_at: 1704153600
+                  - id: "credential-id-2"
+                    device_name: MacBook Pro
+                    created_at: 1703980800
+                    last_used_at: null
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyListResponse'
+              example:
+                ok: false
+                error: Authentication required
+
+  /auth/api/passkey/add/start:
+    post:
+      tags:
+        - Passkey
+      summary: Start adding a passkey
+      description: |
+        Initiates WebAuthn registration to add a new passkey to an existing account.
+        Requires authentication.
+      operationId: addPasskeyStart
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddPasskeyStartRequest'
+            example:
+              device_name: iPhone 15 Pro
+      responses:
+        '200':
+          description: Registration options
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyStartResponse'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyStartResponse'
+              example:
+                ok: false
+                error: Authentication required
+
+  /auth/api/passkey/add/finish:
+    post:
+      tags:
+        - Passkey
+      summary: Complete adding a passkey
+      description: Completes WebAuthn registration to add a new passkey
+      operationId: addPasskeyFinish
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyRegisterFinishRequest'
+      responses:
+        '200':
+          description: Passkey added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: Passkey added successfully
+        '400':
+          description: Invalid credential
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Registration failed
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Authentication required
+
+  /auth/api/passkey/delete:
+    post:
+      tags:
+        - Passkey
+      summary: Delete a passkey
+      description: |
+        Removes a passkey from the user's account. Cannot delete the last
+        authentication method (password, passkey, or OAuth).
+      operationId: deletePasskey
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeletePasskeyRequest'
+            example:
+              credential_id: "base64-credential-id"
+      responses:
+        '200':
+          description: Passkey deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: Passkey deleted
+        '400':
+          description: Cannot delete last auth method
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Cannot delete last authentication method
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Authentication required
+        '404':
+          description: Passkey not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Passkey not found
+
+  # Admin - Users
+  /auth/api/admin/users:
+    get:
+      tags:
+        - Admin - Users
+      summary: List all users
+      description: Returns all users with their details including current room
+      operationId: adminListUsers
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUsersResponse'
+              example:
+                ok: true
+                users:
+                  - id: 1
+                    email: admin@example.com
+                    display_name: Admin
+                    verified: true
+                    is_admin: true
+                    created_at: 1704067200
+                    last_login_at: 1704153600
+                    current_room: main
+                  - id: 2
+                    email: user@example.com
+                    display_name: User
+                    verified: true
+                    is_admin: false
+                    created_at: 1704067200
+                    last_login_at: null
+                    current_room: null
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUsersResponse'
+              example:
+                ok: false
+                error: Admin access required
+
+  /auth/api/admin/users/{id}/admin:
+    post:
+      tags:
+        - Admin - Users
+      summary: Set user admin status
+      description: Grants or revokes admin privileges for a user
+      operationId: adminSetUserAdmin
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetAdminRequest'
+            example:
+              is_admin: true
+      responses:
+        '200':
+          description: Admin status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: User admin status updated
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+
+  /auth/api/admin/users/{id}/verify:
+    post:
+      tags:
+        - Admin - Users
+      summary: Manually verify user
+      description: Manually verifies a user's email without requiring email confirmation
+      operationId: adminVerifyUser
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: User verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: User verified
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+
+  /auth/api/admin/users/{id}:
+    delete:
+      tags:
+        - Admin - Users
+      summary: Delete user
+      description: Permanently deletes a user account
+      operationId: adminDeleteUser
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: User deleted
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: User not found
+
+  # Admin - Packs
+  /auth/api/admin/packs:
+    get:
+      tags:
+        - Admin - Packs
+      summary: List puzzle packs
+      description: Returns all puzzle packs with puzzle counts
+      operationId: adminListPacks
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: List of packs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPacksResponse'
+              example:
+                ok: true
+                packs:
+                  - id: 1
+                    name: Default
+                    puzzle_count: 150
+                  - id: 2
+                    name: Holiday
+                    puzzle_count: 50
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPacksResponse'
+              example:
+                ok: false
+                error: Admin access required
+    post:
+      tags:
+        - Admin - Packs
+      summary: Create puzzle pack
+      description: Creates a new puzzle pack
+      operationId: adminCreatePack
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePackRequest'
+            example:
+              name: Holiday 2024
+      responses:
+        '200':
+          description: Pack created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePackResponse'
+              example:
+                ok: true
+                id: 3
+                message: Pack created with ID 3
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePackResponse'
+              example:
+                ok: false
+                error: Admin access required
+
+  /auth/api/admin/packs/{id}:
+    delete:
+      tags:
+        - Admin - Packs
+      summary: Delete puzzle pack
+      description: Deletes a puzzle pack. Cannot delete the default pack (ID 1).
+      operationId: adminDeletePack
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Pack deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: Pack deleted
+        '400':
+          description: Cannot delete default pack
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Cannot delete default pack
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+        '404':
+          description: Pack not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Pack not found
+
+  # Admin - Puzzles
+  /auth/api/admin/puzzles:
+    get:
+      tags:
+        - Admin - Puzzles
+      summary: List puzzles
+      description: Returns all puzzles, optionally filtered by pack
+      operationId: adminListPuzzles
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: pack_id
+          in: query
+          description: Filter by pack ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: List of puzzles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPuzzlesResponse'
+              example:
+                ok: true
+                puzzles:
+                  - id: 1
+                    category: PHRASE
+                    answer: WHEEL OF FORTUNE
+                    pack_id: 1
+                    enabled: true
+                  - id: 2
+                    category: PLACE
+                    answer: NEW YORK CITY
+                    pack_id: 1
+                    enabled: true
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPuzzlesResponse'
+              example:
+                ok: false
+                error: Admin access required
+    post:
+      tags:
+        - Admin - Puzzles
+      summary: Add puzzle
+      description: Adds a single puzzle to a pack
+      operationId: adminAddPuzzle
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddPuzzleRequest'
+            example:
+              category: PHRASE
+              answer: HAPPY HOLIDAYS
+              pack_id: 2
+      responses:
+        '200':
+          description: Puzzle added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: Puzzle added with ID 151
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+
+  /auth/api/admin/puzzles/import:
+    post:
+      tags:
+        - Admin - Puzzles
+      summary: Import puzzles
+      description: Bulk imports multiple puzzles into a pack
+      operationId: adminImportPuzzles
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportPuzzlesRequest'
+            example:
+              pack_name: Holiday 2024
+              puzzles:
+                - category: PHRASE
+                  answer: HAPPY NEW YEAR
+                - category: THING
+                  answer: CHRISTMAS TREE
+      responses:
+        '200':
+          description: Puzzles imported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: Imported 2 puzzles into pack 2
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+
+  /auth/api/admin/puzzles/{id}:
+    delete:
+      tags:
+        - Admin - Puzzles
+      summary: Delete puzzle
+      description: Deletes a single puzzle
+      operationId: adminDeletePuzzle
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Puzzle deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: Puzzle deleted
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+        '404':
+          description: Puzzle not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Puzzle not found
+
+  # Admin - Rooms
+  /auth/api/admin/rooms:
+    get:
+      tags:
+        - Admin - Rooms
+      summary: List rooms (detailed)
+      description: Returns detailed information about all game rooms
+      operationId: adminListRooms
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: List of rooms with details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRoomsResponse'
+              example:
+                ok: true
+                rooms:
+                  - name: main
+                    player_count: 3
+                    phase: Normal
+                    has_host: true
+                    players:
+                      - name: Player1
+                        total: 5000
+                        round_bank: 1500
+                        is_connected: true
+                    active_idx: 0
+                    puzzle_category: PHRASE
+                    puzzle_answer: WHEEL OF FORTUNE
+                    revealed_count: 8
+                    total_letters: 14
+                    current_wedge: "$500"
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRoomsResponse'
+              example:
+                ok: false
+                error: Admin access required
+    post:
+      tags:
+        - Admin - Rooms
+      summary: Create room
+      description: Creates a new game room
+      operationId: adminCreateRoom
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoomRequest'
+            example:
+              name: family-game
+      responses:
+        '200':
+          description: Room created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: Room 'family-game' created
+        '400':
+          description: Invalid room name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Room name can only contain letters, numbers, hyphens and underscores
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+        '409':
+          description: Room already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Room already exists
+
+  /auth/api/admin/rooms/{name}:
+    delete:
+      tags:
+        - Admin - Rooms
+      summary: Delete room
+      description: Deletes a game room
+      operationId: adminDeleteRoom
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Room deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: Room deleted
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+
+  /auth/api/admin/rooms/{room}/players/{idx}:
+    delete:
+      tags:
+        - Admin - Rooms
+      summary: Kick player by index
+      description: Kicks a player from a room by their index position
+      operationId: adminKickPlayer
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: room
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: idx
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Player kicked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: Player 'Player1' kicked
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+        '404':
+          description: Player not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Player not found
+
+  /auth/api/admin/rooms/{room}/players/{idx}/reset:
+    post:
+      tags:
+        - Admin - Rooms
+      summary: Reset player score
+      description: Resets a player's total and round bank to zero
+      operationId: adminResetPlayerScore
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: room
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: idx
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Score reset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: Score reset
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+        '404':
+          description: Player not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Player not found
+
+  /auth/api/admin/rooms/{room}/kick-user/{user_id}:
+    post:
+      tags:
+        - Admin - Rooms
+      summary: Kick player by user ID
+      description: Kicks a player from a room by their user ID
+      operationId: adminKickUser
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: room
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: User kicked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: User 'Player1' kicked from room
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+        '404':
+          description: User not found in room
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: User not found in room
+
+  /auth/api/admin/rooms/{room}/new-game:
+    post:
+      tags:
+        - Admin - Rooms
+      summary: Start new game
+      description: Resets the game state in a room to start a new game
+      operationId: adminNewGame
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: room
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: New game started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: New game started
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+        '404':
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Room not found
+
+  # Admin - Settings
+  /auth/api/admin/settings/{room}:
+    get:
+      tags:
+        - Admin - Settings
+      summary: Get room settings
+      description: Returns the configuration settings for a room
+      operationId: adminGetSettings
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: room
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Room settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingsResponse'
+              example:
+                ok: true
+                config:
+                  vowel_cost: 250
+                  final_seconds: 60
+                  final_jackpot: 25000
+                  puzzle_display_seconds: 5
+                  prize_wedge_names: []
+                  pack_id: 1
+                  disconnect_timeout_secs: 120
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingsResponse'
+              example:
+                ok: false
+                error: Admin access required
+    post:
+      tags:
+        - Admin - Settings
+      summary: Update room settings
+      description: Updates the configuration settings for a room
+      operationId: adminSaveSettings
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: room
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveSettingsRequest'
+            example:
+              vowel_cost: 300
+              final_seconds: 45
+              pack_id: 2
+      responses:
+        '200':
+          description: Settings saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: true
+                message: Settings saved
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleResponse'
+              example:
+                ok: false
+                error: Admin access required
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer token authentication
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth_token
+      description: HttpOnly cookie authentication
+
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - version
+      properties:
+        status:
+          type: string
+          description: Health status
+          example: ok
+        version:
+          type: string
+          description: API version
+          example: "1.0.0"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+        password:
+          type: string
+          format: password
+          description: User password
+
+    LoginResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Whether the operation succeeded
+        token:
+          type: string
+          description: Authentication token
+        user:
+          $ref: '#/components/schemas/UserInfo'
+        error:
+          type: string
+          description: Error message if ok is false
+
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - display_name
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: Password (minimum 8 characters)
+        display_name:
+          type: string
+          minLength: 2
+          maxLength: 24
+          description: Display name (2-24 characters)
+        captcha_token:
+          type: string
+          description: Optional CAPTCHA token
+
+    RegisterResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Whether the operation succeeded
+        message:
+          type: string
+          description: Success message
+        errors:
+          type: array
+          items:
+            type: string
+          description: Validation errors
+        user:
+          $ref: '#/components/schemas/UserInfo'
+
+    VerifyResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Whether the operation succeeded
+        user:
+          $ref: '#/components/schemas/UserInfo'
+        error:
+          type: string
+          description: Error message if ok is false
+
+    SimpleResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Whether the operation succeeded
+        message:
+          type: string
+          description: Success message
+        error:
+          type: string
+          description: Error message if ok is false
+
+    UserInfo:
+      type: object
+      required:
+        - id
+        - email
+        - display_name
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: User ID
+        email:
+          type: string
+          format: email
+          description: User email
+        display_name:
+          type: string
+          description: User display name
+        is_admin:
+          type: boolean
+          description: Whether user is an admin
+
+    RoomsResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Whether the operation succeeded
+        rooms:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomInfo'
+        error:
+          type: string
+          description: Error message if ok is false
+
+    RoomInfo:
+      type: object
+      required:
+        - name
+        - player_count
+        - total_slots
+      properties:
+        name:
+          type: string
+          description: Room name
+        player_count:
+          type: integer
+          description: Number of players in room
+        total_slots:
+          type: integer
+          description: Maximum players allowed
+
+    # OAuth Schemas
+    GoogleAuthRequest:
+      type: object
+      properties:
+        id_token:
+          type: string
+          description: Google ID token (JWT) from mobile SDK
+        access_token:
+          type: string
+          description: Google access token from OAuth flow
+
+    AppleAuthRequest:
+      type: object
+      required:
+        - identity_token
+      properties:
+        identity_token:
+          type: string
+          description: Apple identity token (JWT)
+        user_identifier:
+          type: string
+          description: Apple user identifier
+        email:
+          type: string
+          format: email
+          description: User email (only on first auth)
+        full_name:
+          $ref: '#/components/schemas/AppleFullName'
+
+    AppleFullName:
+      type: object
+      properties:
+        given_name:
+          type: string
+          description: First name
+        family_name:
+          type: string
+          description: Last name
+
+    OAuthResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Whether the operation succeeded
+        token:
+          type: string
+          description: Authentication token
+        user:
+          $ref: '#/components/schemas/UserInfo'
+        is_new_user:
+          type: boolean
+          description: Whether this is a new registration
+        error:
+          type: string
+          description: Error message if ok is false
+
+    # Passkey Schemas
+    PasskeyRegisterStartRequest:
+      type: object
+      required:
+        - email
+        - display_name
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+        display_name:
+          type: string
+          description: User display name
+
+    PasskeyRegisterFinishRequest:
+      type: object
+      required:
+        - email
+        - credential
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+        credential:
+          type: object
+          description: WebAuthn credential response
+
+    PasskeyLoginStartRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address (required)
+
+    PasskeyLoginFinishRequest:
+      type: object
+      required:
+        - credential
+      properties:
+        credential:
+          type: object
+          description: WebAuthn credential response
+
+    PasskeyStartResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Whether the operation succeeded
+        options:
+          type: object
+          description: WebAuthn options for navigator.credentials
+        error:
+          type: string
+          description: Error message if ok is false
+
+    PasskeyAuthResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Whether the operation succeeded
+        token:
+          type: string
+          description: Authentication token
+        user:
+          $ref: '#/components/schemas/UserInfo'
+        error:
+          type: string
+          description: Error message if ok is false
+
+    PasskeyListResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Whether the operation succeeded
+        passkeys:
+          type: array
+          items:
+            $ref: '#/components/schemas/PasskeyInfo'
+        error:
+          type: string
+          description: Error message if ok is false
+
+    PasskeyInfo:
+      type: object
+      required:
+        - id
+        - created_at
+      properties:
+        id:
+          type: string
+          description: Credential ID
+        device_name:
+          type: string
+          description: Device name
+        created_at:
+          type: integer
+          format: int64
+          description: Unix timestamp when created
+        last_used_at:
+          type: integer
+          format: int64
+          description: Unix timestamp when last used
+
+    AddPasskeyStartRequest:
+      type: object
+      properties:
+        device_name:
+          type: string
+          description: Name for this passkey/device
+
+    DeletePasskeyRequest:
+      type: object
+      required:
+        - credential_id
+      properties:
+        credential_id:
+          type: string
+          description: Credential ID to delete
+
+    # Admin Schemas
+    AdminUsersResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUserInfo'
+        error:
+          type: string
+
+    AdminUserInfo:
+      type: object
+      required:
+        - id
+        - email
+        - display_name
+        - verified
+        - is_admin
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        verified:
+          type: boolean
+        is_admin:
+          type: boolean
+        created_at:
+          type: integer
+          format: int64
+        last_login_at:
+          type: integer
+          format: int64
+        current_room:
+          type: string
+
+    SetAdminRequest:
+      type: object
+      required:
+        - is_admin
+      properties:
+        is_admin:
+          type: boolean
+
+    AdminPacksResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        packs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PackInfo'
+        error:
+          type: string
+
+    PackInfo:
+      type: object
+      required:
+        - id
+        - name
+        - puzzle_count
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        puzzle_count:
+          type: integer
+          format: int64
+
+    CreatePackRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+
+    CreatePackResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        id:
+          type: integer
+          format: int64
+        message:
+          type: string
+        error:
+          type: string
+
+    AdminPuzzlesResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        puzzles:
+          type: array
+          items:
+            $ref: '#/components/schemas/PuzzleInfo'
+        error:
+          type: string
+
+    PuzzleInfo:
+      type: object
+      required:
+        - id
+        - category
+        - answer
+        - pack_id
+        - enabled
+      properties:
+        id:
+          type: integer
+          format: int64
+        category:
+          type: string
+        answer:
+          type: string
+        pack_id:
+          type: integer
+          format: int64
+        enabled:
+          type: boolean
+
+    AddPuzzleRequest:
+      type: object
+      required:
+        - category
+        - answer
+        - pack_id
+      properties:
+        category:
+          type: string
+        answer:
+          type: string
+        pack_id:
+          type: integer
+          format: int64
+
+    ImportPuzzlesRequest:
+      type: object
+      required:
+        - puzzles
+      properties:
+        puzzles:
+          type: array
+          items:
+            type: object
+            required:
+              - category
+              - answer
+            properties:
+              category:
+                type: string
+              answer:
+                type: string
+        pack_id:
+          type: integer
+          format: int64
+          description: Existing pack ID (mutually exclusive with pack_name)
+        pack_name:
+          type: string
+          description: Create or get pack by name (mutually exclusive with pack_id)
+
+    AdminRoomsResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        rooms:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRoomInfo'
+        error:
+          type: string
+
+    AdminRoomInfo:
+      type: object
+      required:
+        - name
+        - player_count
+        - phase
+        - has_host
+        - players
+        - revealed_count
+        - total_letters
+      properties:
+        name:
+          type: string
+        player_count:
+          type: integer
+        phase:
+          type: string
+        has_host:
+          type: boolean
+        players:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminPlayerInfo'
+        active_idx:
+          type: integer
+        puzzle_category:
+          type: string
+        puzzle_answer:
+          type: string
+        revealed_count:
+          type: integer
+        total_letters:
+          type: integer
+        current_wedge:
+          type: string
+
+    AdminPlayerInfo:
+      type: object
+      required:
+        - name
+        - total
+        - round_bank
+        - is_connected
+      properties:
+        name:
+          type: string
+        total:
+          type: integer
+        round_bank:
+          type: integer
+        is_connected:
+          type: boolean
+
+    CreateRoomRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          pattern: "^[a-zA-Z0-9_-]+$"
+
+    SettingsResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        config:
+          $ref: '#/components/schemas/RoomConfig'
+        error:
+          type: string
+
+    RoomConfig:
+      type: object
+      properties:
+        vowel_cost:
+          type: integer
+          default: 250
+        final_seconds:
+          type: integer
+          default: 60
+        final_jackpot:
+          type: integer
+          default: 25000
+        puzzle_display_seconds:
+          type: integer
+          default: 5
+        prize_wedge_names:
+          type: array
+          items:
+            type: string
+        pack_id:
+          type: integer
+          format: int64
+        disconnect_timeout_secs:
+          type: integer
+          format: int64
+          default: 120
+
+    SaveSettingsRequest:
+      type: object
+      properties:
+        puzzle_display_seconds:
+          type: integer
+        vowel_cost:
+          type: integer
+        final_seconds:
+          type: integer
+        final_jackpot:
+          type: integer
+        prize_wedge_names:
+          type: array
+          items:
+            type: string
+        pack_id:
+          type: integer
+          format: int64
+          description: Set to 0 for all packs
+        disconnect_timeout_secs:
+          type: integer
+          format: int64

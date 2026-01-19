@@ -12,6 +12,7 @@ use tracing::info;
 use crate::AppState;
 
 use super::state::{GamePhase, GuessResult};
+use super::GameManager;
 
 /// Spawn a background task to load a new puzzle after a delay
 fn spawn_auto_advance_puzzle(
@@ -173,6 +174,201 @@ macro_rules! broadcast_state {
 #[derive(Debug, Deserialize)]
 pub struct AuthRequest {
     pub token: String,
+}
+
+// ========== TESTABLE HELPER FUNCTIONS ==========
+// These functions extract handler logic for unit testing
+
+/// Validate and process a room join request
+/// Returns the game state if successful
+pub fn handle_join_room(manager: &GameManager, room: &str) -> Option<super::state::GameState> {
+    manager.get_room(room).map(|game| game.get_state())
+}
+
+/// Process a player joining the game
+/// Returns (player_idx, is_reconnect, player_name)
+pub fn handle_join_game(
+    manager: &mut GameManager,
+    room: &str,
+    socket_id: &str,
+    name: Option<String>,
+) -> Result<(usize, bool, String), &'static str> {
+    let game = manager.get_or_create_room(room);
+
+    // Check if already in game with this socket
+    if let Some(idx) = game.player_idx_by_socket(socket_id) {
+        return Ok((idx, true, game.players[idx].name.clone()));
+    }
+
+    let name = name.unwrap_or_else(|| format!("Player {}", game.players.len() + 1));
+
+    // Check if there's a disconnected player with the same name to reconnect
+    let existing_idx = game
+        .players
+        .iter()
+        .position(|p| p.name == name && p.socket_id.is_none());
+
+    if let Some(idx) = existing_idx {
+        // Reconnect to existing player slot
+        game.players[idx].socket_id = Some(socket_id.to_string());
+        game.players[idx].disconnected_at = None;
+        return Ok((idx, true, name));
+    }
+
+    // Add new player
+    let player_idx = game.add_player(name.clone(), Some(socket_id.to_string()), None);
+    Ok((player_idx, false, name))
+}
+
+/// Process host claim request
+/// Returns true if host was granted
+pub fn handle_claim_host(
+    manager: &mut super::GameManager,
+    room: &str,
+    socket_id: &str,
+    code: &str,
+    host_code: &str,
+) -> bool {
+    if code != host_code {
+        return false;
+    }
+
+    let game = manager.get_or_create_room(room);
+    game.host_sid = Some(socket_id.to_string());
+    true
+}
+
+/// Process spin request
+/// Returns Some(wedge, message) if spin was successful
+pub fn handle_spin(
+    manager: &mut super::GameManager,
+    room: &str,
+    socket_id: &str,
+) -> Result<(super::WedgeValue, String), &'static str> {
+    let game = manager.get_room_mut(room).ok_or("Room not found")?;
+
+    if game.phase != super::state::GamePhase::Normal {
+        return Err("Spin is only allowed during normal rounds.");
+    }
+
+    if !game.is_active_player(socket_id, true) {
+        return Err("Only the active player (or host) can spin.");
+    }
+
+    if let Some(wedge) = game.spin() {
+        let msg = match &wedge {
+            super::WedgeValue::Bankrupt => "BANKRUPT! Lost all round earnings.".to_string(),
+            super::WedgeValue::LoseTurn => "LOSE A TURN!".to_string(),
+            super::WedgeValue::FreePlay => "FREE PLAY! Guess a letter.".to_string(),
+            super::WedgeValue::Cash(amount) => format!("${}! Guess a consonant.", amount),
+            super::WedgeValue::Prize { name, .. } => {
+                format!("{}! Guess a consonant to win it.", name)
+            }
+        };
+        Ok((wedge, msg))
+    } else {
+        Err("Failed to spin wheel")
+    }
+}
+
+/// Process guess consonant request
+/// Returns (result_message, should_broadcast)
+pub fn handle_guess(
+    manager: &mut super::GameManager,
+    room: &str,
+    socket_id: &str,
+    letter: char,
+) -> Result<String, &'static str> {
+    let game = manager.get_room_mut(room).ok_or("Room not found")?;
+
+    if game.phase != super::state::GamePhase::Normal {
+        return Err("Letter guesses are only allowed during normal rounds.");
+    }
+
+    if !game.is_active_player(socket_id, false) {
+        return Err("Only the active player can guess.");
+    }
+
+    let result = game.guess_consonant(letter);
+    let msg = match result {
+        super::state::GuessResult::Correct(count) => {
+            format!("{} {}(s)!", count, letter.to_uppercase())
+        }
+        super::state::GuessResult::Incorrect => format!("No {}s", letter.to_uppercase()),
+        super::state::GuessResult::AlreadyUsed => "Letter already used".to_string(),
+        super::state::GuessResult::InvalidLetter => {
+            "Invalid letter (must be a consonant)".to_string()
+        }
+        super::state::GuessResult::NotEnoughMoney => "Not enough money".to_string(),
+        super::state::GuessResult::NeedToSpin => "Spin before guessing a consonant".to_string(),
+    };
+    Ok(msg)
+}
+
+/// Process solve attempt
+/// Returns (solved, message, auto_advance_delay)
+pub fn handle_solve(
+    manager: &mut super::GameManager,
+    room: &str,
+    socket_id: &str,
+    attempt: &str,
+) -> Result<(bool, String, Option<u64>), &'static str> {
+    let game = manager.get_room_mut(room).ok_or("Room not found")?;
+
+    match game.phase {
+        super::state::GamePhase::Normal => {
+            if !game.is_active_player(socket_id, false) {
+                return Err("Only the active player can solve.");
+            }
+            let solved = game.solve(attempt);
+            if solved {
+                let delay = Some(game.config.puzzle_display_seconds as u64);
+                Ok((true, "Correct! Puzzle solved!".to_string(), delay))
+            } else {
+                Ok((false, "Incorrect, sorry!".to_string(), None))
+            }
+        }
+        super::state::GamePhase::Tossup => {
+            if game.tossup.controller_sid.as_deref() != Some(socket_id) {
+                return Err("Only the player who buzzed in can solve.");
+            }
+            let solved = game.solve(attempt);
+            if solved {
+                game.tossup_correct_answer();
+                let delay = Some(game.config.puzzle_display_seconds as u64);
+                Ok((true, "Correct! You win the toss-up!".to_string(), delay))
+            } else {
+                game.tossup_wrong_answer();
+                Ok((false, "Incorrect! You're locked out.".to_string(), None))
+            }
+        }
+        super::state::GamePhase::Final => {
+            if !game.is_active_player(socket_id, false) {
+                return Err("Only the active player can solve.");
+            }
+            let solved = game.final_solve(attempt);
+            let msg = if solved {
+                format!("Correct! You win the ${} jackpot!", game.config.final_jackpot)
+            } else {
+                "Incorrect!".to_string()
+            };
+            Ok((solved, msg, None))
+        }
+    }
+}
+
+/// Process buzz-in during toss-up
+/// Returns (player_idx, player_name) on success
+pub fn handle_buzz(
+    manager: &mut super::GameManager,
+    room: &str,
+    socket_id: &str,
+) -> Result<(usize, String), &'static str> {
+    let game = manager.get_room_mut(room).ok_or("Room not found")?;
+
+    let player_idx = game.tossup_buzz(socket_id)?;
+    let name = game.players[player_idx].name.clone();
+    Ok((player_idx, name))
 }
 
 pub fn register_handlers(io: &SocketIo) {
@@ -865,4 +1061,699 @@ pub fn register_handlers(io: &SocketIo) {
             manager.cleanup_empty_rooms();
         });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::state::{GamePhase, Puzzle, TOSSUP_AWARD};
+    use crate::game::GameManager;
+
+    // ========== TEST FIXTURES ==========
+
+    /// Create a test GameManager with an empty room
+    fn create_test_manager() -> GameManager {
+        GameManager::new()
+    }
+
+    /// Create a test GameManager with a room containing a puzzle
+    fn create_test_manager_with_room(room: &str) -> GameManager {
+        let mut manager = GameManager::new();
+        let game = manager.get_or_create_room(room);
+        game.puzzle = Puzzle {
+            id: 1,
+            category: "Phrase".to_string(),
+            answer: "HELLO WORLD".to_string(),
+        };
+        manager
+    }
+
+    /// Create a test GameManager with a room and players
+    fn create_test_manager_with_players(room: &str) -> GameManager {
+        let mut manager = create_test_manager_with_room(room);
+        let game = manager.get_room_mut(room).unwrap();
+        game.add_player("Player 1".to_string(), Some("socket1".to_string()), None);
+        game.add_player("Player 2".to_string(), Some("socket2".to_string()), None);
+        game.add_player("Player 3".to_string(), Some("socket3".to_string()), None);
+        manager
+    }
+
+    // ========== JOIN ROOM TESTS ==========
+
+    #[test]
+    fn test_handle_join_room_nonexistent() {
+        let manager = create_test_manager();
+        let result = handle_join_room(&manager, "nonexistent");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_handle_join_room_existing() {
+        let manager = create_test_manager_with_room("test-room");
+        let result = handle_join_room(&manager, "test-room");
+        assert!(result.is_some());
+        let state = result.unwrap();
+        assert_eq!(state.room, "test-room");
+        assert_eq!(state.puzzle.answer, "HELLO WORLD");
+    }
+
+    #[test]
+    fn test_handle_join_room_returns_player_state() {
+        let manager = create_test_manager_with_players("test-room");
+        let result = handle_join_room(&manager, "test-room");
+        assert!(result.is_some());
+        let state = result.unwrap();
+        assert_eq!(state.players.len(), 3);
+        assert_eq!(state.players[0].name, "Player 1");
+    }
+
+    // ========== JOIN GAME TESTS ==========
+
+    #[test]
+    fn test_handle_join_game_new_player() {
+        let mut manager = create_test_manager();
+        let result = handle_join_game(&mut manager, "test-room", "socket1", Some("Alice".to_string()));
+
+        assert!(result.is_ok());
+        let (idx, is_reconnect, name) = result.unwrap();
+        assert_eq!(idx, 0);
+        assert!(!is_reconnect);
+        assert_eq!(name, "Alice");
+
+        // Verify player was added
+        let game = manager.get_room("test-room").unwrap();
+        assert_eq!(game.players.len(), 1);
+        assert_eq!(game.players[0].name, "Alice");
+        assert_eq!(game.players[0].socket_id, Some("socket1".to_string()));
+    }
+
+    #[test]
+    fn test_handle_join_game_default_name() {
+        let mut manager = create_test_manager();
+        let result = handle_join_game(&mut manager, "test-room", "socket1", None);
+
+        assert!(result.is_ok());
+        let (_, _, name) = result.unwrap();
+        assert_eq!(name, "Player 1");
+    }
+
+    #[test]
+    fn test_handle_join_game_multiple_players() {
+        let mut manager = create_test_manager();
+
+        let result1 = handle_join_game(&mut manager, "test-room", "socket1", Some("Alice".to_string()));
+        let result2 = handle_join_game(&mut manager, "test-room", "socket2", Some("Bob".to_string()));
+
+        assert!(result1.is_ok());
+        assert!(result2.is_ok());
+
+        let (idx1, _, _) = result1.unwrap();
+        let (idx2, _, _) = result2.unwrap();
+
+        assert_eq!(idx1, 0);
+        assert_eq!(idx2, 1);
+
+        let game = manager.get_room("test-room").unwrap();
+        assert_eq!(game.players.len(), 2);
+    }
+
+    #[test]
+    fn test_handle_join_game_same_socket_returns_existing() {
+        let mut manager = create_test_manager();
+
+        // First join
+        let result1 = handle_join_game(&mut manager, "test-room", "socket1", Some("Alice".to_string()));
+        assert!(result1.is_ok());
+        let (idx1, is_reconnect1, _) = result1.unwrap();
+        assert!(!is_reconnect1);
+
+        // Second join with same socket - should return existing player
+        let result2 = handle_join_game(&mut manager, "test-room", "socket1", Some("Different Name".to_string()));
+        assert!(result2.is_ok());
+        let (idx2, is_reconnect2, name2) = result2.unwrap();
+
+        assert_eq!(idx1, idx2);
+        assert!(is_reconnect2);
+        assert_eq!(name2, "Alice"); // Original name preserved
+
+        // Should still only have one player
+        let game = manager.get_room("test-room").unwrap();
+        assert_eq!(game.players.len(), 1);
+    }
+
+    #[test]
+    fn test_handle_join_game_reconnect_disconnected_player() {
+        let mut manager = create_test_manager();
+
+        // Add player then disconnect them
+        {
+            let game = manager.get_or_create_room("test-room");
+            game.add_player("Alice".to_string(), Some("old-socket".to_string()), None);
+            // Simulate disconnect
+            game.players[0].socket_id = None;
+            game.players[0].disconnected_at = Some(12345);
+        }
+
+        // Reconnect with same name, new socket
+        let result = handle_join_game(&mut manager, "test-room", "new-socket", Some("Alice".to_string()));
+        assert!(result.is_ok());
+        let (idx, is_reconnect, name) = result.unwrap();
+
+        assert_eq!(idx, 0);
+        assert!(is_reconnect);
+        assert_eq!(name, "Alice");
+
+        // Verify reconnection
+        let game = manager.get_room("test-room").unwrap();
+        assert_eq!(game.players.len(), 1);
+        assert_eq!(game.players[0].socket_id, Some("new-socket".to_string()));
+        assert!(game.players[0].disconnected_at.is_none());
+    }
+
+    #[test]
+    fn test_handle_join_game_creates_room_if_needed() {
+        let mut manager = create_test_manager();
+        assert!(manager.get_room("new-room").is_none());
+
+        let result = handle_join_game(&mut manager, "new-room", "socket1", Some("Player".to_string()));
+        assert!(result.is_ok());
+
+        assert!(manager.get_room("new-room").is_some());
+    }
+
+    // ========== CLAIM HOST TESTS ==========
+
+    #[test]
+    fn test_handle_claim_host_correct_code() {
+        let mut manager = create_test_manager();
+        let result = handle_claim_host(&mut manager, "test-room", "socket1", "holiday", "holiday");
+
+        assert!(result);
+        let game = manager.get_room("test-room").unwrap();
+        assert_eq!(game.host_sid, Some("socket1".to_string()));
+    }
+
+    #[test]
+    fn test_handle_claim_host_wrong_code() {
+        let mut manager = create_test_manager();
+        let result = handle_claim_host(&mut manager, "test-room", "socket1", "wrong", "holiday");
+
+        assert!(!result);
+        let game = manager.get_room("test-room");
+        // Room might not exist since claim failed before creating it
+        assert!(game.is_none() || game.unwrap().host_sid.is_none());
+    }
+
+    #[test]
+    fn test_handle_claim_host_replaces_existing_host() {
+        let mut manager = create_test_manager();
+
+        // First host
+        handle_claim_host(&mut manager, "test-room", "socket1", "holiday", "holiday");
+        // New host
+        let result = handle_claim_host(&mut manager, "test-room", "socket2", "holiday", "holiday");
+
+        assert!(result);
+        let game = manager.get_room("test-room").unwrap();
+        assert_eq!(game.host_sid, Some("socket2".to_string()));
+    }
+
+    // ========== SPIN WHEEL TESTS ==========
+
+    #[test]
+    fn test_handle_spin_active_player() {
+        let mut manager = create_test_manager_with_players("test-room");
+        let result = handle_spin(&mut manager, "test-room", "socket1");
+
+        assert!(result.is_ok());
+        let (wedge, msg) = result.unwrap();
+
+        // Verify message format based on wedge type
+        match wedge {
+            super::super::WedgeValue::Cash(amount) => {
+                assert!(msg.contains(&format!("${}", amount)));
+            }
+            super::super::WedgeValue::Bankrupt => {
+                assert!(msg.contains("BANKRUPT"));
+            }
+            super::super::WedgeValue::LoseTurn => {
+                assert!(msg.contains("LOSE A TURN"));
+            }
+            super::super::WedgeValue::FreePlay => {
+                assert!(msg.contains("FREE PLAY"));
+            }
+            super::super::WedgeValue::Prize { name, .. } => {
+                assert!(msg.contains(&name));
+            }
+        }
+    }
+
+    #[test]
+    fn test_handle_spin_host_can_spin() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.host_sid = Some("host-socket".to_string());
+        }
+
+        let result = handle_spin(&mut manager, "test-room", "host-socket");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_handle_spin_non_active_player_rejected() {
+        let mut manager = create_test_manager_with_players("test-room");
+        // Player 1 (socket1) is active, try to spin as Player 2
+        let result = handle_spin(&mut manager, "test-room", "socket2");
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Only the active player (or host) can spin.");
+    }
+
+    #[test]
+    fn test_handle_spin_wrong_phase() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.phase = GamePhase::Tossup;
+        }
+
+        let result = handle_spin(&mut manager, "test-room", "socket1");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Spin is only allowed during normal rounds.");
+    }
+
+    #[test]
+    fn test_handle_spin_room_not_found() {
+        let mut manager = create_test_manager();
+        let result = handle_spin(&mut manager, "nonexistent", "socket1");
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Room not found");
+    }
+
+    // ========== GUESS LETTER TESTS ==========
+
+    #[test]
+    fn test_handle_guess_correct_consonant() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.current_wedge = Some(super::super::WedgeValue::Cash(500));
+        }
+
+        let result = handle_guess(&mut manager, "test-room", "socket1", 'H');
+        assert!(result.is_ok());
+        let msg = result.unwrap();
+        assert!(msg.contains("H(s)!")); // 1 H in HELLO WORLD
+
+        // Verify letter was revealed
+        let game = manager.get_room("test-room").unwrap();
+        assert!(game.revealed.contains(&'H'));
+    }
+
+    #[test]
+    fn test_handle_guess_incorrect_consonant() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.current_wedge = Some(super::super::WedgeValue::Cash(500));
+        }
+
+        let result = handle_guess(&mut manager, "test-room", "socket1", 'X');
+        assert!(result.is_ok());
+        let msg = result.unwrap();
+        assert!(msg.contains("No Xs"));
+
+        // Turn should advance
+        let game = manager.get_room("test-room").unwrap();
+        assert_eq!(game.active_idx, 1);
+    }
+
+    #[test]
+    fn test_handle_guess_vowel_rejected() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.current_wedge = Some(super::super::WedgeValue::Cash(500));
+        }
+
+        let result = handle_guess(&mut manager, "test-room", "socket1", 'A');
+        assert!(result.is_ok());
+        let msg = result.unwrap();
+        assert!(msg.contains("must be a consonant"));
+    }
+
+    #[test]
+    fn test_handle_guess_already_used() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.current_wedge = Some(super::super::WedgeValue::Cash(500));
+            game.used_letters.insert('H');
+        }
+
+        let result = handle_guess(&mut manager, "test-room", "socket1", 'H');
+        assert!(result.is_ok());
+        let msg = result.unwrap();
+        assert!(msg.contains("already used"));
+    }
+
+    #[test]
+    fn test_handle_guess_need_to_spin() {
+        let mut manager = create_test_manager_with_players("test-room");
+        // No current_wedge set (hasn't spun)
+
+        let result = handle_guess(&mut manager, "test-room", "socket1", 'H');
+        assert!(result.is_ok());
+        let msg = result.unwrap();
+        assert!(msg.contains("Spin before"));
+    }
+
+    #[test]
+    fn test_handle_guess_wrong_player() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.current_wedge = Some(super::super::WedgeValue::Cash(500));
+        }
+
+        // Player 1 (socket1) is active, try to guess as Player 2
+        let result = handle_guess(&mut manager, "test-room", "socket2", 'H');
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Only the active player can guess.");
+    }
+
+    #[test]
+    fn test_handle_guess_wrong_phase() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.phase = GamePhase::Tossup;
+            game.current_wedge = Some(super::super::WedgeValue::Cash(500));
+        }
+
+        let result = handle_guess(&mut manager, "test-room", "socket1", 'H');
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("only allowed during normal rounds"));
+    }
+
+    // ========== SOLVE PUZZLE TESTS ==========
+
+    #[test]
+    fn test_handle_solve_correct_normal_phase() {
+        let mut manager = create_test_manager_with_players("test-room");
+
+        let result = handle_solve(&mut manager, "test-room", "socket1", "HELLO WORLD");
+        assert!(result.is_ok());
+
+        let (solved, msg, delay) = result.unwrap();
+        assert!(solved);
+        assert!(msg.contains("Correct"));
+        assert!(delay.is_some());
+
+        // Verify puzzle is solved
+        let game = manager.get_room("test-room").unwrap();
+        assert!(game.is_solved());
+    }
+
+    #[test]
+    fn test_handle_solve_incorrect_normal_phase() {
+        let mut manager = create_test_manager_with_players("test-room");
+
+        let result = handle_solve(&mut manager, "test-room", "socket1", "WRONG ANSWER");
+        assert!(result.is_ok());
+
+        let (solved, msg, delay) = result.unwrap();
+        assert!(!solved);
+        assert!(msg.contains("Incorrect"));
+        assert!(delay.is_none());
+
+        // Verify turn advanced
+        let game = manager.get_room("test-room").unwrap();
+        assert_eq!(game.active_idx, 1);
+    }
+
+    #[test]
+    fn test_handle_solve_wrong_player() {
+        let mut manager = create_test_manager_with_players("test-room");
+
+        let result = handle_solve(&mut manager, "test-room", "socket2", "HELLO WORLD");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Only the active player can solve.");
+    }
+
+    #[test]
+    fn test_handle_solve_tossup_phase_correct() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.start_tossup();
+            game.tossup.controller_sid = Some("socket2".to_string());
+            game.active_idx = 1;
+        }
+
+        let result = handle_solve(&mut manager, "test-room", "socket2", "HELLO WORLD");
+        assert!(result.is_ok());
+
+        let (solved, msg, delay) = result.unwrap();
+        assert!(solved);
+        assert!(msg.contains("toss-up"));
+        assert!(delay.is_some());
+
+        // Verify tossup award
+        let game = manager.get_room("test-room").unwrap();
+        assert_eq!(game.players[1].total, TOSSUP_AWARD);
+    }
+
+    #[test]
+    fn test_handle_solve_tossup_phase_incorrect() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.start_tossup();
+            game.tossup.controller_sid = Some("socket2".to_string());
+            game.active_idx = 1;
+        }
+
+        let result = handle_solve(&mut manager, "test-room", "socket2", "WRONG");
+        assert!(result.is_ok());
+
+        let (solved, msg, _) = result.unwrap();
+        assert!(!solved);
+        assert!(msg.contains("locked out"));
+
+        // Verify player is locked out
+        let game = manager.get_room("test-room").unwrap();
+        assert!(game.tossup.locked_sids.contains("socket2"));
+        assert!(game.tossup.controller_sid.is_none());
+    }
+
+    #[test]
+    fn test_handle_solve_tossup_wrong_controller() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.start_tossup();
+            game.tossup.controller_sid = Some("socket2".to_string());
+        }
+
+        // socket1 tries to solve but socket2 has control
+        let result = handle_solve(&mut manager, "test-room", "socket1", "HELLO WORLD");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Only the player who buzzed in can solve.");
+    }
+
+    #[test]
+    fn test_handle_solve_final_phase_correct() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.start_final();
+            game.final_state.stage = super::super::state::FinalStage::Running;
+        }
+
+        let result = handle_solve(&mut manager, "test-room", "socket1", "HELLO WORLD");
+        assert!(result.is_ok());
+
+        let (solved, msg, delay) = result.unwrap();
+        assert!(solved);
+        assert!(msg.contains("jackpot"));
+        assert!(delay.is_none()); // No auto-advance for final
+
+        // Verify jackpot awarded
+        let game = manager.get_room("test-room").unwrap();
+        assert_eq!(game.players[0].total, game.config.final_jackpot);
+    }
+
+    // ========== BUZZ (TOSS-UP) TESTS ==========
+
+    #[test]
+    fn test_handle_buzz_success() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.start_tossup();
+        }
+
+        let result = handle_buzz(&mut manager, "test-room", "socket2");
+        assert!(result.is_ok());
+
+        let (player_idx, name) = result.unwrap();
+        assert_eq!(player_idx, 1);
+        assert_eq!(name, "Player 2");
+
+        // Verify game state
+        let game = manager.get_room("test-room").unwrap();
+        assert_eq!(game.tossup.controller_sid, Some("socket2".to_string()));
+        assert_eq!(game.active_idx, 1);
+    }
+
+    #[test]
+    fn test_handle_buzz_not_in_tossup() {
+        let mut manager = create_test_manager_with_players("test-room");
+        // Phase is Normal, not Tossup
+
+        let result = handle_buzz(&mut manager, "test-room", "socket1");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Not in toss-up mode");
+    }
+
+    #[test]
+    fn test_handle_buzz_already_locked_out() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.start_tossup();
+            game.tossup.locked_sids.insert("socket1".to_string());
+        }
+
+        let result = handle_buzz(&mut manager, "test-room", "socket1");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "You are locked out for this toss-up");
+    }
+
+    #[test]
+    fn test_handle_buzz_someone_already_buzzed() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.start_tossup();
+            game.tossup.controller_sid = Some("socket1".to_string());
+        }
+
+        let result = handle_buzz(&mut manager, "test-room", "socket2");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Someone else already buzzed in");
+    }
+
+    #[test]
+    fn test_handle_buzz_not_a_player() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.start_tossup();
+        }
+
+        // Non-existent socket
+        let result = handle_buzz(&mut manager, "test-room", "unknown-socket");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "You must claim a player slot first");
+    }
+
+    #[test]
+    fn test_handle_buzz_room_not_found() {
+        let mut manager = create_test_manager();
+        let result = handle_buzz(&mut manager, "nonexistent", "socket1");
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Room not found");
+    }
+
+    // ========== SCORING INTEGRATION TESTS ==========
+
+    #[test]
+    fn test_spin_then_guess_awards_money() {
+        let mut manager = create_test_manager_with_players("test-room");
+
+        // Spin the wheel
+        let spin_result = handle_spin(&mut manager, "test-room", "socket1");
+        assert!(spin_result.is_ok());
+
+        // Get the wedge value to verify scoring later
+        let (wedge, _) = spin_result.unwrap();
+
+        // If it's a cash wedge, guess a correct letter
+        if let super::super::WedgeValue::Cash(amount) = wedge {
+            let guess_result = handle_guess(&mut manager, "test-room", "socket1", 'L');
+            assert!(guess_result.is_ok());
+
+            // L appears 3 times in "HELLO WORLD"
+            let game = manager.get_room("test-room").unwrap();
+            assert_eq!(game.players[0].round_bank, amount * 3);
+        }
+    }
+
+    #[test]
+    fn test_solve_awards_round_bank() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.players[0].round_bank = 5000;
+        }
+
+        let result = handle_solve(&mut manager, "test-room", "socket1", "HELLO WORLD");
+        assert!(result.is_ok());
+        assert!(result.unwrap().0);
+
+        let game = manager.get_room("test-room").unwrap();
+        assert_eq!(game.players[0].total, 5000);
+        assert_eq!(game.players[0].round_bank, 0);
+    }
+
+    // ========== EDGE CASES ==========
+
+    #[test]
+    fn test_handle_guess_lowercase_normalized() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.current_wedge = Some(super::super::WedgeValue::Cash(500));
+        }
+
+        let result = handle_guess(&mut manager, "test-room", "socket1", 'h'); // lowercase
+        assert!(result.is_ok());
+        let msg = result.unwrap();
+        assert!(msg.contains("H(s)!")); // Uppercase in message
+
+        let game = manager.get_room("test-room").unwrap();
+        assert!(game.revealed.contains(&'H'));
+    }
+
+    #[test]
+    fn test_handle_solve_case_insensitive() {
+        let mut manager = create_test_manager_with_players("test-room");
+
+        let result = handle_solve(&mut manager, "test-room", "socket1", "hello world");
+        assert!(result.is_ok());
+        assert!(result.unwrap().0);
+    }
+
+    #[test]
+    fn test_multiple_rooms_isolated() {
+        let mut manager = create_test_manager();
+
+        // Join different rooms
+        handle_join_game(&mut manager, "room-a", "socket1", Some("Alice".to_string())).unwrap();
+        handle_join_game(&mut manager, "room-b", "socket2", Some("Bob".to_string())).unwrap();
+
+        // Verify rooms are separate
+        let room_a = manager.get_room("room-a").unwrap();
+        let room_b = manager.get_room("room-b").unwrap();
+
+        assert_eq!(room_a.players.len(), 1);
+        assert_eq!(room_b.players.len(), 1);
+        assert_eq!(room_a.players[0].name, "Alice");
+        assert_eq!(room_b.players[0].name, "Bob");
+    }
 }

@@ -1,9 +1,45 @@
+# Build artifacts
+target/
+debug/
+*.pdb
+
+# Git
 .git
 .gitignore
-target
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Documentation
+*.md
+!README.md
+
+# Database files (should be mounted, not copied)
 *.db
 *.db-shm
 *.db-wal
+
+# Environment files (secrets)
 .env
-CLAUDE.md
-README.md
+.env.local
+.env.*.local
+
+# Certificates (should be mounted)
+certs/
+
+# Docker files (not needed in context)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+*.profraw
+coverage/
