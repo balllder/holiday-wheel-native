@@ -135,32 +135,32 @@ impl WedgeValue {
 pub const WHEEL_SIZE: usize = 24;
 
 /// Create the standard wheel - exactly 24 wedges like the real Wheel of Fortune
-/// Layout inspired by the actual show's wheel configuration
+/// All unique cash values to avoid visual confusion
 pub fn create_standard_wheel() -> Vec<WedgeValue> {
     vec![
-        WedgeValue::Cash(2500),      // 1 - Top dollar
-        WedgeValue::Cash(600),       // 2
-        WedgeValue::Cash(700),       // 3
-        WedgeValue::Cash(600),       // 4
+        WedgeValue::Cash(5000),      // 1 - Top dollar
+        WedgeValue::Cash(300),       // 2
+        WedgeValue::Cash(900),       // 3
+        WedgeValue::Cash(400),       // 4
         WedgeValue::Cash(650),       // 5
-        WedgeValue::Cash(500),       // 6
-        WedgeValue::Bankrupt,        // 7 - Bankrupt
-        WedgeValue::Cash(900),       // 8
-        WedgeValue::Cash(500),       // 9
-        WedgeValue::Cash(300),       // 10
-        WedgeValue::Cash(500),       // 11
-        WedgeValue::prize("GIFT CARD"), // 12 - Prize
-        WedgeValue::Cash(550),       // 13
-        WedgeValue::Cash(400),       // 14
-        WedgeValue::Cash(300),       // 15
-        WedgeValue::LoseTurn,        // 16 - Lose A Turn
-        WedgeValue::Cash(800),       // 17
-        WedgeValue::Cash(350),       // 18
-        WedgeValue::Cash(450),       // 19
-        WedgeValue::Cash(700),       // 20
-        WedgeValue::FreePlay,        // 21 - Free Play
-        WedgeValue::Cash(600),       // 22
-        WedgeValue::Cash(550),       // 23
+        WedgeValue::Bankrupt,        // 6 - Bankrupt
+        WedgeValue::Cash(450),       // 7
+        WedgeValue::Cash(800),       // 8
+        WedgeValue::Cash(350),       // 9
+        WedgeValue::Cash(550),       // 10
+        WedgeValue::prize("GIFT CARD"), // 11 - Prize
+        WedgeValue::Cash(700),       // 12
+        WedgeValue::Cash(500),       // 13
+        WedgeValue::Cash(1000),      // 14
+        WedgeValue::LoseTurn,        // 15 - Lose A Turn
+        WedgeValue::Cash(600),       // 16
+        WedgeValue::Cash(2500),      // 17
+        WedgeValue::Cash(750),       // 18
+        WedgeValue::Cash(850),       // 19
+        WedgeValue::FreePlay,        // 20 - Free Play
+        WedgeValue::Cash(950),       // 21
+        WedgeValue::Cash(1500),      // 22
+        WedgeValue::Cash(3500),      // 23
         WedgeValue::Bankrupt,        // 24 - Bankrupt
     ]
 }

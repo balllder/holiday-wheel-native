@@ -9,7 +9,7 @@ use rustls::crypto::ring::default_provider;
 use socketioxide::SocketIo;
 use tokio::sync::{OnceCell, RwLock};
 use tokio::signal;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{Any, CorsLayer};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -148,9 +148,10 @@ async fn main() -> anyhow::Result<()> {
         user_sockets: RwLock::new(HashMap::new()),
     });
 
-    // Set up Socket.IO
+    // Set up Socket.IO with CORS support for cross-origin connections
     let (socket_layer, io) = SocketIo::builder()
         .with_state(state.clone())
+        .req_path("/socket.io")
         .build_layer();
 
     // Store SocketIo in state for background tasks
@@ -209,7 +210,13 @@ async fn main() -> anyhow::Result<()> {
         .merge(metrics_routes)
         .nest("/docs", docs::routes())
         .layer(socket_layer)
-        .layer(CorsLayer::permissive())
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any)
+                .allow_credentials(false)
+        )
         // Add metrics middleware to record request metrics
         .layer(middleware::from_fn_with_state(
             metrics_state,

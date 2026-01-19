@@ -15,12 +15,12 @@ const REFERRER_POLICY: &str = "strict-origin-when-cross-origin";
 
 /// Content Security Policy
 /// - default-src 'self': Only allow resources from same origin by default
-/// - script-src 'self' 'unsafe-inline': Allow scripts from same origin and inline (needed for some frameworks)
+/// - script-src 'self' 'unsafe-inline' https://cdn.socket.io: Allow scripts from same origin, inline, and Socket.IO CDN
 /// - style-src 'self' 'unsafe-inline': Allow styles from same origin and inline
 /// - img-src 'self' data: blob:: Allow images from same origin, data URIs, and blob URLs
 /// - connect-src 'self' wss: ws:: Allow connections to same origin and WebSockets
 /// - frame-ancestors 'none': Prevent embedding in frames (reinforces X-Frame-Options)
-const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' wss: ws:; frame-ancestors 'none'";
+const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.socket.io; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' wss: ws:; frame-ancestors 'none'";
 
 /// Layer that adds security headers to all responses.
 #[derive(Clone, Debug)]

@@ -443,9 +443,19 @@ The server includes a built-in web client accessible at the root URL.
 
 ### Game Features
 
-- Real-time puzzle board
-- Spin wheel, guess letters, buy vowels, solve puzzle
-- Host controls (New Game, Reveal All) when host mode is claimed
+- **Real-time puzzle board** with animated letter reveals
+- **Animated wheel** with smooth easing and 24 unique wedge values
+- **Interactive controls**: Spin wheel, guess letters, buy vowels, solve puzzle
+- **Visual feedback**:
+  - Spin button flashes when waiting for player to spin
+  - Letter input box flashes when waiting for letter guess
+  - Large letter display notifications for guess results (green for correct, red for miss)
+  - Inline notifications between puzzle board and controls
+  - Letter stays visible in input box briefly after guessing
+- **Host controls** (New Game, Reveal All) when host mode is claimed
+- **Game phases**: Normal rounds, Toss-up, and Final round with letter picking
+- **Sound effects** for wheel spin, correct/incorrect guesses, bankrupt, and solve
+- **Player sidebar** with scores, room name, and current phase
 
 ---
 
