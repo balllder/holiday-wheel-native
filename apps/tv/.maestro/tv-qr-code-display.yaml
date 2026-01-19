@@ -1,0 +1,42 @@
+appId: com.holidaywheel.tv
+env:
+  TEST_EMAIL: tv-test@maestro.test
+  TEST_PASSWORD: TVTestPassword123!
+---
+# Test: TV QR Code Display
+# Verifies QR code is displayed in lobby for phone pairing
+
+- launchApp
+
+# Login
+- assertVisible: "Sign In"
+- tapOn: "Email"
+- inputText: ${TEST_EMAIL}
+- tapOn: "Password"
+- inputText: ${TEST_PASSWORD}
+- tapOn: "Sign In"
+
+# Wait for lobby
+- assertVisible: "Game Lobby"
+
+# Verify QR code instructions
+- assertVisible: "Scan QR Code on Phone"
+
+# Create a room to get QR code
+- tapOn: "Room Code"
+- inputText: "QR123"
+- tapOn: "Create Room"
+
+# Wait for room creation
+- runFlow:
+    when:
+      visible: "QR"
+    commands:
+      - takeScreenshot: tv-qr-code-displayed
+      - assertVisible: "QR"
+
+# Verify server URL is displayed
+- assertVisible: "Server"
+
+# Take final screenshot
+- takeScreenshot: tv-room-with-qr

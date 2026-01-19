@@ -9,6 +9,12 @@
     "check-types": "turbo run check-types",
     "test": "turbo run test",
     "test:e2e": "cd e2e && npm test",
+    "test:e2e:headed": "cd e2e && npm run test:headed",
+    "test:e2e:ui": "cd e2e && npm run test:ui",
+    "test:e2e:report": "cd e2e && npm run report",
+    "test:maestro:phone": "cd apps/phone && maestro test .maestro/",
+    "test:maestro:tv": "cd apps/tv && maestro test .maestro/",
+    "test:maestro:all": "npm run test:maestro:phone && npm run test:maestro:tv",
     "validate:js": "node scripts/extract-rust-js.js && node scripts/validate-rust-js.js"
   },
   "devDependencies": {

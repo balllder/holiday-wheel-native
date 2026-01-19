@@ -1,0 +1,82 @@
+appId: com.holidaywheel.tv
+env:
+  TEST_EMAIL: tv-test@maestro.test
+  TEST_PASSWORD: TVTestPassword123!
+  SERVER_URL: http://localhost:5000
+---
+# Test: TV Navigation Flow
+# Tests TV remote navigation, registration, and lobby screen
+# Requires backend server running
+
+- launchApp
+
+# Navigate to server configuration (if visible)
+- runFlow:
+    when:
+      visible: "Server URL"
+    commands:
+      - tapOn: "Server URL"
+      - clearText
+      - inputText: ${SERVER_URL}
+
+# Navigate to create account
+- tapOn: "Create Account"
+- assertVisible: "Display Name"
+- assertVisible: "Confirm Password"
+- takeScreenshot: tv-register-screen
+
+# Fill registration form
+- tapOn: "Display Name"
+- inputText: "TV E2E Test User"
+
+- tapOn: "Email"
+- inputText: ${TEST_EMAIL}
+
+- tapOn: "Password"
+- inputText: ${TEST_PASSWORD}
+
+- tapOn: "Confirm Password"
+- inputText: ${TEST_PASSWORD}
+
+# Submit registration
+- tapOn: "Create Account"
+
+# Handle success or existing user
+- runFlow:
+    when:
+      visible: "Game Lobby"
+    commands:
+      - assertVisible: "Game Lobby"
+      - takeScreenshot: tv-lobby-success
+
+# If registration failed, login instead
+- runFlow:
+    when:
+      notVisible: "Game Lobby"
+    commands:
+      # Navigate back to login
+      - pressKey: back
+      - assertVisible: "Sign In"
+
+      # Fill login form
+      - tapOn: "Email"
+      - inputText: ${TEST_EMAIL}
+      - tapOn: "Password"
+      - inputText: ${TEST_PASSWORD}
+      - tapOn: "Sign In"
+
+      # Verify lobby loaded
+      - assertVisible: "Game Lobby"
+      - takeScreenshot: tv-lobby-after-login
+
+# Verify lobby has QR code section
+- assertVisible: "Scan QR Code on Phone"
+
+# Test host controls (if visible)
+- runFlow:
+    when:
+      visible: "Host Controls"
+    commands:
+      - tapOn: "Host Controls"
+      - takeScreenshot: tv-host-controls
+      - pressKey: Menu

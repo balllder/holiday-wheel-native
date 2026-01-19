@@ -1,4 +1,8 @@
-/* eslint-env jest */
+/* eslint-env jest, node */
+/* global globalThis */
+
+// Configure React act() environment to suppress act() warnings
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 // Mock AsyncStorage
 jest.mock('@react-native-async-storage/async-storage', () =>

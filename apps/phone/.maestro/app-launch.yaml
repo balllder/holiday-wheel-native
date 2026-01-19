@@ -1,0 +1,19 @@
+appId: com.holidaywheel.phone
+---
+# Test: App Launch and Initial Screen
+# Verifies the app launches successfully and shows the login screen
+
+- launchApp
+
+- assertVisible: "Holiday Wheel"
+- assertVisible: "Email"
+- assertVisible: "Password"
+
+# Verify buttons are present
+- assertVisible:
+    text: "Sign In"
+- assertVisible:
+    text: "Create Account"
+
+# Take screenshot for visual verification
+- takeScreenshot: login-screen

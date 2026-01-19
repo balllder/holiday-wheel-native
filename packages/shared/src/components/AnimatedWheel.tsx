@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { View, StyleSheet, Animated, Easing } from 'react-native';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import type { WedgeValue } from '../types';
 
@@ -28,7 +28,7 @@ interface AnimatedWheelProps {
   highlightFlashes?: number;
 }
 
-export function AnimatedWheel({
+const AnimatedWheelComponent = ({
   wheelSlots,
   lastSpinIndex,
   size = 300,
@@ -37,45 +37,52 @@ export function AnimatedWheel({
   showWinningHighlight = true,
   highlightDuration = 1500,
   highlightFlashes = 3,
-}: AnimatedWheelProps): React.JSX.Element | null {
-  const [wheelRotation, setWheelRotation] = useState(0);
+}: AnimatedWheelProps): React.JSX.Element | null => {
+  // Use Animated.Value for native driver support
+  const rotationAnim = useRef(new Animated.Value(0)).current;
   const [_isSpinning, setIsSpinning] = useState(false);
   const [showHighlight, setShowHighlight] = useState(false);
-  const [highlightOpacity, setHighlightOpacity] = useState(0);
+  const highlightOpacityAnim = useRef(new Animated.Value(0)).current;
   const prevSpinIdx = useRef<number | null>(null);
-  const animationRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const highlightRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const targetRotationRef = useRef(0);
 
-  // Highlight animation when spin completes
+  // Highlight animation using Animated API for better performance
   const startHighlightAnimation = useCallback(() => {
     if (!showWinningHighlight) return;
 
     setShowHighlight(true);
-    const flashDuration = highlightDuration / (highlightFlashes * 2);
-    let flashCount = 0;
+    highlightOpacityAnim.setValue(0);
 
-    // Clear any existing highlight animation
-    if (highlightRef.current) {
-      clearInterval(highlightRef.current);
+    // Create flash sequence
+    const flashDuration = highlightDuration / (highlightFlashes * 2);
+    const animations = [];
+
+    for (let i = 0; i < highlightFlashes; i++) {
+      // Flash on
+      animations.push(
+        Animated.timing(highlightOpacityAnim, {
+          toValue: 1,
+          duration: flashDuration,
+          useNativeDriver: true,
+        })
+      );
+      // Flash off
+      animations.push(
+        Animated.timing(highlightOpacityAnim, {
+          toValue: 0,
+          duration: flashDuration,
+          useNativeDriver: true,
+        })
+      );
     }
 
-    highlightRef.current = setInterval(() => {
-      flashCount++;
-      const isOn = flashCount % 2 === 1;
-      setHighlightOpacity(isOn ? 1 : 0);
+    Animated.sequence(animations).start(() => {
+      setShowHighlight(false);
+      highlightOpacityAnim.setValue(0);
+    });
+  }, [showWinningHighlight, highlightDuration, highlightFlashes, highlightOpacityAnim]);
 
-      if (flashCount >= highlightFlashes * 2) {
-        if (highlightRef.current) {
-          clearInterval(highlightRef.current);
-          highlightRef.current = null;
-        }
-        setShowHighlight(false);
-        setHighlightOpacity(0);
-      }
-    }, flashDuration);
-  }, [showWinningHighlight, highlightDuration, highlightFlashes]);
-
-  // Animate wheel when spin index changes
+  // Animate wheel when spin index changes - using Animated API with native driver
   useEffect(() => {
     if (lastSpinIndex !== null && lastSpinIndex !== prevSpinIdx.current && wheelSlots.length > 0) {
       prevSpinIdx.current = lastSpinIndex;
@@ -87,72 +94,127 @@ export function AnimatedWheel({
 
       // Calculate target rotation - center the slot under the pointer
       const anglePerSlot = 360 / wheelSlots.length;
-      // Add half a slot width to center the slot under the pointer
       const targetSlotAngle = lastSpinIndex * anglePerSlot + anglePerSlot / 2;
       const spins = 3;
-      const targetRotation = wheelRotation + spins * 360 + (360 - targetSlotAngle - (wheelRotation % 360));
+      const currentRotation = targetRotationRef.current;
+      const targetRotation = currentRotation + spins * 360 + (360 - targetSlotAngle - (currentRotation % 360));
 
-      // Clear any existing animation
-      if (animationRef.current) {
-        clearInterval(animationRef.current);
-      }
+      targetRotationRef.current = targetRotation;
 
-      // Animate using setInterval
-      const startRotation = wheelRotation;
-      const totalDelta = targetRotation - startRotation;
-      const duration = 2500;
-      const startTime = Date.now();
-
-      animationRef.current = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        // Ease out cubic
-        const eased = 1 - Math.pow(1 - progress, 3);
-        const currentRotation = startRotation + totalDelta * eased;
-
-        setWheelRotation(currentRotation);
-
-        if (progress >= 1) {
-          if (animationRef.current) {
-            clearInterval(animationRef.current);
-            animationRef.current = null;
-          }
+      // Use Animated.timing with native driver for smooth 60fps animation
+      Animated.timing(rotationAnim, {
+        toValue: targetRotation,
+        duration: 2500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start((result) => {
+        // Handle both real animations and Jest mocks (which may not provide result)
+        if (!result || result.finished) {
           setIsSpinning(false);
           startHighlightAnimation();
           onSpinComplete?.();
         }
-      }, 16);
+      });
     }
+  }, [lastSpinIndex, wheelSlots.length, onSpinComplete, onSpinStart, rotationAnim, startHighlightAnimation]);
 
-    return () => {
-      if (animationRef.current) {
-        clearInterval(animationRef.current);
-      }
-      if (highlightRef.current) {
-        clearInterval(highlightRef.current);
-      }
-    };
-  }, [lastSpinIndex, wheelSlots.length, onSpinComplete, onSpinStart, wheelRotation, startHighlightAnimation]);
+  // Memoize expensive calculations
+  const radius = useMemo(() => size / 2 - 5, [size]);
+  const centerX = useMemo(() => size / 2, [size]);
+  const centerY = useMemo(() => size / 2, [size]);
+  const pointerSize = useMemo(() => size / 300, [size]);
 
-  if (wheelSlots.length === 0) return null;
-
-  const radius = size / 2 - 5;
-  const centerX = size / 2;
-  const centerY = size / 2;
-
-  const getWedgeLabel = (slot: WedgeValue): string => {
+  // Memoize label formatter
+  const getWedgeLabel = useCallback((slot: WedgeValue): string => {
     if (typeof slot === 'number') return `$${slot}`;
     if (typeof slot === 'string') return slot;
     if (slot?.type === 'PRIZE') return slot.name || 'PRIZE';
     if (slot?.type) return slot.type;
     return '';
-  };
+  }, []);
 
-  const elements: React.ReactElement[] = [];
+  // Memoize wedge elements to avoid recalculation on every render
+  const wedgeElements = useMemo(() => {
+    if (wheelSlots.length === 0) return [];
 
-  wheelSlots.forEach((slot, idx) => {
+    const elements: React.ReactElement[] = [];
+
+    wheelSlots.forEach((slot, idx) => {
+      const anglePerSlot = 360 / wheelSlots.length;
+      const startAngle = idx * anglePerSlot - 90;
+      const endAngle = startAngle + anglePerSlot;
+      const startRad = (startAngle * Math.PI) / 180;
+      const endRad = (endAngle * Math.PI) / 180;
+
+      const x1 = centerX + radius * Math.cos(startRad);
+      const y1 = centerY + radius * Math.sin(startRad);
+      const x2 = centerX + radius * Math.cos(endRad);
+      const y2 = centerY + radius * Math.sin(endRad);
+
+      const largeArc = anglePerSlot > 180 ? 1 : 0;
+      const pathD = `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+
+      const color = WHEEL_COLORS[idx % WHEEL_COLORS.length];
+      const label = getWedgeLabel(slot);
+      const isBankrupt = label === 'BANKRUPT';
+      const isLoseTurn = label === 'LOSE A TURN';
+
+      // Add wedge path
+      elements.push(
+        <Path
+          key={`wedge-${idx}`}
+          d={pathD}
+          fill={isBankrupt ? '#000' : isLoseTurn ? '#fff' : color}
+          stroke="#222"
+          strokeWidth={1}
+        />
+      );
+
+      // Add text label - position near outer edge where wedge is wider
+      const midAngle = (startAngle + endAngle) / 2;
+      const midRad = (midAngle * Math.PI) / 180;
+      const textRadius = radius * 0.78;
+      const textX = centerX + textRadius * Math.cos(midRad);
+      const textY = centerY + textRadius * Math.sin(midRad);
+
+      // Rotate text to read outward from center, flip if on left side of wheel
+      const normalizedAngle = ((midAngle % 360) + 360) % 360;
+      let rotation = midAngle;
+      if (normalizedAngle > 90 && normalizedAngle < 270) {
+        rotation = midAngle + 180;
+      }
+
+      // Scale font size based on wheel size and label length
+      const baseSize = size / 300;
+      const textColor = isBankrupt ? '#fff' : isLoseTurn ? '#000' : '#000';
+      const fontSize = (label.length > 8 ? 6 : label.length > 5 ? 7 : 9) * baseSize;
+
+      elements.push(
+        <SvgText
+          key={`text-${idx}`}
+          x={textX}
+          y={textY}
+          fill={textColor}
+          fontSize={fontSize}
+          fontWeight="bold"
+          textAnchor="middle"
+          alignmentBaseline="middle"
+          transform={`rotate(${rotation}, ${textX}, ${textY})`}
+        >
+          {label}
+        </SvgText>
+      );
+    });
+
+    return elements;
+  }, [wheelSlots, size, centerX, centerY, radius, getWedgeLabel]);
+
+  // Separate highlight overlay to avoid re-rendering wedges
+  const highlightOverlay = useMemo(() => {
+    if (!showHighlight || lastSpinIndex === null || wheelSlots.length === 0) return null;
+
     const anglePerSlot = 360 / wheelSlots.length;
-    const startAngle = idx * anglePerSlot - 90;
+    const startAngle = lastSpinIndex * anglePerSlot - 90;
     const endAngle = startAngle + anglePerSlot;
     const startRad = (startAngle * Math.PI) / 180;
     const endRad = (endAngle * Math.PI) / 180;
@@ -165,75 +227,21 @@ export function AnimatedWheel({
     const largeArc = anglePerSlot > 180 ? 1 : 0;
     const pathD = `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
 
-    const color = WHEEL_COLORS[idx % WHEEL_COLORS.length];
-    const label = getWedgeLabel(slot);
-    const isBankrupt = label === 'BANKRUPT';
-    const isLoseTurn = label === 'LOSE A TURN';
-
-    // Add wedge path
-    elements.push(
-      <Path
-        key={`wedge-${idx}`}
-        d={pathD}
-        fill={isBankrupt ? '#000' : isLoseTurn ? '#fff' : color}
-        stroke="#222"
-        strokeWidth={1}
-      />
-    );
-
-    // Add text label - position near outer edge where wedge is wider
-    const midAngle = (startAngle + endAngle) / 2;
-    const midRad = (midAngle * Math.PI) / 180;
-    const textRadius = radius * 0.78;
-    const textX = centerX + textRadius * Math.cos(midRad);
-    const textY = centerY + textRadius * Math.sin(midRad);
-
-    // Rotate text to read outward from center, flip if on left side of wheel
-    // Normalize angle to 0-360 range
-    const normalizedAngle = ((midAngle % 360) + 360) % 360;
-    let rotation = midAngle;
-    // Flip text on left side of wheel (90 to 270 degrees) so it's not upside down
-    if (normalizedAngle > 90 && normalizedAngle < 270) {
-      rotation = midAngle + 180;
-    }
-
-    // Scale font size based on wheel size and label length
-    const baseSize = size / 300;
-    const displayLabel = label;
-    const textColor = isBankrupt ? '#fff' : isLoseTurn ? '#000' : '#000';
-    const fontSize = (label.length > 8 ? 6 : label.length > 5 ? 7 : 9) * baseSize;
-
-    elements.push(
-      <SvgText
-        key={`text-${idx}`}
-        x={textX}
-        y={textY}
-        fill={textColor}
-        fontSize={fontSize}
-        fontWeight="bold"
-        textAnchor="middle"
-        alignmentBaseline="middle"
-        transform={`rotate(${rotation}, ${textX}, ${textY})`}
+    return (
+      <Animated.View
+        style={{
+          position: 'absolute',
+          opacity: highlightOpacityAnim,
+        }}
       >
-        {displayLabel}
-      </SvgText>
+        <Svg width={size} height={size}>
+          <Path d={pathD} fill={HIGHLIGHT_COLOR} />
+        </Svg>
+      </Animated.View>
     );
+  }, [showHighlight, lastSpinIndex, wheelSlots.length, centerX, centerY, radius, size, highlightOpacityAnim]);
 
-    // Add highlight overlay for winning wedge
-    if (showHighlight && lastSpinIndex === idx && highlightOpacity > 0) {
-      elements.push(
-        <Path
-          key={`highlight-${idx}`}
-          d={pathD}
-          fill={HIGHLIGHT_COLOR}
-          opacity={highlightOpacity}
-        />
-      );
-    }
-  });
-
-  // Scale pointer size based on wheel size
-  const pointerSize = size / 300;
+  if (wheelSlots.length === 0) return null;
 
   return (
     <View style={styles.wheelContainer}>
@@ -247,20 +255,31 @@ export function AnimatedWheel({
           },
         ]}
       />
-      <View
+      <Animated.View
         style={{
           width: size,
           height: size,
-          transform: [{ rotate: `${wheelRotation}deg` }],
+          transform: [
+            {
+              rotate: rotationAnim.interpolate({
+                inputRange: [0, 360],
+                outputRange: ['0deg', '360deg'],
+              }),
+            },
+          ],
         }}
       >
         <Svg width={size} height={size}>
-          {elements}
+          {wedgeElements}
         </Svg>
-      </View>
+        {highlightOverlay}
+      </Animated.View>
     </View>
   );
-}
+};
+
+// Wrap with React.memo to prevent unnecessary re-renders
+export const AnimatedWheel = React.memo(AnimatedWheelComponent);
 
 const styles = StyleSheet.create({
   wheelContainer: {

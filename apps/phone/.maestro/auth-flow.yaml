@@ -1,0 +1,29 @@
+appId: com.holidaywheel.phone
+---
+# Test: Authentication Flow
+# Tests navigation from login to register screen and back
+
+- launchApp
+
+# Wait for login screen to load
+- assertVisible: "Holiday Wheel"
+
+# Test navigation to register screen
+- tapOn: "Create Account"
+- assertVisible: "Display Name"
+- assertVisible: "Confirm Password"
+- takeScreenshot: register-screen
+
+# Go back to login
+- pressKey: back
+- assertVisible: "Sign In"
+- takeScreenshot: back-to-login
+
+# Test "Forgot Password" link if present
+- runFlow:
+    when:
+      visible: "Forgot Password?"
+    commands:
+      - tapOn: "Forgot Password?"
+      - takeScreenshot: forgot-password
+      - pressKey: back

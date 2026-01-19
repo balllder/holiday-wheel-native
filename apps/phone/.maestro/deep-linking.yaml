@@ -1,0 +1,32 @@
+appId: com.holidaywheel.phone
+env:
+  TEST_EMAIL: test-e2e@maestro.test
+  TEST_PASSWORD: TestPassword123!
+---
+# Test: Deep Linking
+# Tests the holidaywheel:// deep link functionality
+
+- launchApp
+
+# Login first
+- assertVisible: "Sign In"
+- tapOn: "Email"
+- inputText: ${TEST_EMAIL}
+- tapOn: "Password"
+- inputText: ${TEST_PASSWORD}
+- tapOn: "Sign In"
+
+# Wait for lobby
+- assertVisible: "Game Rooms"
+
+# Test deep link to controller mode
+- openLink: "holidaywheel://join?room=TEST123&server=http://10.0.2.2:5000"
+
+# Verify navigation to controller screen
+- assertVisible: "Controller"
+- assertVisible: "TEST123"
+- takeScreenshot: controller-via-deeplink
+
+# Go back to lobby
+- pressKey: back
+- assertVisible: "Game Rooms"

@@ -1,0 +1,54 @@
+appId: com.holidaywheel.tv
+env:
+  TEST_EMAIL: tv-test@maestro.test
+  TEST_PASSWORD: TVTestPassword123!
+---
+# Test: TV Remote Controls
+# Tests TV-specific remote button handling (D-pad, Menu, Play/Pause)
+
+- launchApp
+
+# Login first
+- assertVisible: "Sign In"
+- tapOn: "Email"
+- inputText: ${TEST_EMAIL}
+- tapOn: "Password"
+- inputText: ${TEST_PASSWORD}
+- tapOn: "Sign In"
+
+# Wait for lobby
+- assertVisible: "Game Lobby"
+- takeScreenshot: tv-lobby-initial
+
+# Test D-pad navigation
+- pressKey: Down
+- takeScreenshot: after-dpad-down
+
+- pressKey: Up
+- takeScreenshot: after-dpad-up
+
+- pressKey: Right
+- takeScreenshot: after-dpad-right
+
+- pressKey: Left
+- takeScreenshot: after-dpad-left
+
+# Test Menu button (toggle host controls)
+- pressKey: Menu
+- takeScreenshot: after-menu-press
+
+# Test selecting a room (if available)
+- runFlow:
+    when:
+      visible: "Room Code"
+    commands:
+      - tapOn: "Room Code"
+      - inputText: "TVTEST"
+      - takeScreenshot: room-code-entered
+      - assertVisible: "Create Room"
+
+# Test focus management
+- pressKey: Down
+- pressKey: Down
+- pressKey: Select
+- takeScreenshot: after-select-press

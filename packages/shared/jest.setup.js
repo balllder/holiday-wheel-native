@@ -1,5 +1,8 @@
 /* eslint-env jest */
 
+// Configure React act() environment to suppress act() warnings
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
 // Variable names must start with 'mock' for Jest to allow them in mock factories
 
 // Mock AsyncStorage

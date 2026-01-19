@@ -1,0 +1,82 @@
+appId: com.holidaywheel.phone
+env:
+  TEST_EMAIL: test-e2e@maestro.test
+  TEST_PASSWORD: TestPassword123!
+---
+# Test: Lobby Navigation
+# Tests registration, login, and lobby screen interactions
+# Requires backend server running at localhost:5000
+
+- launchApp
+
+# Navigate to register screen
+- tapOn: "Create Account"
+- assertVisible: "Display Name"
+
+# Fill registration form with test data
+- tapOn: "Display Name"
+- inputText: "E2E Test User"
+
+- tapOn: "Email"
+- inputText: ${TEST_EMAIL}
+
+- tapOn: "Password"
+- inputText: ${TEST_PASSWORD}
+
+- tapOn: "Confirm Password"
+- inputText: ${TEST_PASSWORD}
+
+# Submit registration
+- tapOn: "Create Account"
+
+# Wait for lobby screen (or handle if user already exists)
+- runFlow:
+    when:
+      visible: "Game Rooms"
+    commands:
+      - assertVisible: "Game Rooms"
+      - takeScreenshot: lobby-screen
+
+# If registration failed (user exists), go back and login
+- runFlow:
+    when:
+      notVisible: "Game Rooms"
+    commands:
+      - pressKey: back
+      - assertVisible: "Sign In"
+      - tapOn: "Email"
+      - inputText: ${TEST_EMAIL}
+      - tapOn: "Password"
+      - inputText: ${TEST_PASSWORD}
+      - tapOn: "Sign In"
+      - assertVisible: "Game Rooms"
+      - takeScreenshot: lobby-after-login
+
+# Test lobby UI elements
+- assertVisible: "Server URL"
+- assertVisible: "Room Code"
+
+# Test QR scan button (if visible)
+- runFlow:
+    when:
+      visible: "Scan QR"
+    commands:
+      - tapOn: "Scan QR"
+      - takeScreenshot: qr-scan-screen
+      - pressKey: back
+      - assertVisible: "Game Rooms"
+
+# Test room code input
+- tapOn: "Room Code"
+- inputText: "TEST123"
+- takeScreenshot: room-code-entered
+
+# Test server URL input
+- tapOn: "Server URL"
+- clearText
+- inputText: "http://10.0.2.2:5000"
+- takeScreenshot: server-url-configured
+
+# Verify join button is present
+- assertVisible:
+    text: "Join Room"

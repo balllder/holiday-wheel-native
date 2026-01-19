@@ -1,0 +1,21 @@
+appId: com.holidaywheel.tv
+---
+# Test: TV App Launch and Initial Screen
+# Verifies the TV app launches successfully and shows the login screen
+
+- launchApp
+
+- assertVisible: "Holiday Wheel"
+- assertVisible: "Email"
+- assertVisible: "Password"
+
+# Verify sign in button is present
+- assertVisible:
+    text: "Sign In"
+
+# Verify register link is visible
+- assertVisible:
+    text: "Create Account"
+
+# Take screenshot for visual verification
+- takeScreenshot: tv-login-screen
