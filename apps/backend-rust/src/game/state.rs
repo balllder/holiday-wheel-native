@@ -123,10 +123,17 @@ pub struct RoomConfig {
     /// Seconds before disconnected players are removed (0 = never, default 300 = 5 minutes)
     #[serde(default = "default_disconnect_timeout")]
     pub disconnect_timeout_secs: i64,
+    /// Seconds for turn timer after spin (0 = disabled, default 10)
+    #[serde(default = "default_turn_timer")]
+    pub turn_timer_seconds: i32,
 }
 
 fn default_disconnect_timeout() -> i64 {
     300 // 5 minutes default
+}
+
+fn default_turn_timer() -> i32 {
+    10 // 10 seconds default
 }
 
 impl Default for RoomConfig {
@@ -140,6 +147,7 @@ impl Default for RoomConfig {
             prize_wedge_names: vec!["GIFT CARD".to_string()],
             pack_id: None, // All packs by default
             disconnect_timeout_secs: 300, // 5 minutes
+            turn_timer_seconds: 10, // 10 seconds to guess after spin
         }
     }
 }
@@ -205,6 +213,9 @@ pub struct Game {
 
     // Final round state
     pub final_state: FinalState,
+
+    // Turn timer - timestamp when turn expires (started after spin animation completes)
+    pub turn_timer_end_ts: Option<f64>,
 }
 
 impl Game {
@@ -230,6 +241,7 @@ impl Game {
             active_pack_name: None,
             tossup: TossupState::default(),
             final_state: FinalState::default(),
+            turn_timer_end_ts: None,
         }
     }
 
@@ -557,6 +569,7 @@ impl Game {
     pub fn clear_turn_state(&mut self) {
         self.current_wedge = None;
         self.wheel_index = None;
+        self.turn_timer_end_ts = None;
         // Note: last_spin_index is NOT cleared - used for prize wedge replacement
     }
 
@@ -843,6 +856,42 @@ impl Game {
         }
     }
 
+    /// Get remaining seconds in turn timer
+    pub fn turn_timer_remaining_seconds(&self) -> Option<i32> {
+        self.turn_timer_end_ts.map(|end_ts| {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f64();
+            (end_ts - now).max(0.0) as i32
+        })
+    }
+
+    /// Check if turn timer expired
+    pub fn turn_timer_expired(&self) -> bool {
+        if let Some(remaining) = self.turn_timer_remaining_seconds() {
+            remaining <= 0
+        } else {
+            false
+        }
+    }
+
+    /// Start the turn timer after spin animation completes
+    pub fn start_turn_timer(&mut self) {
+        if self.config.turn_timer_seconds > 0 && self.current_wedge.is_some() {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f64();
+            self.turn_timer_end_ts = Some(now + self.config.turn_timer_seconds as f64);
+        }
+    }
+
+    /// Clear the turn timer
+    pub fn clear_turn_timer(&mut self) {
+        self.turn_timer_end_ts = None;
+    }
+
     /// End final round
     pub fn end_final(&mut self) {
         self.phase = GamePhase::Normal;
@@ -937,6 +986,7 @@ impl Game {
                 remaining_seconds: self.final_remaining_seconds(),
                 jackpot: self.config.final_jackpot,
             },
+            turn_timer_remaining: self.turn_timer_remaining_seconds(),
         }
     }
 }
@@ -1028,6 +1078,8 @@ pub struct GameState {
     pub tossup: TossupStateClient,
     #[serde(rename = "final")]
     pub final_round: FinalStateClient,
+    /// Remaining seconds in turn timer (None if not active)
+    pub turn_timer_remaining: Option<i32>,
 }
 
 #[cfg(test)]

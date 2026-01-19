@@ -677,6 +677,7 @@ impl Database {
                 prize_wedge_names,
                 pack_id: row.get::<Option<i64>, _>("active_pack_id"),
                 disconnect_timeout_secs: row.get::<Option<i64>, _>("disconnect_timeout_secs").unwrap_or(300),
+                turn_timer_seconds: row.try_get::<Option<i32>, _>("turn_timer_seconds").ok().flatten().unwrap_or(10),
             })
         } else {
             Ok(RoomConfig::default())
@@ -1894,6 +1895,7 @@ mod tests {
             prize_wedge_names: vec!["PRIZE 1".to_string(), "PRIZE 2".to_string()],
             pack_id: Some(1),
             disconnect_timeout_secs: 300,
+            turn_timer_seconds: 10,
         };
 
         db.set_room_config("custom-room", &config, Some(1)).await.unwrap();
@@ -2488,6 +2490,7 @@ mod tests {
             prize_wedge_names: vec!["CAR".to_string()],
             pack_id: Some(1),
             disconnect_timeout_secs: 600,
+            turn_timer_seconds: 10,
         };
 
         db.set_room_config("config-test", &config1, Some(1)).await.unwrap();
@@ -2502,6 +2505,7 @@ mod tests {
             prize_wedge_names: vec!["TRIP".to_string(), "BOAT".to_string()],
             pack_id: Some(2),
             disconnect_timeout_secs: 120,
+            turn_timer_seconds: 10,
         };
 
         db.set_room_config("config-test", &config2, Some(2)).await.unwrap();

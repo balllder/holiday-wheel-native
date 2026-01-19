@@ -1877,6 +1877,7 @@ async fn admin_save_settings(
         prize_wedge_names: req.prize_wedge_names.unwrap_or(existing.prize_wedge_names),
         pack_id,
         disconnect_timeout_secs: req.disconnect_timeout_secs.unwrap_or(existing.disconnect_timeout_secs),
+        turn_timer_seconds: existing.turn_timer_seconds,
     };
 
     match state.db.set_room_config(&room_name, &config, pack_id).await {

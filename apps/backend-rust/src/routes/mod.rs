@@ -2824,6 +2824,54 @@ pub async fn game() -> Html<String> {
             font-weight: bold;
             color: #000;
         }}
+
+        /* Turn timer countdown */
+        .turn-timer {{
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, rgba(255, 68, 68, 0.2), rgba(255, 136, 0, 0.2));
+            border: 2px solid #ff4444;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            animation: timerPulse 1s ease-in-out infinite;
+        }}
+        .turn-timer.active {{
+            display: flex;
+        }}
+        .turn-timer.urgent {{
+            border-color: #ff0000;
+            background: linear-gradient(135deg, rgba(255, 0, 0, 0.3), rgba(255, 68, 68, 0.3));
+            animation: timerUrgent 0.5s ease-in-out infinite;
+        }}
+        @keyframes timerPulse {{
+            0%, 100% {{ opacity: 1; }}
+            50% {{ opacity: 0.8; }}
+        }}
+        @keyframes timerUrgent {{
+            0%, 100% {{ transform: scale(1); }}
+            50% {{ transform: scale(1.02); }}
+        }}
+        .turn-timer-icon {{
+            font-size: 18px;
+        }}
+        .turn-timer-text {{
+            color: #ff4444;
+            font-weight: bold;
+            font-size: 16px;
+            font-family: 'Courier New', monospace;
+        }}
+        .turn-timer.urgent .turn-timer-text {{
+            color: #ff0000;
+            animation: timerTextBlink 0.3s ease-in-out infinite;
+        }}
+        @keyframes timerTextBlink {{
+            0%, 100% {{ opacity: 1; }}
+            50% {{ opacity: 0.5; }}
+        }}
+
         .guess-input {{
             display: flex;
             flex-direction: column;
@@ -3749,6 +3797,11 @@ pub async fn game() -> Html<String> {
                     <span class="icon">🃏</span> Wild Card
                 </button>
                 <button class="btn btn-danger" id="buzzBtn" onclick="buzz()" style="display: none;">🔔 BUZZ IN!</button>
+            </div>
+
+            <div class="turn-timer" id="turnTimer">
+                <span class="turn-timer-icon">⏱️</span>
+                <span class="turn-timer-text" id="turnTimerText">10s</span>
             </div>
 
             <div class="guess-input" id="guessArea">
@@ -4806,6 +4859,11 @@ pub async fn game() -> Html<String> {
             }}
             // Focus the letter input so user is ready to guess
             document.getElementById('letterInput').focus();
+
+            // Notify server that spin animation is complete to start turn timer
+            if (socket && room) {{
+                socket.emit('spin_complete', {{ room }});
+            }}
         }}
 
         function connect() {{
@@ -5351,6 +5409,20 @@ pub async fn game() -> Html<String> {
             const hasSpunAndCanGuess = currentWedge !== null && currentWedge !== undefined && !isBankrupt && !isLoseTurn;
             const waitingForInput = isMyTurn && hasSpunAndCanGuess && !isTossup && !isFinalRound;
             document.getElementById('guessArea').classList.toggle('waiting', waitingForInput);
+
+            // ========== TURN TIMER DISPLAY ==========
+            const turnTimerEl = document.getElementById('turnTimer');
+            const turnTimerTextEl = document.getElementById('turnTimerText');
+            const turnTimeRemaining = gameState.turn_timer_remaining;
+
+            if (turnTimeRemaining !== null && turnTimeRemaining !== undefined && turnTimeRemaining > 0 && hasSpunAndCanGuess && !isTossup && !isFinalRound) {{
+                turnTimerEl.classList.add('active');
+                turnTimerTextEl.textContent = turnTimeRemaining + 's';
+                // Add urgent class when time is low
+                turnTimerEl.classList.toggle('urgent', turnTimeRemaining <= 3);
+            }} else {{
+                turnTimerEl.classList.remove('active', 'urgent');
+            }}
 
             // Buzz button for toss-up
             const buzzBtn = document.getElementById('buzzBtn');

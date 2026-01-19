@@ -910,6 +910,71 @@ pub fn register_handlers(io: &SocketIo) {
             },
         );
 
+        // Spin animation complete - start turn timer
+        socket.on(
+            "spin_complete",
+            |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
+                info!("Spin complete in room {}", req.room);
+
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    // Only start timer if:
+                    // 1. In normal phase
+                    // 2. There's a current wedge (spin was successful, not Bankrupt/LoseTurn)
+                    // 3. Timer is enabled (turn_timer_seconds > 0)
+                    if game.phase == GamePhase::Normal
+                        && game.current_wedge.is_some()
+                        && game.config.turn_timer_seconds > 0
+                    {
+                        game.start_turn_timer();
+                        info!(
+                            "Turn timer started: {} seconds in room {}",
+                            game.config.turn_timer_seconds, req.room
+                        );
+
+                        // Spawn background task to check for timer expiry
+                        let state_clone = state.clone();
+                        let room_clone = req.room.clone();
+                        let timer_seconds = game.config.turn_timer_seconds as u64;
+                        tokio::spawn(async move {
+                            // Wait for timer to expire (plus small buffer)
+                            tokio::time::sleep(Duration::from_secs(timer_seconds + 1)).await;
+
+                            // Check if timer expired and auto-pass
+                            let mut manager = state_clone.game_manager.write().await;
+                            if let Some(game) = manager.get_room_mut(&room_clone) {
+                                if game.turn_timer_expired() && game.current_wedge.is_some() {
+                                    // Timer expired - auto-pass turn
+                                    let player_name = game.players.get(game.active_idx)
+                                        .map(|p| p.name.clone())
+                                        .unwrap_or_else(|| "Player".to_string());
+                                    info!(
+                                        "Turn timer expired for {} in room {}, auto-passing",
+                                        player_name, room_clone
+                                    );
+                                    game.clear_turn_state();
+                                    game.advance_turn();
+
+                                    // Broadcast update
+                                    if let Some(io) = state_clone.io.get() {
+                                        let msg = format!("{} ran out of time!", player_name);
+                                        if let Some(ns) = io.of("/") {
+                                            let _ = ns.to(room_clone.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
+                                        }
+                                        if let Some(ns) = io.of("/") {
+                                            let _ = ns.to(room_clone).emit("state", &game.get_state());
+                                        }
+                                    }
+                                }
+                            }
+                        });
+
+                        broadcast_state!(socket, req.room, game.get_state());
+                    }
+                }
+            },
+        );
+
         // Guess a letter (consonant)
         socket.on(
             "guess",
