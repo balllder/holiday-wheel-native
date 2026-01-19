@@ -532,8 +532,38 @@ pub fn register_handlers(io: &SocketIo) {
                     None
                 };
 
+                // Check if room exists and needs initial puzzle (default puzzle has id=0)
+                let needs_initial_puzzle = {
+                    let manager = state.game_manager.read().await;
+                    match manager.get_room(&req.room) {
+                        Some(game) => game.puzzle.id == 0,
+                        None => true, // Room doesn't exist yet, will need puzzle
+                    }
+                };
+
+                // Fetch initial puzzle from database if needed (before acquiring write lock)
+                let initial_puzzle = if needs_initial_puzzle {
+                    match state.db.get_random_puzzle(&req.room, None).await {
+                        Ok(p) => Some(p),
+                        Err(e) => {
+                            warn!("Failed to get initial puzzle for new room: {}", e);
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+
                 let mut manager = state.game_manager.write().await;
                 let game = manager.get_or_create_room(&req.room);
+
+                // Set initial puzzle if we fetched one and room still has default puzzle
+                if let Some(puzzle) = initial_puzzle {
+                    if game.puzzle.id == 0 {
+                        info!("Setting initial puzzle for room {}: {}", req.room, puzzle.answer);
+                        game.new_puzzle(puzzle);
+                    }
+                }
 
                 // Check if already in game with this socket
                 if let Some(idx) = game.player_idx_by_socket(socket.id.as_str()) {
