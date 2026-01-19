@@ -15,6 +15,13 @@ node_modules
 # Testing
 coverage
 
+# Extracted JavaScript from Rust (CI validation)
+.extracted-js/
+
+# Playwright
+e2e/playwright-report/
+e2e/test-results/
+
 # Turbo
 .turbo
 
