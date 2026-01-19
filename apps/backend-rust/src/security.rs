@@ -15,13 +15,13 @@ const REFERRER_POLICY: &str = "strict-origin-when-cross-origin";
 
 /// Content Security Policy
 /// - default-src 'self': Only allow resources from same origin by default
-/// - script-src 'self' 'unsafe-inline' + CDNs: Allow scripts from same origin, inline, Socket.IO and jsdelivr (QR code lib)
+/// - script-src 'self' 'unsafe-inline' + CDNs: Allow scripts from same origin, inline, Socket.IO, jsdelivr, and Google Sign-In
 /// - style-src 'self' 'unsafe-inline' + Google Fonts: Allow styles from same origin, inline, and Google Fonts
 /// - font-src 'self' + Google Fonts: Allow fonts from same origin and Google Fonts
 /// - img-src 'self' data: blob:: Allow images from same origin, data URIs, and blob URLs
-/// - connect-src 'self' wss: ws:: Allow connections to same origin and WebSockets
+/// - connect-src 'self' wss: ws: + Google APIs: Allow connections to same origin, WebSockets, and Google OAuth APIs
 /// - frame-ancestors 'none': Prevent embedding in frames (reinforces X-Frame-Options)
-const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.socket.io https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' wss: ws:; frame-ancestors 'none'";
+const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.socket.io https://cdn.jsdelivr.net https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' wss: ws: https://www.googleapis.com https://accounts.google.com; frame-ancestors 'none'";
 
 /// Layer that adds security headers to all responses.
 #[derive(Clone, Debug)]
