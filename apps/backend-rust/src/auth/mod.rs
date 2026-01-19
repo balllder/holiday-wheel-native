@@ -422,7 +422,7 @@ async fn register_user(
                     user: Some(UserInfo {
                         id: user_id,
                         email: email.clone(),
-                        display_name: display_name.clone(),
+                        display_name: display_name.to_string(),
                         is_admin: None,
                     }),
                 };
