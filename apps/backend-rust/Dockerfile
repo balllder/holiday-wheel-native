@@ -56,21 +56,21 @@ RUN apt-get update && apt-get install -y \
 
 # Create non-root user for security
 # Using uid 99 and gid 100 for Unraid compatibility (nobody:users)
-RUN groupadd --gid 100 appgroup && \
-    useradd --uid 99 --gid appgroup --shell /bin/bash --create-home appuser
+# gid 100 (users) already exists in Debian, so we just create the user
+RUN useradd --uid 99 --gid 100 --shell /bin/bash --create-home appuser
 
 WORKDIR /app
 
 # Create necessary directories with proper ownership
 # Support both /app/data (default) and /data (common mount point)
 RUN mkdir -p /app/data /app/certs /data && \
-    chown -R appuser:appgroup /app /data
+    chown -R appuser:users /app /data
 
 # Copy the binary from builder
-COPY --from=builder --chown=appuser:appgroup /app/target/release/holiday-wheel-backend /app/holiday-wheel-backend
+COPY --from=builder --chown=appuser:users /app/target/release/holiday-wheel-backend /app/holiday-wheel-backend
 
 # Copy sample puzzle data if needed (optional, can be mounted)
-COPY --chown=appuser:appgroup holiday-puzzles.json sample-puzzles.json ./
+COPY --chown=appuser:users holiday-puzzles.json sample-puzzles.json ./
 
 # Ensure binary is executable
 RUN chmod +x /app/holiday-wheel-backend
