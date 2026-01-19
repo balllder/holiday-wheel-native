@@ -2831,11 +2831,17 @@ pub async fn game() -> Html<String> {
             align-items: center;
             justify-content: center;
             gap: 8px;
-            padding: 8px 16px;
-            background: linear-gradient(135deg, rgba(255, 68, 68, 0.2), rgba(255, 136, 0, 0.2));
+            padding: 10px 18px;
+            background: linear-gradient(135deg, rgba(255, 68, 68, 0.3), rgba(255, 136, 0, 0.3));
             border: 2px solid #ff4444;
-            border-radius: 8px;
-            margin-bottom: 12px;
+            border-radius: 10px;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            font-size: 18px;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(255, 68, 68, 0.4);
             animation: timerPulse 1s ease-in-out infinite;
         }}
         .turn-timer.active {{
@@ -5415,13 +5421,34 @@ pub async fn game() -> Html<String> {
             const turnTimerTextEl = document.getElementById('turnTimerText');
             const turnTimeRemaining = gameState.turn_timer_remaining;
 
+            // Clear any existing timer interval when state updates
+            if (turnTimerInterval) {{
+                clearInterval(turnTimerInterval);
+                turnTimerInterval = null;
+            }}
+
             if (turnTimeRemaining !== null && turnTimeRemaining !== undefined && turnTimeRemaining > 0 && hasSpunAndCanGuess && !isTossup && !isFinalRound) {{
                 turnTimerEl.classList.add('active');
-                turnTimerTextEl.textContent = turnTimeRemaining + 's';
-                // Add urgent class when time is low
-                turnTimerEl.classList.toggle('urgent', turnTimeRemaining <= 3);
+                turnTimerLocalRemaining = turnTimeRemaining;
+                turnTimerTextEl.textContent = turnTimerLocalRemaining + 's';
+                turnTimerEl.classList.toggle('urgent', turnTimerLocalRemaining <= 3);
+
+                // Start local countdown interval
+                turnTimerInterval = setInterval(() => {{
+                    turnTimerLocalRemaining--;
+                    if (turnTimerLocalRemaining > 0) {{
+                        turnTimerTextEl.textContent = turnTimerLocalRemaining + 's';
+                        turnTimerEl.classList.toggle('urgent', turnTimerLocalRemaining <= 3);
+                    }} else {{
+                        // Timer expired - hide it (server will send state update)
+                        turnTimerEl.classList.remove('active', 'urgent');
+                        clearInterval(turnTimerInterval);
+                        turnTimerInterval = null;
+                    }}
+                }}, 1000);
             }} else {{
                 turnTimerEl.classList.remove('active', 'urgent');
+                turnTimerLocalRemaining = null;
             }}
 
             // Buzz button for toss-up
@@ -5436,6 +5463,8 @@ pub async fn game() -> Html<String> {
         }}
 
         let notificationTimeout = null;
+        let turnTimerInterval = null;
+        let turnTimerLocalRemaining = null;
 
         function showNotification(msg, type = 'info', duration = 5000) {{
             const notif = document.getElementById('notification');
@@ -6280,6 +6309,13 @@ pub async fn admin() -> Html<String> {
                         <small style="color:#888;display:block;margin-top:4px;">Disconnected players are removed after this time. Default: 300 (5 minutes)</small>
                     </div>
                 </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Turn Timer (seconds, 0 = disabled)</label>
+                        <input type="number" id="settingsTurnTimer" value="10" min="0" max="60" placeholder="10">
+                        <small style="color:#888;display:block;margin-top:4px;">Time limit to guess a letter after spinning. Default: 10 seconds</small>
+                    </div>
+                </div>
 
                 <button class="btn" onclick="saveSettings()" style="margin-top: 24px; width: 100%;">Save Settings</button>
             </div>
@@ -6823,6 +6859,7 @@ pub async fn admin() -> Html<String> {
                     document.getElementById('settingsPrizeWedges').value = (data.config.prize_wedge_names || ['GIFT CARD']).join(', ');
                     document.getElementById('settingsPackId').value = data.config.pack_id || 0;
                     document.getElementById('settingsDisconnectTimeout').value = data.config.disconnect_timeout_secs ?? 300;
+                    document.getElementById('settingsTurnTimer').value = data.config.turn_timer_seconds ?? 10;
                 }}
             }} catch (e) {{
                 console.error('Failed to load settings:', e);
@@ -6839,7 +6876,8 @@ pub async fn admin() -> Html<String> {
                 final_jackpot: parseInt(document.getElementById('settingsFinalJackpot').value) || 10000,
                 prize_wedge_names: document.getElementById('settingsPrizeWedges').value.split(',').map(s => s.trim()).filter(s => s),
                 pack_id: packId > 0 ? packId : null,
-                disconnect_timeout_secs: parseInt(document.getElementById('settingsDisconnectTimeout').value) || 300
+                disconnect_timeout_secs: parseInt(document.getElementById('settingsDisconnectTimeout').value) || 300,
+                turn_timer_seconds: parseInt(document.getElementById('settingsTurnTimer').value) ?? 10
             }};
             try {{
                 const res = await fetch(`/auth/api/admin/settings/${{encodeURIComponent(room)}}`, {{
