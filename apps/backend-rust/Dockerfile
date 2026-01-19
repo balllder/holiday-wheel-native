@@ -61,8 +61,9 @@ RUN groupadd --gid 1000 appgroup && \
 WORKDIR /app
 
 # Create necessary directories with proper ownership
-RUN mkdir -p /app/data /app/certs && \
-    chown -R appuser:appgroup /app
+# Support both /app/data (default) and /data (common mount point)
+RUN mkdir -p /app/data /app/certs /data && \
+    chown -R appuser:appgroup /app /data
 
 # Copy the binary from builder
 COPY --from=builder --chown=appuser:appgroup /app/target/release/holiday-wheel-backend /app/holiday-wheel-backend
