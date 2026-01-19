@@ -98,8 +98,8 @@ export function ControllerScreen({ route }: ControllerScreenProps): React.JSX.El
     socketService.spin(room);
   };
 
-  const handleGuess = () => {
-    const letter = letterInput.toUpperCase().trim();
+  const handleGuess = (inputLetter?: string) => {
+    const letter = (inputLetter || letterInput).toUpperCase().trim();
     if (letter.length === 1) {
       Vibration.vibrate(50);
       if (VOWELS.includes(letter)) {
@@ -108,6 +108,15 @@ export function ControllerScreen({ route }: ControllerScreenProps): React.JSX.El
         socketService.guess(room, letter);
       }
       setLetterInput('');
+    }
+  };
+
+  const handleLetterChange = (text: string) => {
+    const letter = text.toUpperCase().trim();
+    if (letter.length === 1 && /[A-Z]/.test(letter) && isMyTurn) {
+      handleGuess(letter);
+    } else {
+      setLetterInput(text);
     }
   };
 
@@ -179,14 +188,14 @@ export function ControllerScreen({ route }: ControllerScreenProps): React.JSX.El
                 placeholder="?"
                 placeholderTextColor="#666"
                 value={letterInput}
-                onChangeText={setLetterInput}
+                onChangeText={handleLetterChange}
                 maxLength={1}
                 autoCapitalize="characters"
                 keyboardType="default"
               />
               <TouchableOpacity
                 style={[styles.guessButton, !isMyTurn && styles.disabled]}
-                onPress={handleGuess}
+                onPress={() => handleGuess()}
                 disabled={!isMyTurn}
               >
                 <Text style={styles.guessText}>GUESS</Text>

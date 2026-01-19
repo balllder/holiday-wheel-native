@@ -143,8 +143,8 @@ export function GameScreen({ route }: GameScreenProps): React.JSX.Element {
     socketService.spin(room);
   };
 
-  const handleGuess = () => {
-    const letter = letterInput.toUpperCase().trim();
+  const handleGuess = (inputLetter?: string) => {
+    const letter = (inputLetter || letterInput).toUpperCase().trim();
     if (letter.length === 1) {
       if (VOWELS.includes(letter)) {
         socketService.buyVowel(room, letter);
@@ -152,6 +152,15 @@ export function GameScreen({ route }: GameScreenProps): React.JSX.Element {
         socketService.guess(room, letter);
       }
       setLetterInput('');
+    }
+  };
+
+  const handleLetterChange = (text: string) => {
+    const letter = text.toUpperCase().trim();
+    if (letter.length === 1 && /[A-Z]/.test(letter) && isMyTurn) {
+      handleGuess(letter);
+    } else {
+      setLetterInput(text);
     }
   };
 
@@ -437,13 +446,13 @@ export function GameScreen({ route }: GameScreenProps): React.JSX.Element {
                 placeholder="Letter"
                 placeholderTextColor="#888"
                 value={letterInput}
-                onChangeText={setLetterInput}
+                onChangeText={handleLetterChange}
                 maxLength={1}
                 autoCapitalize="characters"
               />
               <TouchableOpacity
                 style={[styles.button, !isMyTurn && styles.disabled]}
-                onPress={handleGuess}
+                onPress={() => handleGuess()}
                 disabled={!isMyTurn}
               >
                 <Text style={styles.buttonText}>GUESS</Text>

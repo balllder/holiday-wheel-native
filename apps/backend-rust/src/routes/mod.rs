@@ -3104,10 +3104,10 @@ pub async fn game() -> Html<String> {
             }}, 2000);
         }}
 
-        function guessLetter() {{
+        function guessLetter(letterParam) {{
             hideNotification();
             const input = document.getElementById('letterInput');
-            const letter = input.value.toUpperCase();
+            const letter = letterParam || input.value.toUpperCase();
             if (letter && letter.length === 1) {{
                 socket.emit('guess', {{ room, letter }});
                 input.value = '';
@@ -3229,9 +3229,13 @@ pub async fn game() -> Html<String> {
             socket.emit('buzz', {{ room }});
         }}
 
-        // Enter key to guess
-        document.getElementById('letterInput').addEventListener('keypress', (e) => {{
-            if (e.key === 'Enter') guessLetter();
+        // Auto-guess when letter is typed
+        document.getElementById('letterInput').addEventListener('input', (e) => {{
+            const letter = e.target.value.toUpperCase();
+            if (letter && letter.length === 1 && /[A-Z]/.test(letter)) {{
+                e.target.value = '';
+                guessLetter(letter);
+            }}
         }});
 
         // Enter key to submit solve
