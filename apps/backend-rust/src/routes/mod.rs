@@ -1540,6 +1540,30 @@ pub async fn game() -> Html<String> {
     <style>
         {common_styles}
         body {{ align-items: flex-start; padding: 20px; }}
+
+        /* ========== MODERN THEME COLORS ========== */
+        :root {{
+            --color-primary: #d4af37;
+            --color-primary-light: #ffd700;
+            --color-primary-dark: #b8860b;
+            --color-primary-glow: rgba(212, 175, 55, 0.4);
+            --color-accent: #6366f1;
+            --color-accent-glow: rgba(99, 102, 241, 0.4);
+            --color-success: #22c55e;
+            --color-success-glow: rgba(34, 197, 94, 0.4);
+            --color-danger: #ef4444;
+            --color-danger-glow: rgba(239, 68, 68, 0.4);
+            --color-warning: #f59e0b;
+            --color-background: #0d0628;
+            --color-surface: #1a0a3e;
+            --color-surface-light: #2a1a4e;
+            --color-border: #333;
+            --color-text: #ffffff;
+            --color-text-muted: rgba(255, 255, 255, 0.5);
+            --color-board-bg: #1a5cb8;
+            --color-empty-cell: #228b22;
+        }}
+
         .game-container {{
             width: 100%;
             max-width: 1200px;
@@ -1549,18 +1573,26 @@ pub async fn game() -> Html<String> {
         }}
         .main-area {{
             background: rgba(26, 10, 62, 0.8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             border-radius: 16px;
-            border: 2px solid #333;
+            border: 1px solid rgba(255, 255, 255, 0.1);
             padding: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }}
         .sidebar {{
             background: rgba(26, 10, 62, 0.8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             border-radius: 16px;
-            border: 2px solid #333;
+            border: 1px solid rgba(255, 255, 255, 0.1);
             padding: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }}
+
+        /* ========== PUZZLE BOARD ========== */
         .puzzle-board {{
-            background: #1a5cb8;
+            background: linear-gradient(180deg, #2070d0 0%, #1a5cb8 50%, #1450a0 100%);
             border-radius: 12px;
             padding: 16px 8px;
             margin: 20px 0;
@@ -1568,6 +1600,10 @@ pub async fn game() -> Html<String> {
             flex-direction: column;
             align-items: center;
             gap: 4px;
+            border: 4px solid var(--color-primary);
+            box-shadow:
+                0 0 20px var(--color-primary-glow),
+                inset 0 2px 4px rgba(255, 255, 255, 0.1);
         }}
         .puzzle-row {{
             display: flex;
@@ -1592,6 +1628,9 @@ pub async fn game() -> Html<String> {
                 0 3px 6px rgba(0,0,0,0.3),
                 0 1px 2px rgba(0,0,0,0.2);
             text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+            perspective: 1000px;
+            transform-style: preserve-3d;
+            transition: transform 0.6s, box-shadow 0.3s;
         }}
         .letter-tile.hidden {{
             background: linear-gradient(180deg, #ffffff 0%, #e8e8e8 100%);
@@ -1609,6 +1648,19 @@ pub async fn game() -> Html<String> {
         .letter-tile.revealed {{
             color: #1a1a1a;
             text-shadow: 0 1px 0 rgba(255,255,255,0.8);
+        }}
+
+        /* Letter reveal animation */
+        .letter-tile.revealing {{
+            animation: letterReveal 0.6s ease-out forwards;
+        }}
+        @keyframes letterReveal {{
+            0% {{ transform: rotateY(90deg); opacity: 0.5; }}
+            50% {{ transform: rotateY(-10deg); }}
+            100% {{ transform: rotateY(0deg); opacity: 1; box-shadow: 0 0 20px var(--color-primary-glow); }}
+        }}
+        .letter-tile.just-revealed {{
+            box-shadow: 0 0 15px var(--color-primary-glow), 0 3px 6px rgba(0,0,0,0.3);
         }}
         .category {{ color: #d4af37; text-align: center; font-size: 18px; margin-bottom: 10px; }}
         .game-layout {{
@@ -1670,19 +1722,116 @@ pub async fn game() -> Html<String> {
             }}
         }}
         .controls {{ display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 20px; }}
+
+        /* ========== ANIMATED BUTTONS ========== */
+        .btn {{
+            background: linear-gradient(180deg, #ffd700 0%, #d4af37 100%);
+            color: #1a0a3e;
+            padding: 14px 28px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+            position: relative;
+            overflow: hidden;
+        }}
+        .btn:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
+        }}
+        .btn:active {{
+            transform: scale(0.95);
+            box-shadow: 0 2px 10px rgba(212, 175, 55, 0.3);
+        }}
+        .btn:disabled {{
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }}
+        .btn-secondary {{
+            background: linear-gradient(180deg, #444 0%, #333 100%);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }}
+        .btn-secondary:hover {{
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        }}
+        .btn-danger {{
+            background: linear-gradient(180deg, #f87171 0%, #ef4444 100%);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+        }}
+        .btn-success {{
+            background: linear-gradient(180deg, #4ade80 0%, #22c55e 100%);
+            color: #1a0a3e;
+            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);
+        }}
+
+        /* ========== PLAYER LIST ========== */
         .player-list {{ margin-top: 20px; }}
         .player {{
             display: flex;
             justify-content: space-between;
-            padding: 12px;
-            background: #0d0628;
-            border-radius: 8px;
+            align-items: center;
+            padding: 12px 16px;
+            background: linear-gradient(180deg, #1a0a3e 0%, #0d0628 100%);
+            border-radius: 12px;
             margin-bottom: 8px;
             border: 2px solid #333;
+            transition: all 0.3s ease;
+            position: relative;
         }}
-        .player.active {{ border-color: #d4af37; }}
-        .player-name {{ color: #fff; }}
-        .player-score {{ color: #d4af37; font-weight: bold; }}
+        .player.active {{
+            border-color: var(--color-primary);
+            box-shadow: 0 0 15px var(--color-primary-glow);
+        }}
+        .player-name {{ color: #fff; font-weight: 500; }}
+        .player-score {{
+            color: var(--color-primary);
+            font-weight: bold;
+            font-size: 18px;
+            position: relative;
+        }}
+
+        /* Score change animation */
+        .score-change {{
+            position: absolute;
+            right: 0;
+            top: -20px;
+            font-size: 16px;
+            font-weight: bold;
+            animation: scoreFloat 1.5s ease-out forwards;
+            pointer-events: none;
+            z-index: 10;
+        }}
+        .score-change.positive {{ color: var(--color-success); }}
+        .score-change.negative {{ color: var(--color-danger); }}
+        @keyframes scoreFloat {{
+            0% {{ opacity: 1; transform: translateY(0); }}
+            100% {{ opacity: 0; transform: translateY(-30px); }}
+        }}
+
+        /* Wild card indicator */
+        .player-wildcards {{
+            display: flex;
+            gap: 4px;
+            margin-left: 8px;
+        }}
+        .wildcard-icon {{
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: #000;
+        }}
         .guess-input {{
             display: flex;
             gap: 10px;
@@ -1779,14 +1928,362 @@ pub async fn game() -> Html<String> {
             top: 50%;
             transform: translateY(-50%);
         }}
+
+        /* ========== CONFETTI ========== */
+        #confetti-container {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 9999;
+            overflow: hidden;
+        }}
+        .confetti {{
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            animation: confettiFall 3s ease-out forwards;
+        }}
+        @keyframes confettiFall {{
+            0% {{ transform: translateY(-10px) rotate(0deg); opacity: 1; }}
+            100% {{ transform: translateY(100vh) rotate(720deg); opacity: 0; }}
+        }}
+
+        /* ========== PHASE TRANSITION OVERLAY ========== */
+        .phase-overlay {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 5000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }}
+        .phase-overlay.active {{
+            opacity: 1;
+            pointer-events: auto;
+        }}
+        .phase-content {{
+            text-align: center;
+            animation: phaseZoom 0.5s ease-out;
+        }}
+        .phase-title {{
+            font-size: 48px;
+            font-weight: bold;
+            color: var(--color-primary);
+            text-shadow: 0 0 30px var(--color-primary-glow);
+            margin-bottom: 16px;
+        }}
+        .phase-subtitle {{
+            font-size: 24px;
+            color: #fff;
+            opacity: 0.8;
+        }}
+        @keyframes phaseZoom {{
+            0% {{ transform: scale(0.5); opacity: 0; }}
+            100% {{ transform: scale(1); opacity: 1; }}
+        }}
+
+        /* ========== MYSTERY WEDGE MODAL ========== */
+        .mystery-modal {{
+            background: linear-gradient(180deg, #2a1a4e 0%, #1a0a3e 100%);
+            border: 3px solid var(--color-primary);
+            box-shadow: 0 0 40px var(--color-primary-glow);
+        }}
+        .mystery-options {{
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin: 24px 0;
+        }}
+        .mystery-option {{
+            padding: 24px 32px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 140px;
+        }}
+        .mystery-option.keep {{
+            background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+            color: #fff;
+        }}
+        .mystery-option.flip {{
+            background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+            color: #fff;
+        }}
+        .mystery-option:hover {{
+            transform: scale(1.05);
+        }}
+        .mystery-option .amount {{
+            font-size: 28px;
+            font-weight: bold;
+            display: block;
+        }}
+        .mystery-option .label {{
+            font-size: 14px;
+            opacity: 0.9;
+        }}
+        .mystery-result {{
+            font-size: 36px;
+            font-weight: bold;
+            margin: 24px 0;
+            animation: mysteryReveal 0.5s ease-out;
+        }}
+        .mystery-result.win {{ color: var(--color-success); }}
+        .mystery-result.lose {{ color: var(--color-danger); }}
+        @keyframes mysteryReveal {{
+            0% {{ transform: scale(0) rotate(-180deg); }}
+            100% {{ transform: scale(1) rotate(0deg); }}
+        }}
+
+        /* ========== EXPRESS MODE INDICATOR ========== */
+        .express-indicator {{
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
+            padding: 12px 24px;
+            border-radius: 12px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+            animation: expressPulse 2s ease-in-out infinite;
+        }}
+        .express-indicator.active {{
+            display: flex;
+        }}
+        .express-label {{
+            font-weight: bold;
+            color: #fff;
+            font-size: 18px;
+        }}
+        .express-streak {{
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            color: #fff;
+            font-weight: bold;
+        }}
+        @keyframes expressPulse {{
+            0%, 100% {{ box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4); }}
+            50% {{ box-shadow: 0 4px 30px rgba(99, 102, 241, 0.7); }}
+        }}
+
+        /* ========== ROUND PROGRESS INDICATOR ========== */
+        .round-indicator {{
+            display: none;
+            background: rgba(26, 10, 62, 0.9);
+            padding: 12px 20px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            border: 1px solid #333;
+        }}
+        .round-indicator.active {{
+            display: block;
+        }}
+        .round-header {{
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }}
+        .round-number {{
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+        }}
+        .round-total {{
+            font-size: 14px;
+            color: var(--color-text-muted);
+        }}
+        .round-dots {{
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-bottom: 8px;
+        }}
+        .round-dot {{
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #333;
+            transition: all 0.3s ease;
+        }}
+        .round-dot.completed {{
+            background: var(--color-success);
+        }}
+        .round-dot.current {{
+            background: var(--color-primary);
+            width: 14px;
+            height: 14px;
+            box-shadow: 0 0 10px var(--color-primary-glow);
+        }}
+        .round-badges {{
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+        }}
+        .round-badge {{
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }}
+        .round-badge.type {{
+            background: var(--color-accent);
+            color: #fff;
+        }}
+        .round-badge.multiplier {{
+            background: var(--color-primary);
+            color: #1a0a3e;
+        }}
+
+        /* ========== TOSS-UP VALUE DISPLAY ========== */
+        .tossup-display {{
+            display: none;
+            background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+            border: 3px solid var(--color-primary);
+            border-radius: 16px;
+            padding: 16px 24px;
+            text-align: center;
+            margin-bottom: 16px;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+        }}
+        .tossup-display.active {{
+            display: block;
+            animation: tossupPulse 0.5s ease-out;
+        }}
+        .triple-header {{
+            margin-bottom: 12px;
+        }}
+        .triple-label {{
+            font-size: 14px;
+            font-weight: bold;
+            color: #fff;
+            letter-spacing: 1px;
+        }}
+        .triple-indicators {{
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 8px;
+        }}
+        .triple-dot {{
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            border: 2px solid #fff;
+        }}
+        .triple-dot.completed {{
+            background: var(--color-success);
+            border-color: var(--color-success);
+        }}
+        .triple-dot.current {{
+            background: var(--color-primary);
+            border-color: var(--color-primary);
+        }}
+        .tossup-value {{
+            font-size: 36px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }}
+        .tossup-for {{
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 4px;
+        }}
+        @keyframes tossupPulse {{
+            0% {{ transform: scale(1.1); }}
+            100% {{ transform: scale(1); }}
+        }}
+
+        /* ========== WHEEL WEDGE HIGHLIGHT ========== */
+        .wheel-svg .wedge-highlight {{
+            animation: wedgeFlash 0.3s ease-out 3;
+        }}
+        @keyframes wedgeFlash {{
+            0%, 100% {{ opacity: 1; }}
+            50% {{ opacity: 0.5; filter: brightness(1.5); }}
+        }}
+
+        /* ========== WILD CARD BUTTON ========== */
+        .wildcard-btn {{
+            background: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%);
+            color: #1a0a3e;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+        }}
+        .wildcard-btn.available {{
+            display: flex;
+        }}
+        .wildcard-btn .icon {{
+            font-size: 20px;
+        }}
     </style>
 </head>
 <body>
+    <!-- Confetti Container -->
+    <div id="confetti-container"></div>
+
+    <!-- Phase Transition Overlay -->
+    <div class="phase-overlay" id="phaseOverlay">
+        <div class="phase-content">
+            <div class="phase-title" id="phaseTitle">TOSS-UP!</div>
+            <div class="phase-subtitle" id="phaseSubtitle">Buzz in to answer!</div>
+        </div>
+    </div>
+
+    <!-- Express Mode Indicator -->
+    <div class="express-indicator" id="expressIndicator">
+        <span class="express-label">⚡ EXPRESS MODE</span>
+        <span class="express-streak" id="expressStreak">$0</span>
+    </div>
+
     <div class="game-container">
         <div class="main-area">
             <div class="game-header">
                 <h1>🎡 Holiday Wheel</h1>
                 <a href="/lobby" class="btn btn-secondary leave-btn">Leave Room</a>
+            </div>
+
+            <!-- Round Progress Indicator -->
+            <div class="round-indicator" id="roundIndicator">
+                <div class="round-header">
+                    <span class="round-number" id="roundNumber">ROUND 1</span>
+                    <span class="round-total" id="roundTotal">of 4</span>
+                </div>
+                <div class="round-dots" id="roundDots"></div>
+                <div class="round-badges" id="roundBadges"></div>
+            </div>
+
+            <!-- Toss-Up Value Display -->
+            <div class="tossup-display" id="tossupDisplay">
+                <div class="triple-header" id="tripleHeader" style="display: none;">
+                    <span class="triple-label">TRIPLE TOSS-UP</span>
+                    <div class="triple-indicators" id="tripleIndicators">
+                        <div class="triple-dot" id="triple0"></div>
+                        <div class="triple-dot" id="triple1"></div>
+                        <div class="triple-dot" id="triple2"></div>
+                    </div>
+                </div>
+                <div class="tossup-for">FOR</div>
+                <div class="tossup-value" id="tossupValue">$1,000</div>
             </div>
 
             <div class="notification" id="notification"></div>
@@ -1813,6 +2310,10 @@ pub async fn game() -> Html<String> {
                 <button class="btn" id="spinBtn" onclick="spin()">Spin</button>
                 <button class="btn btn-secondary" id="buyVowelBtn" onclick="buyVowel()">Buy Vowel ($250)</button>
                 <button class="btn btn-secondary" id="solveBtn" onclick="promptSolve()">Solve</button>
+                <button class="btn wildcard-btn" id="wildcardBtn" onclick="useWildCard()">
+                    <span class="icon">🃏</span> Wild Card
+                </button>
+                <button class="btn btn-danger" id="buzzBtn" onclick="buzz()" style="display: none;">🔔 BUZZ IN!</button>
             </div>
 
             <div class="guess-input" id="guessArea">
@@ -1886,6 +2387,41 @@ pub async fn game() -> Html<String> {
         </div>
     </div>
 
+    <!-- Mystery Wedge Modal -->
+    <div class="modal-overlay" id="mysteryModal">
+        <div class="modal mystery-modal">
+            <h2>🎭 Mystery Wedge!</h2>
+            <p style="color: #ccc; margin-bottom: 16px;">Choose your fate...</p>
+            <div class="mystery-options" id="mysteryOptions">
+                <div class="mystery-option keep" onclick="mysteryChoice('keep')">
+                    <span class="amount">$1,000</span>
+                    <span class="label">Keep it safe</span>
+                </div>
+                <div class="mystery-option flip" onclick="mysteryChoice('flip')">
+                    <span class="amount">$10,000?</span>
+                    <span class="label">Risk it all!</span>
+                </div>
+            </div>
+            <div class="mystery-result" id="mysteryResult" style="display: none;"></div>
+            <div class="modal-buttons" id="mysteryClose" style="display: none;">
+                <button class="btn" onclick="closeModal('mysteryModal')">Continue</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Wild Card Modal -->
+    <div class="modal-overlay" id="wildcardModal">
+        <div class="modal">
+            <h2>🃏 Use Wild Card</h2>
+            <p style="color: #ccc; margin-bottom: 16px;">Pick any consonant - even one already called!</p>
+            <input type="text" id="wildcardInput" maxlength="1" placeholder="Enter a consonant" autocomplete="off">
+            <div class="modal-buttons">
+                <button class="btn" onclick="submitWildCard()">Use Card</button>
+                <button class="btn btn-secondary" onclick="closeModal('wildcardModal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script>
         const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -1914,6 +2450,109 @@ pub async fn game() -> Html<String> {
         let pendingWheelResult = null;
         let pendingToasts = [];
         let prevPuzzleSolvedBy = null;
+        let prevRevealed = new Set();
+        let prevPhase = null;
+        let prevScores = {{}};
+
+        // ========== SOUND EFFECTS ==========
+        const SoundService = {{
+            enabled: true,
+            sounds: {{}},
+            audioContext: null,
+
+            init() {{
+                try {{
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }} catch (e) {{
+                    console.log('Web Audio API not supported');
+                }}
+            }},
+
+            playTone(frequency, duration, type = 'sine') {{
+                if (!this.enabled || !this.audioContext) return;
+                try {{
+                    const osc = this.audioContext.createOscillator();
+                    const gain = this.audioContext.createGain();
+                    osc.connect(gain);
+                    gain.connect(this.audioContext.destination);
+                    osc.type = type;
+                    osc.frequency.value = frequency;
+                    gain.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+                    osc.start();
+                    osc.stop(this.audioContext.currentTime + duration);
+                }} catch (e) {{ }}
+            }},
+
+            wheelTick() {{ this.playTone(800, 0.05, 'square'); }},
+            wheelStop() {{ this.playTone(600, 0.3, 'sine'); }},
+            letterCorrect() {{ this.playTone(880, 0.15, 'sine'); this.playTone(1100, 0.15, 'sine'); }},
+            letterWrong() {{ this.playTone(200, 0.3, 'sawtooth'); }},
+            bankrupt() {{ this.playTone(100, 0.5, 'sawtooth'); }},
+            solve() {{
+                [523, 659, 784, 1047].forEach((f, i) => {{
+                    setTimeout(() => this.playTone(f, 0.2, 'sine'), i * 100);
+                }});
+            }},
+            buzz() {{ this.playTone(440, 0.1, 'square'); }},
+        }};
+
+        // ========== CONFETTI SYSTEM ==========
+        function launchConfetti(count = 100) {{
+            const container = document.getElementById('confetti-container');
+            const colors = ['#d4af37', '#ffd700', '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ff8c00'];
+
+            for (let i = 0; i < count; i++) {{
+                setTimeout(() => {{
+                    const confetti = document.createElement('div');
+                    confetti.className = 'confetti';
+                    confetti.style.left = Math.random() * 100 + 'vw';
+                    confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
+                    confetti.style.animationDuration = (2 + Math.random() * 2) + 's';
+                    confetti.style.animationDelay = Math.random() * 0.5 + 's';
+                    container.appendChild(confetti);
+
+                    setTimeout(() => confetti.remove(), 4000);
+                }}, i * 20);
+            }}
+        }}
+
+        // ========== PHASE TRANSITIONS ==========
+        function showPhaseTransition(phase) {{
+            const overlay = document.getElementById('phaseOverlay');
+            const title = document.getElementById('phaseTitle');
+            const subtitle = document.getElementById('phaseSubtitle');
+
+            const phases = {{
+                'tossup': {{ title: 'TOSS-UP!', subtitle: 'Buzz in to answer!' }},
+                'final': {{ title: 'BONUS ROUND!', subtitle: 'Pick your letters wisely...' }},
+                'normal': {{ title: 'SPIN THE WHEEL!', subtitle: 'Good luck!' }},
+            }};
+
+            const config = phases[phase] || {{ title: phase.toUpperCase(), subtitle: '' }};
+            title.textContent = config.title;
+            subtitle.textContent = config.subtitle;
+
+            overlay.classList.add('active');
+            setTimeout(() => overlay.classList.remove('active'), 2000);
+        }}
+
+        // ========== SCORE CHANGE ANIMATION ==========
+        function showScoreChange(playerIdx, amount) {{
+            const playerEl = document.querySelectorAll('.player')[playerIdx];
+            if (!playerEl) return;
+
+            const change = document.createElement('span');
+            change.className = 'score-change ' + (amount >= 0 ? 'positive' : 'negative');
+            change.textContent = (amount >= 0 ? '+' : '') + '$' + Math.abs(amount).toLocaleString();
+
+            const scoreEl = playerEl.querySelector('.player-score');
+            if (scoreEl) {{
+                scoreEl.style.position = 'relative';
+                scoreEl.appendChild(change);
+                setTimeout(() => change.remove(), 1500);
+            }}
+        }}
 
         function getWedgeLabel(slot) {{
             // Handle null/undefined
@@ -2144,22 +2783,123 @@ pub async fn game() -> Html<String> {
         function renderGame() {{
             if (!gameState) return;
 
+            const phase = gameState.phase || 'normal';
+
+            // ========== PHASE TRANSITION ==========
+            if (prevPhase && prevPhase !== phase) {{
+                showPhaseTransition(phase);
+            }}
+            prevPhase = phase;
+
             // Check for puzzle solved
             const solvedBy = gameState.puzzle_solved_by;
             if (solvedBy && solvedBy !== prevPuzzleSolvedBy) {{
                 prevPuzzleSolvedBy = solvedBy;
-                const displayTime = gameState.config?.puzzle_display_seconds || 30;
                 showNotification(`🎉 ${{solvedBy}} solved it! Answer: ${{gameState.puzzle?.answer}}`);
+                SoundService.solve();
+                launchConfetti(150);
             }} else if (!solvedBy && prevPuzzleSolvedBy) {{
                 prevPuzzleSolvedBy = null;
                 hideNotification();
             }}
 
-            // Phase
-            document.getElementById('phase').textContent = gameState.phase || 'normal';
+            // Phase display
+            document.getElementById('phase').textContent = phase;
 
             // Category
             document.getElementById('category').textContent = gameState.puzzle?.category || '-';
+
+            // ========== ROUND PROGRESS ==========
+            const roundState = gameState.round;
+            const roundIndicator = document.getElementById('roundIndicator');
+            if (roundState && roundState.enabled && roundState.total_rounds > 0) {{
+                roundIndicator.classList.add('active');
+                document.getElementById('roundNumber').textContent = 'ROUND ' + roundState.current_round;
+                document.getElementById('roundTotal').textContent = 'of ' + roundState.total_rounds;
+
+                // Render round dots
+                let dotsHtml = '';
+                for (let i = 1; i <= roundState.total_rounds; i++) {{
+                    const dotClass = i < roundState.current_round ? 'completed' :
+                                    i === roundState.current_round ? 'current' : '';
+                    dotsHtml += `<div class="round-dot ${{dotClass}}"></div>`;
+                }}
+                document.getElementById('roundDots').innerHTML = dotsHtml;
+
+                // Round badges
+                let badgesHtml = '';
+                const currentConfig = roundState.rounds?.[roundState.current_round - 1];
+                if (currentConfig) {{
+                    if (currentConfig.type && currentConfig.type !== 'normal') {{
+                        const typeLabels = {{ tossup: 'TOSS-UP', speed: 'SPEED', bonus: 'BONUS' }};
+                        badgesHtml += `<span class="round-badge type">${{typeLabels[currentConfig.type] || currentConfig.type.toUpperCase()}}</span>`;
+                    }}
+                    if (currentConfig.value_multiplier > 1) {{
+                        badgesHtml += `<span class="round-badge multiplier">${{currentConfig.value_multiplier}}x</span>`;
+                    }}
+                }}
+                document.getElementById('roundBadges').innerHTML = badgesHtml;
+            }} else {{
+                roundIndicator.classList.remove('active');
+            }}
+
+            // ========== TOSS-UP DISPLAY ==========
+            const tossupDisplay = document.getElementById('tossupDisplay');
+            const tossupConfig = gameState.tossup_config;
+            if (phase === 'tossup' && tossupConfig) {{
+                tossupDisplay.classList.add('active');
+                const value = tossupConfig.is_triple && tossupConfig.values ?
+                    tossupConfig.values[tossupConfig.triple_index] || 1000 : 1000;
+                document.getElementById('tossupValue').textContent = '$' + value.toLocaleString();
+
+                // Triple toss-up indicators
+                if (tossupConfig.is_triple) {{
+                    document.getElementById('tripleHeader').style.display = 'block';
+                    for (let i = 0; i < 3; i++) {{
+                        const dot = document.getElementById('triple' + i);
+                        dot.className = 'triple-dot' +
+                            (i < tossupConfig.triple_index ? ' completed' :
+                             i === tossupConfig.triple_index ? ' current' : '');
+                    }}
+                }} else {{
+                    document.getElementById('tripleHeader').style.display = 'none';
+                }}
+            }} else {{
+                tossupDisplay.classList.remove('active');
+            }}
+
+            // ========== EXPRESS MODE ==========
+            const express = gameState.express;
+            const expressIndicator = document.getElementById('expressIndicator');
+            if (express && express.active && express.player_idx === myPlayerIdx) {{
+                expressIndicator.classList.add('active');
+                document.getElementById('expressStreak').textContent =
+                    '$' + (express.correct_count * (express.value_per_consonant || 1000)).toLocaleString();
+            }} else {{
+                expressIndicator.classList.remove('active');
+            }}
+
+            // ========== MYSTERY WEDGE ==========
+            const mystery = gameState.mystery;
+            if (mystery && mystery.stage === 'awaiting_choice' && mystery.player_idx === myPlayerIdx) {{
+                document.getElementById('mysteryOptions').style.display = 'flex';
+                document.getElementById('mysteryResult').style.display = 'none';
+                document.getElementById('mysteryClose').style.display = 'none';
+                document.getElementById('mysteryModal').classList.add('active');
+            }} else if (mystery && mystery.stage === 'revealing') {{
+                document.getElementById('mysteryOptions').style.display = 'none';
+                const result = document.getElementById('mysteryResult');
+                if (mystery.flip_result === 'win') {{
+                    result.className = 'mystery-result win';
+                    result.textContent = '🎉 $10,000!';
+                }} else if (mystery.flip_result === 'bankrupt') {{
+                    result.className = 'mystery-result lose';
+                    result.textContent = '💀 BANKRUPT!';
+                    SoundService.bankrupt();
+                }}
+                result.style.display = 'block';
+                document.getElementById('mysteryClose').style.display = 'flex';
+            }}
 
             // Render wheel
             if (gameState.wheel_slots && gameState.wheel_slots.length > 0) {{
@@ -2173,44 +2913,40 @@ pub async fn game() -> Html<String> {
                 }}
             }}
 
-            // Puzzle board - Wheel of Fortune style with 4 rows (12, 14, 14, 12)
+            // ========== PUZZLE BOARD WITH LETTER ANIMATIONS ==========
             const board = document.getElementById('puzzleBoard');
             const ROW_SIZES = [12, 14, 14, 12];
+            const currentRevealed = new Set(gameState.revealed || []);
+            const newlyRevealed = [...currentRevealed].filter(c => !prevRevealed.has(c));
 
             if (gameState.puzzle?.answer) {{
-                const revealed = new Set(gameState.revealed || []);
                 const answer = gameState.puzzle.answer.toUpperCase();
                 const words = answer.split(' ');
 
-                // Try to fit puzzle starting from row 1 (second row) unless too big
                 function layoutWords(startRow) {{
                     const rows = [[], [], [], []];
                     let currentRow = startRow;
-
                     for (const word of words) {{
-                        if (currentRow >= 4) return null; // Doesn't fit
-
+                        if (currentRow >= 4) return null;
                         const currentLen = rows[currentRow].reduce((sum, w) => sum + w.length + 1, 0) - 1;
                         const spaceNeeded = currentLen > 0 ? word.length + 1 : word.length;
-
                         if (currentLen + spaceNeeded <= ROW_SIZES[currentRow]) {{
                             rows[currentRow].push(word);
                         }} else {{
                             currentRow++;
-                            if (currentRow >= 4) return null; // Doesn't fit
+                            if (currentRow >= 4) return null;
                             rows[currentRow].push(word);
                         }}
                     }}
                     return rows;
                 }}
 
-                // Try starting at row 1, fall back to row 0 if doesn't fit
                 let rows = layoutWords(1);
                 if (!rows) rows = layoutWords(0);
-                if (!rows) rows = [[], [], [], []]; // fallback empty
+                if (!rows) rows = [[], [], [], []];
 
-                // Render rows
                 let html = '';
+                let revealDelay = 0;
                 for (let r = 0; r < 4; r++) {{
                     const rowSize = ROW_SIZES[r];
                     const rowWords = rows[r];
@@ -2224,8 +2960,12 @@ pub async fn game() -> Html<String> {
                             const char = rowText[charIdx];
                             if (char === ' ') {{
                                 html += '<div class="letter-tile blank"></div>';
-                            }} else if (revealed.has(char)) {{
-                                html += `<div class="letter-tile revealed">${{char}}</div>`;
+                            }} else if (currentRevealed.has(char)) {{
+                                const isNew = newlyRevealed.includes(char);
+                                const animClass = isNew ? 'revealing' : 'just-revealed';
+                                const delay = isNew ? `animation-delay: ${{revealDelay * 0.15}}s` : '';
+                                if (isNew) revealDelay++;
+                                html += `<div class="letter-tile revealed ${{animClass}}" style="${{delay}}">${{char}}</div>`;
                             }} else {{
                                 html += '<div class="letter-tile hidden"></div>';
                             }}
@@ -2236,8 +2976,12 @@ pub async fn game() -> Html<String> {
                     html += '</div>';
                 }}
                 board.innerHTML = html;
+
+                // Play sound for new letters
+                if (newlyRevealed.length > 0) {{
+                    SoundService.letterCorrect();
+                }}
             }} else {{
-                // Show empty board
                 let html = '';
                 for (let r = 0; r < 4; r++) {{
                     html += '<div class="puzzle-row">';
@@ -2248,19 +2992,22 @@ pub async fn game() -> Html<String> {
                 }}
                 board.innerHTML = html;
             }}
+            prevRevealed = currentRevealed;
 
-            // Wheel result - use current_wedge (delay if spinning)
+            // Wheel result
             const wedge = gameState.current_wedge;
             let resultText = '-';
             if (wedge !== null && wedge !== undefined) {{
                 if (typeof wedge === 'object') {{
-                    if (wedge.Cash) {{
-                        resultText = '$' + wedge.Cash;
-                    }} else if (wedge.Prize) {{
-                        resultText = wedge.Prize.name || 'Prize';
-                    }} else {{
-                        // Bankrupt, LoseTurn, FreePlay, etc.
-                        const key = Object.keys(wedge)[0] || wedge;
+                    if (wedge.Cash) resultText = '$' + wedge.Cash;
+                    else if (wedge.Prize) resultText = wedge.Prize.name || 'Prize';
+                    else if ('Bankrupt' in wedge) resultText = 'BANKRUPT';
+                    else if ('LoseTurn' in wedge) resultText = 'LOSE A TURN';
+                    else if ('FreePlay' in wedge) resultText = 'FREE PLAY';
+                    else if ('Mystery' in wedge) resultText = 'MYSTERY';
+                    else if ('Express' in wedge) resultText = 'EXPRESS';
+                    else {{
+                        const key = Object.keys(wedge)[0] || '';
                         resultText = key.replace(/([A-Z])/g, ' $1').trim();
                     }}
                 }} else if (typeof wedge === 'string') {{
@@ -2276,22 +3023,55 @@ pub async fn game() -> Html<String> {
                 document.getElementById('wheelResult').textContent = resultText;
             }}
 
-            // Players - use active_idx and total
+            // ========== PLAYERS WITH SCORE TRACKING ==========
             const playerList = document.getElementById('playerList');
             if (gameState.players && gameState.players.length > 0) {{
-                playerList.innerHTML = gameState.players.map((p, idx) => `
-                    <div class="player ${{idx === gameState.active_idx ? 'active' : ''}}">
-                        <span class="player-name">${{p.name}}${{idx === myPlayerIdx ? ' (you)' : ''}}</span>
-                        <span class="player-score">${{p.total + (p.round_bank || 0)}}</span>
-                    </div>
-                `).join('');
+                // Track score changes
+                gameState.players.forEach((p, idx) => {{
+                    const newScore = (p.total || 0) + (p.round_bank || 0);
+                    const oldScore = prevScores[idx] || 0;
+                    if (oldScore !== 0 && newScore !== oldScore) {{
+                        setTimeout(() => showScoreChange(idx, newScore - oldScore), 100);
+                    }}
+                    prevScores[idx] = newScore;
+                }});
+
+                playerList.innerHTML = gameState.players.map((p, idx) => {{
+                    const wildcards = p.wild_cards || 0;
+                    const wildcardHtml = wildcards > 0 ?
+                        `<div class="player-wildcards">${{'<div class="wildcard-icon">🃏</div>'.repeat(wildcards)}}</div>` : '';
+                    return `
+                        <div class="player ${{idx === gameState.active_idx ? 'active' : ''}}">
+                            <span class="player-name">${{p.name}}${{idx === myPlayerIdx ? ' (you)' : ''}}${{wildcardHtml}}</span>
+                            <span class="player-score">${{(p.total || 0) + (p.round_bank || 0)}}</span>
+                        </div>
+                    `;
+                }}).join('');
             }}
 
-            // Update controls based on turn - use active_idx
+            // ========== CONTROLS VISIBILITY ==========
             const isMyTurn = gameState.active_idx === myPlayerIdx;
-            document.getElementById('spinBtn').disabled = !isMyTurn;
-            document.getElementById('buyVowelBtn').disabled = !isMyTurn;
-            document.getElementById('solveBtn').disabled = !isMyTurn;
+            const isTossup = phase === 'tossup';
+            const canBuzz = isTossup && myPlayerIdx !== null &&
+                !(gameState.tossup?.locked_player_idxs || []).includes(myPlayerIdx);
+
+            // Normal controls
+            document.getElementById('spinBtn').disabled = !isMyTurn || isTossup;
+            document.getElementById('spinBtn').style.display = isTossup ? 'none' : 'inline-block';
+            document.getElementById('buyVowelBtn').disabled = !isMyTurn || isTossup;
+            document.getElementById('buyVowelBtn').style.display = isTossup ? 'none' : 'inline-block';
+            document.getElementById('solveBtn').disabled = !isMyTurn && !canBuzz;
+            document.getElementById('guessArea').style.display = isTossup ? 'none' : 'flex';
+
+            // Buzz button for toss-up
+            const buzzBtn = document.getElementById('buzzBtn');
+            buzzBtn.style.display = canBuzz ? 'inline-block' : 'none';
+
+            // Wild card button
+            const myPlayer = gameState.players?.[myPlayerIdx];
+            const hasWildCard = myPlayer && (myPlayer.wild_cards || 0) > 0;
+            const wildcardBtn = document.getElementById('wildcardBtn');
+            wildcardBtn.classList.toggle('available', isMyTurn && hasWildCard && !isTossup);
         }}
 
         function showNotification(msg) {{
@@ -2391,6 +3171,62 @@ pub async fn game() -> Html<String> {
             document.getElementById('claimHostSection').style.display = isHost ? 'none' : 'block';
         }}
 
+        // ========== NEW GAME MECHANICS ==========
+
+        // Mystery wedge choice
+        function mysteryChoice(choice) {{
+            hideNotification();
+            const options = document.getElementById('mysteryOptions');
+            const result = document.getElementById('mysteryResult');
+            const closeBtn = document.getElementById('mysteryClose');
+
+            options.style.display = 'none';
+            result.style.display = 'block';
+
+            if (choice === 'keep') {{
+                result.innerHTML = '<div style="font-size: 48px; color: #22c55e;">💰 $1,000</div><p>Safe choice!</p>';
+                SoundService.letterCorrect();
+            }} else {{
+                // Simulate 50/50 flip - server will handle actual result
+                result.innerHTML = '<div style="font-size: 48px;">🎲</div><p>Flipping...</p>';
+            }}
+
+            socket.emit('mystery_choice', {{ room, choice }});
+
+            // Server will send result, we show close button after a delay
+            setTimeout(() => {{
+                closeBtn.style.display = 'block';
+            }}, 1500);
+        }}
+
+        // Wild card functions
+        function useWildCard() {{
+            hideNotification();
+            document.getElementById('wildcardInput').value = '';
+            document.getElementById('wildcardModal').classList.add('active');
+            document.getElementById('wildcardInput').focus();
+        }}
+
+        function submitWildCard() {{
+            const input = document.getElementById('wildcardInput');
+            const letter = input.value.toUpperCase();
+            const consonants = 'BCDFGHJKLMNPQRSTVWXYZ';
+
+            if (letter && letter.length === 1 && consonants.includes(letter)) {{
+                socket.emit('use_wild_card', {{ room, letter }});
+                closeModal('wildcardModal');
+            }} else {{
+                alert('Please enter a valid consonant');
+            }}
+        }}
+
+        // Buzz in for toss-up
+        function buzz() {{
+            hideNotification();
+            SoundService.buzz();
+            socket.emit('buzz', {{ room }});
+        }}
+
         // Enter key to guess
         document.getElementById('letterInput').addEventListener('keypress', (e) => {{
             if (e.key === 'Enter') guessLetter();
@@ -2406,14 +3242,27 @@ pub async fn game() -> Html<String> {
             if (e.key === 'Enter') submitClaimHost();
         }});
 
+        // Enter key to submit wild card
+        document.getElementById('wildcardInput').addEventListener('keypress', (e) => {{
+            if (e.key === 'Enter') submitWildCard();
+        }});
+
         // Close modals on escape key
         document.addEventListener('keydown', (e) => {{
             if (e.key === 'Escape') {{
                 closeModal('solveModal');
                 closeModal('vowelModal');
                 closeModal('claimHostModal');
+                closeModal('mysteryModal');
+                closeModal('wildcardModal');
             }}
         }});
+
+        // Initialize sound service (must be after user interaction)
+        document.addEventListener('click', function initSound() {{
+            SoundService.init();
+            document.removeEventListener('click', initSound);
+        }}, {{ once: true }});
 
         connect();
     </script>
