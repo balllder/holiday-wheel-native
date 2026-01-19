@@ -102,13 +102,67 @@ cargo run
 | `PORT` | Server port | `5000` |
 | `HOST_CODE` | Code to claim host privileges | `holiday` |
 | `RUST_LOG` | Log level | `info` |
+| `ADMIN_EMAIL` | Email to auto-grant admin privileges | (none) |
+| `SSL_ENABLED` | Enable HTTPS | `false` |
+| `SSL_CERT` | Path to SSL certificate | (required if SSL enabled) |
+| `SSL_KEY` | Path to SSL private key | (required if SSL enabled) |
+
+#### Email Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `EMAIL_ENABLED` | Enable email verification | `false` |
+| `SMTP_HOST` | SMTP server hostname | `smtp.gmail.com` |
+| `SMTP_PORT` | SMTP server port | `587` |
+| `SMTP_USER` | SMTP username | (none) |
+| `SMTP_PASS` | SMTP password | (none) |
+| `FROM_EMAIL` | Sender email address | `noreply@holidaywheel.com` |
+| `BASE_URL` | Base URL for email links | `http://localhost:5000` |
+
+> **Note:** When `EMAIL_ENABLED=false`, users are auto-verified on registration for easier development/testing.
+
+#### OAuth Configuration (Optional)
+
+| Variable | Description |
+|----------|-------------|
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID (web) |
+| `GOOGLE_CLIENT_ID_IOS` | Google OAuth client ID (iOS) |
+| `GOOGLE_CLIENT_ID_ANDROID` | Google OAuth client ID (Android) |
+| `APPLE_CLIENT_ID` | Apple Sign-In client ID |
+| `APPLE_TEAM_ID` | Apple Developer Team ID |
+
+#### WebAuthn/Passkey Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WEBAUTHN_RP_ID` | Relying Party ID | `localhost` |
+| `WEBAUTHN_RP_NAME` | Relying Party name | `Holiday Wheel` |
+| `WEBAUTHN_RP_ORIGIN` | Allowed origin | `http://localhost:5000` |
 
 ### Web Admin Panel
 
 Access the admin panel at `http://localhost:5000/admin` to:
-- Manage puzzles (add, edit, delete)
-- Configure game settings (vowel cost, final round time, etc.)
-- Monitor active rooms
+
+**User Management**
+- View all registered users with their current online status
+- See which game room each user is currently in
+- Session management (invalidate user sessions)
+
+**Room Management**
+- View all active game rooms with player counts
+- **Spectate Mode**: Monitor any game without joining as a player
+- Configure per-room settings (disconnect timeout, etc.)
+
+**Puzzle Management**
+- Add, edit, and delete puzzles
+- Organize puzzles into packs
+- Import/export puzzle packs (JSON format)
+
+**Game Settings**
+- Vowel cost ($250 default)
+- Final round time limit
+- Disconnect timeout (auto-remove inactive players)
+- Default room configuration
 
 ### Importing Puzzles
 
@@ -315,6 +369,73 @@ Press Menu button on Apple TV remote to access:
 - **START FINAL**: Begin final round
 - **NEW GAME**: Reset scores and start over
 - **Set Active Player**: Change whose turn it is
+
+## API Reference
+
+### Authentication Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/auth/api/login` | Email/password login |
+| `POST` | `/auth/api/register` | New user registration |
+| `POST` | `/auth/api/logout` | End session |
+| `GET` | `/auth/api/me` | Get current user info |
+| `GET` | `/auth/verify/:token` | Verify email address |
+| `POST` | `/auth/api/forgot-password` | Request password reset |
+| `POST` | `/auth/api/reset-password` | Reset password with token |
+
+### OAuth Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/auth/api/oauth/google` | Google Sign-In (web) |
+| `POST` | `/auth/api/oauth/google/native` | Google Sign-In (mobile) |
+| `POST` | `/auth/api/oauth/apple` | Apple Sign-In (web) |
+| `POST` | `/auth/api/oauth/apple/native` | Apple Sign-In (mobile) |
+
+### Admin Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/auth/api/admin/users` | List all users with room info |
+| `POST` | `/auth/api/admin/users/:id/admin` | Toggle admin status |
+| `POST` | `/auth/api/admin/users/:id/ban` | Ban/unban user |
+| `POST` | `/auth/api/admin/users/:id/invalidate-sessions` | Force logout |
+| `GET` | `/auth/api/admin/settings` | Get game settings |
+| `POST` | `/auth/api/admin/settings` | Update game settings |
+| `POST` | `/auth/api/admin/puzzles/import` | Import puzzle pack |
+
+### Socket.IO Events
+
+**Client → Server:**
+| Event | Description |
+|-------|-------------|
+| `join` | Join room as spectator |
+| `join_game` | Join room as player |
+| `spin` | Spin the wheel |
+| `guess` | Guess a letter |
+| `solve` | Attempt to solve puzzle |
+| `buzz` | Buzz in during toss-up |
+
+**Server → Client:**
+| Event | Description |
+|-------|-------------|
+| `state` | Full game state update |
+| `rooms` | Available rooms list |
+| `notification` | Server message |
+| `error` | Error message |
+
+### Room Configuration
+
+Rooms support per-room configuration via the admin panel:
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `disconnect_timeout_secs` | Seconds before inactive players are removed | `300` (5 min) |
+| `vowel_cost` | Cost to buy a vowel | `250` |
+| `final_round_time` | Seconds for final round | `30` |
+
+> **Disconnect Timeout**: When a player disconnects (closes browser/app), they have this many seconds to reconnect before being automatically removed from the game. Set to `0` to disable.
 
 ## Development
 
