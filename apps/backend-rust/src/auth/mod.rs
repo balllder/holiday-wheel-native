@@ -140,6 +140,7 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/admin/puzzles/import", post(admin_import_puzzles))
         .route("/api/admin/puzzles/{id}", axum::routing::delete(admin_delete_puzzle))
         .route("/api/admin/rooms", get(admin_list_rooms))
+        .route("/api/admin/rooms", post(admin_create_room))
         .route("/api/admin/rooms/{name}", axum::routing::delete(admin_delete_room))
         .route("/api/admin/settings/{room}", get(admin_get_settings))
         .route("/api/admin/settings/{room}", post(admin_save_settings))
@@ -1199,6 +1200,24 @@ struct AdminRoomInfo {
     player_count: usize,
     phase: String,
     has_host: bool,
+    // Extended details
+    players: Vec<AdminPlayerInfo>,
+    active_idx: Option<usize>,
+    puzzle_category: Option<String>,
+    puzzle_answer: Option<String>,
+    revealed_count: usize,
+    total_letters: usize,
+    current_wedge: Option<String>,
+    round_number: Option<i32>,
+}
+
+#[derive(Serialize)]
+struct AdminPlayerInfo {
+    name: String,
+    total: i32,
+    round_bank: i32,
+    is_connected: bool,
+    wild_cards: i32,
 }
 
 async fn admin_list_rooms(
@@ -1213,16 +1232,99 @@ async fn admin_list_rooms(
 
     let manager = state.game_manager.read().await;
     let rooms: Vec<AdminRoomInfo> = manager.rooms.iter().map(|(name, game)| {
+        let players: Vec<AdminPlayerInfo> = game.players.iter().map(|p| {
+            AdminPlayerInfo {
+                name: p.name.clone(),
+                total: p.total,
+                round_bank: p.round_bank,
+                is_connected: p.socket_id.is_some(),
+                wild_cards: p.wild_cards,
+            }
+        }).collect();
+
+        let total_letters = game.puzzle.answer.chars().filter(|c| c.is_ascii_alphabetic()).count();
+        let revealed_count = game.revealed.len();
+
+        let current_wedge = game.current_wedge.as_ref().map(|w| {
+            match w {
+                crate::game::WedgeValue::Cash(v) => format!("${}", v),
+                crate::game::WedgeValue::Bankrupt => "BANKRUPT".to_string(),
+                crate::game::WedgeValue::LoseTurn => "LOSE A TURN".to_string(),
+                crate::game::WedgeValue::FreePlay => "FREE PLAY".to_string(),
+                crate::game::WedgeValue::Prize { name, .. } => name.clone(),
+            }
+        });
+
         AdminRoomInfo {
             name: name.clone(),
             player_count: game.players.len(),
             phase: format!("{:?}", game.phase),
             has_host: game.host_sid.is_some(),
+            players,
+            active_idx: if game.players.is_empty() { None } else { Some(game.active_idx) },
+            puzzle_category: if game.puzzle.category.is_empty() { None } else { Some(game.puzzle.category.clone()) },
+            puzzle_answer: if game.puzzle.answer.is_empty() { None } else { Some(game.puzzle.answer.clone()) },
+            revealed_count,
+            total_letters,
+            current_wedge,
+            round_number: game.round.as_ref().map(|r| r.number),
         }
     }).collect();
 
     (StatusCode::OK, Json(AdminRoomsResponse {
         ok: true, rooms: Some(rooms), error: None
+    }))
+}
+
+#[derive(Deserialize)]
+struct CreateRoomRequest {
+    name: String,
+}
+
+async fn admin_create_room(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<CreateRoomRequest>,
+) -> (StatusCode, Json<SimpleResponse>) {
+    if get_admin_user(&state, &headers).await.is_none() {
+        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Admin access required".to_string())
+        }));
+    }
+
+    let room_name = req.name.trim().to_lowercase();
+
+    // Validate room name
+    if room_name.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Room name cannot be empty".to_string())
+        }));
+    }
+
+    if !room_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return (StatusCode::BAD_REQUEST, Json(SimpleResponse {
+            ok: false, message: None, error: Some("Room name can only contain letters, numbers, hyphens and underscores".to_string())
+        }));
+    }
+
+    // Check if room already exists
+    {
+        let manager = state.game_manager.read().await;
+        if manager.rooms.contains_key(&room_name) {
+            return (StatusCode::CONFLICT, Json(SimpleResponse {
+                ok: false, message: None, error: Some("Room already exists".to_string())
+            }));
+        }
+    }
+
+    // Create the room
+    {
+        let mut manager = state.game_manager.write().await;
+        manager.get_or_create_room(&room_name);
+    }
+
+    (StatusCode::OK, Json(SimpleResponse {
+        ok: true, message: Some(format!("Room '{}' created", room_name)), error: None
     }))
 }
 

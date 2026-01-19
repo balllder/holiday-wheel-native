@@ -3484,6 +3484,126 @@ pub async fn admin() -> Html<String> {
             text-align: center;
             padding: 40px;
         }}
+
+        /* Modal styles */
+        .modal {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }}
+        .modal-content {{
+            background: #1a0a3e;
+            border: 2px solid #333;
+            border-radius: 16px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }}
+        .modal-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid #333;
+        }}
+        .modal-header h3 {{
+            color: #d4af37;
+            margin: 0;
+        }}
+        .modal-close {{
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 28px;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }}
+        .modal-close:hover {{
+            color: #fff;
+        }}
+        .modal-body {{
+            padding: 24px;
+        }}
+
+        /* Room details section */
+        .room-details {{
+            padding: 16px;
+            border-top: 1px solid #333;
+            background: rgba(13, 6, 40, 0.5);
+            display: none;
+        }}
+        .room-details.expanded {{
+            display: block;
+        }}
+        .room-details-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }}
+        .detail-item {{
+            background: rgba(26, 10, 62, 0.6);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }}
+        .detail-label {{
+            color: #888;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }}
+        .detail-value {{
+            color: #fff;
+            font-size: 16px;
+            font-weight: 500;
+        }}
+        .detail-value.gold {{
+            color: #d4af37;
+        }}
+        .detail-value.green {{
+            color: #4caf50;
+        }}
+        .puzzle-preview {{
+            background: #1a5cb8;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 16px;
+        }}
+        .puzzle-preview-label {{
+            color: rgba(255,255,255,0.7);
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }}
+        .puzzle-preview-answer {{
+            font-family: monospace;
+            font-size: 18px;
+            color: #fff;
+            word-spacing: 8px;
+            letter-spacing: 2px;
+        }}
+        .connection-dot {{
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }}
+        .connection-dot.connected {{
+            background: #4caf50;
+        }}
+        .connection-dot.disconnected {{
+            background: #888;
+        }}
     </style>
 </head>
 <body>
@@ -3508,7 +3628,6 @@ pub async fn admin() -> Html<String> {
                 <button class="tab" onclick="showTab('packs')">Puzzle Packs</button>
                 <button class="tab" onclick="showTab('puzzles')">Puzzles</button>
                 <button class="tab" onclick="showTab('rooms')">Rooms</button>
-                <button class="tab" onclick="showTab('settings')">Settings</button>
             </div>
 
             <div class="error-msg" id="errorMsg"></div>
@@ -3612,22 +3731,20 @@ pub async fn admin() -> Html<String> {
                 <h2 style="color: #fff; margin-bottom: 16px;">Active Rooms</h2>
                 <div id="roomsContainer"></div>
             </div>
+        </div>
+    </div>
 
-            <!-- Settings Panel -->
-            <div class="panel" id="panel-settings">
-                <h2 style="color: #fff; margin-bottom: 16px;">Game Settings</h2>
-                <p style="color: #888; margin-bottom: 24px;">Configure default settings for game rooms. These settings will apply to new games.</p>
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 id="settingsModalTitle">Room Settings</h3>
+                <button class="modal-close" onclick="closeSettingsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="settingsRoom" value="">
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Room</label>
-                        <select id="settingsRoom" style="width:100%;padding:12px;background:#0d0628;color:#fff;border:2px solid #333;border-radius:8px;" onchange="loadRoomSettings()">
-                            <option value="main">main (default)</option>
-                        </select>
-                    </div>
-                </div>
-
-                <h3 style="color: #d4af37; margin: 24px 0 16px;">Puzzle Settings</h3>
+                <h4 style="color: #d4af37; margin: 0 0 16px;">Puzzle Settings</h4>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Puzzle Pack</label>
@@ -3641,7 +3758,7 @@ pub async fn admin() -> Html<String> {
                     </div>
                 </div>
 
-                <h3 style="color: #d4af37; margin: 24px 0 16px;">Cost Settings</h3>
+                <h4 style="color: #d4af37; margin: 24px 0 16px;">Cost Settings</h4>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Vowel Cost ($)</label>
@@ -3649,7 +3766,7 @@ pub async fn admin() -> Html<String> {
                     </div>
                 </div>
 
-                <h3 style="color: #d4af37; margin: 24px 0 16px;">Final Round Settings</h3>
+                <h4 style="color: #d4af37; margin: 24px 0 16px;">Final Round Settings</h4>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Final Round Timer (seconds)</label>
@@ -3661,7 +3778,7 @@ pub async fn admin() -> Html<String> {
                     </div>
                 </div>
 
-                <h3 style="color: #d4af37; margin: 24px 0 16px;">Prize Wedge Names</h3>
+                <h4 style="color: #d4af37; margin: 24px 0 16px;">Prize Wedge Names</h4>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Prize Wedge Names (comma-separated)</label>
@@ -3669,7 +3786,27 @@ pub async fn admin() -> Html<String> {
                     </div>
                 </div>
 
-                <button class="btn" onclick="saveSettings()" style="margin-top: 24px;">Save Settings</button>
+                <button class="btn" onclick="saveSettings()" style="margin-top: 24px; width: 100%;">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Room Modal -->
+    <div id="createRoomModal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3>Create New Room</h3>
+                <button class="modal-close" onclick="closeCreateRoomModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Room Name</label>
+                    <input type="text" id="newRoomName" placeholder="Enter room name" style="width:100%;padding:12px;background:#0d0628;color:#fff;border:2px solid #333;border-radius:8px;">
+                </div>
+                <p style="color: #888; font-size: 14px; margin: 16px 0;">
+                    Room names should be lowercase letters, numbers, and hyphens only.
+                </p>
+                <button class="btn" onclick="createRoom()" style="width: 100%;">Create Room</button>
             </div>
         </div>
     </div>
@@ -3990,20 +4127,32 @@ pub async fn admin() -> Html<String> {
                 roomsData = data.rooms;
                 const container = document.getElementById('roomsContainer');
 
+                // Create room button at the top
+                let html = `
+                    <div style="margin-bottom: 16px;">
+                        <button class="btn" onclick="openCreateRoomModal()">+ Create New Room</button>
+                    </div>
+                `;
+
                 if (data.rooms.length === 0) {{
-                    container.innerHTML = '<div class="no-rooms">No active rooms</div>';
+                    html += '<div class="no-rooms">No active rooms</div>';
+                    container.innerHTML = html;
                     return;
                 }}
 
-                container.innerHTML = data.rooms.map(r => {{
+                html += data.rooms.map(r => {{
                     const players = r.players || [];
                     const activeIdx = r.active_idx ?? -1;
+                    const activePlayer = activeIdx >= 0 && players[activeIdx] ? players[activeIdx].name : 'None';
 
                     const playerCards = players.length > 0 ? players.map((p, idx) => `
                         <div class="player-card ${{idx === activeIdx ? 'active' : ''}}">
                             <div class="player-details">
-                                <span class="player-name-admin">${{p.name}}${{idx === activeIdx ? ' (active)' : ''}}</span>
-                                <span class="player-score-admin">Total: ${{(p.total || 0).toLocaleString()}} | Round: ${{(p.round_bank || 0).toLocaleString()}}</span>
+                                <span class="player-name-admin">
+                                    <span class="connection-dot ${{p.is_connected ? 'connected' : 'disconnected'}}"></span>
+                                    ${{p.name}}${{idx === activeIdx ? ' ▶' : ''}}
+                                </span>
+                                <span class="player-score-admin">Total: $${{(p.total || 0).toLocaleString()}} | Round: $${{(p.round_bank || 0).toLocaleString()}}${{p.wild_cards > 0 ? ' | 🃏' + p.wild_cards : ''}}</span>
                             </div>
                             <div class="player-actions">
                                 <button class="btn btn-sm btn-secondary" onclick="resetPlayerScore('${{r.name}}', ${{idx}})">Reset</button>
@@ -4011,6 +4160,8 @@ pub async fn admin() -> Html<String> {
                             </div>
                         </div>
                     `).join('') : '<div style="color:#666;">No players in room</div>';
+
+                    const roomId = r.name.replace(/[^a-zA-Z0-9]/g, '_');
 
                     return `
                         <div class="room-card">
@@ -4024,13 +4175,43 @@ pub async fn admin() -> Html<String> {
                                     </div>
                                 </div>
                                 <div class="room-actions">
-                                    <a href="/game?room=${{encodeURIComponent(r.name)}}" class="btn btn-sm btn-secondary">View</a>
+                                    <button class="btn btn-sm btn-secondary" onclick="toggleRoomDetails('${{roomId}}')">Details</button>
+                                    <button class="btn btn-sm btn-secondary" onclick="openSettingsModal('${{r.name}}')">Settings</button>
+                                    <a href="/game?room=${{encodeURIComponent(r.name)}}" class="btn btn-sm" style="background:#27ae60;" target="_blank">Open</a>
                                     <button class="btn btn-sm btn-secondary" onclick="newGameInRoom('${{r.name}}')">New Game</button>
                                     <button class="btn btn-sm" style="background:#c0392b;" onclick="deleteRoom('${{r.name}}')">Delete</button>
                                 </div>
                             </div>
-                            <div class="room-players">
-                                <h4>Players</h4>
+
+                            <!-- Collapsible Details Section -->
+                            <div class="room-details" id="details-${{roomId}}">
+                                <div class="room-details-grid">
+                                    <div class="detail-item">
+                                        <div class="detail-label">Active Turn</div>
+                                        <div class="detail-value gold">${{activePlayer}}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Current Wedge</div>
+                                        <div class="detail-value green">${{r.current_wedge || '--'}}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Round</div>
+                                        <div class="detail-value">${{r.round_number || 1}}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Letters Revealed</div>
+                                        <div class="detail-value">${{r.revealed_count}} / ${{r.total_letters}}</div>
+                                    </div>
+                                </div>
+
+                                ${{r.puzzle_category ? `
+                                    <div class="puzzle-preview">
+                                        <div class="puzzle-preview-label">${{r.puzzle_category}}</div>
+                                        <div class="puzzle-preview-answer">${{r.puzzle_answer}}</div>
+                                    </div>
+                                ` : ''}}
+
+                                <h4 style="color: #888; margin: 16px 0 12px 0; font-size: 14px; text-transform: uppercase;">Players</h4>
                                 <div class="player-grid">
                                     ${{playerCards}}
                                 </div>
@@ -4039,7 +4220,8 @@ pub async fn admin() -> Html<String> {
                     `;
                 }}).join('');
 
-                updateRoomSelect();
+                container.innerHTML = html;
+                updateSettingsPackSelect();
             }}
         }}
 
@@ -4093,9 +4275,28 @@ pub async fn admin() -> Html<String> {
             else {{ showError('Failed to start new game'); }}
         }}
 
-        // Settings functions
-        async function loadRoomSettings() {{
-            const room = document.getElementById('settingsRoom').value;
+        // Room details toggle
+        function toggleRoomDetails(roomId) {{
+            const details = document.getElementById('details-' + roomId);
+            if (details) {{
+                details.classList.toggle('expanded');
+            }}
+        }}
+
+        // Settings modal functions
+        function openSettingsModal(room) {{
+            document.getElementById('settingsRoom').value = room;
+            document.getElementById('settingsModalTitle').textContent = `Settings: ${{room}}`;
+            document.getElementById('settingsModal').style.display = 'flex';
+            loadRoomSettings(room);
+        }}
+
+        function closeSettingsModal() {{
+            document.getElementById('settingsModal').style.display = 'none';
+        }}
+
+        async function loadRoomSettings(room) {{
+            if (!room) room = document.getElementById('settingsRoom').value;
             try {{
                 const res = await fetch(`/auth/api/admin/settings/${{encodeURIComponent(room)}}`, {{
                     credentials: 'include'
@@ -4134,6 +4335,7 @@ pub async fn admin() -> Html<String> {
                 }});
                 if (res.ok) {{
                     showSuccess('Settings saved');
+                    closeSettingsModal();
                 }} else {{
                     showError('Failed to save settings');
                 }}
@@ -4142,29 +4344,61 @@ pub async fn admin() -> Html<String> {
             }}
         }}
 
-        function updateRoomSelect() {{
-            // Update the room select with active rooms
-            const select = document.getElementById('settingsRoom');
+        function updateSettingsPackSelect() {{
+            // Update the pack select in settings modal
+            const select = document.getElementById('settingsPackId');
+            if (!select) return;
             const currentValue = select.value;
-            select.innerHTML = '<option value="main">main (default)</option>';
-            // Add other rooms from the rooms list
-            roomsData.forEach(r => {{
-                if (r.name !== 'main') {{
-                    const option = document.createElement('option');
-                    option.value = r.name;
-                    option.textContent = r.name;
-                    select.appendChild(option);
-                }}
+            select.innerHTML = '<option value="0">All Packs</option>';
+            packs.forEach(p => {{
+                const option = document.createElement('option');
+                option.value = p.id;
+                option.textContent = p.name;
+                select.appendChild(option);
             }});
-            // Restore selection if it still exists
-            if ([...select.options].some(o => o.value === currentValue)) {{
+            if (currentValue) {{
                 select.value = currentValue;
+            }}
+        }}
+
+        // Create room modal functions
+        function openCreateRoomModal() {{
+            document.getElementById('newRoomName').value = '';
+            document.getElementById('createRoomModal').style.display = 'flex';
+        }}
+
+        function closeCreateRoomModal() {{
+            document.getElementById('createRoomModal').style.display = 'none';
+        }}
+
+        async function createRoom() {{
+            const roomName = document.getElementById('newRoomName').value.trim();
+            if (!roomName) {{
+                showError('Please enter a room name');
+                return;
+            }}
+            try {{
+                const res = await fetch('/auth/api/admin/rooms', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    credentials: 'include',
+                    body: JSON.stringify({{ name: roomName }})
+                }});
+                if (res.ok) {{
+                    showSuccess(`Room "${{roomName}}" created`);
+                    closeCreateRoomModal();
+                    loadRooms();
+                }} else {{
+                    const data = await res.json();
+                    showError(data.error || 'Failed to create room');
+                }}
+            }} catch (e) {{
+                showError('Failed to create room');
             }}
         }}
 
         // Initial load
         checkAdmin();
-        loadRoomSettings();
     </script>
 </body>
 </html>"#, common_styles = COMMON_STYLES))
