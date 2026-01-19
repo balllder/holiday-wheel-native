@@ -106,6 +106,11 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
     return wedge;
   };
 
+  // Format number as cash with commas
+  const formatCash = (amount: number) => {
+    return '$' + amount.toLocaleString();
+  };
+
   // Render puzzle board
   const renderPuzzleBoard = () => {
     const answer = puzzle.answer || '';
@@ -218,8 +223,8 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
               style={[styles.playerCard, idx === activeIdx && styles.activePlayer]}
             >
               <Text style={styles.playerName}>{player.name}</Text>
-              <Text style={styles.playerTotal}>${player.total}</Text>
-              <Text style={styles.playerRound}>Round: ${player.round_bank}</Text>
+              <Text style={styles.playerTotal}>{formatCash(player.total)}</Text>
+              <Text style={styles.playerRound}>Round: {formatCash(player.round_bank)}</Text>
             </View>
           ))
         )}

@@ -211,9 +211,8 @@ describe('ControllerScreen', () => {
       const texts = tree?.root.findAllByType('Text' as never);
       const textContents = texts?.map((t) => t.props.children).flat();
 
-      // Score rendered as template literal may split into "$" and number
-      expect(textContents).toContain('$');
-      expect(textContents).toContain(500);
+      // Score rendered as formatted cash (e.g., "$500")
+      expect(textContents).toContain('$500');
     });
   });
 

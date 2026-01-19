@@ -175,6 +175,11 @@ export function GameScreen({ route }: GameScreenProps): React.JSX.Element {
     socketService.buzz(room);
   };
 
+  // Format number as cash with commas
+  const formatCash = (amount: number) => {
+    return '$' + amount.toLocaleString();
+  };
+
   // Wheel colors matching the TV show
   const WHEEL_COLORS = [
     '#c41e3a', '#0047ab', '#ff8c00', '#ffcc00', '#9932cc', '#ff1493',
@@ -390,8 +395,8 @@ export function GameScreen({ route }: GameScreenProps): React.JSX.Element {
           ]}
         >
           <Text style={styles.playerName}>{player.name}</Text>
-          <Text style={styles.playerScore}>${player.total}</Text>
-          <Text style={styles.playerRound}>Round: ${player.round_bank}</Text>
+          <Text style={styles.playerScore}>{formatCash(player.total)}</Text>
+          <Text style={styles.playerRound}>Round: {formatCash(player.round_bank)}</Text>
           {idx === myPlayerIdx && <Text style={styles.youBadge}>You</Text>}
         </View>
       ))}

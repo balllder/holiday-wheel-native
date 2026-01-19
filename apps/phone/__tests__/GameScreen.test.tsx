@@ -234,9 +234,9 @@ describe('GameScreen', () => {
       };
       const textContents = flatten(texts?.map((t) => t.props.children) ?? []);
 
-      // Check that player scores are displayed (can be in various formats)
-      const hasPlayer1Score = textContents.some(t => t.includes('1000'));
-      const hasPlayer2Score = textContents.some(t => t.includes('500'));
+      // Check that player scores are displayed as formatted cash
+      const hasPlayer1Score = textContents.some(t => t.includes('$1,000') || t.includes('1,000'));
+      const hasPlayer2Score = textContents.some(t => t.includes('$500') || t.includes('500'));
 
       expect(hasPlayer1Score).toBe(true);
       expect(hasPlayer2Score).toBe(true);

@@ -133,6 +133,11 @@ export function ControllerScreen({ route }: ControllerScreenProps): React.JSX.El
     socketService.buzz(room);
   };
 
+  // Format number as cash with commas
+  const formatCash = (amount: number) => {
+    return '$' + amount.toLocaleString();
+  };
+
   return (
     <View style={styles.container}>
       {/* Status bar */}
@@ -151,7 +156,7 @@ export function ControllerScreen({ route }: ControllerScreenProps): React.JSX.El
         {myPlayer && (
           <View style={styles.scoreBox}>
             <Text style={styles.scoreName}>{myPlayer.name}</Text>
-            <Text style={styles.scoreValue}>${myPlayer.round_bank}</Text>
+            <Text style={styles.scoreValue}>{formatCash(myPlayer.round_bank)}</Text>
           </View>
         )}
       </View>

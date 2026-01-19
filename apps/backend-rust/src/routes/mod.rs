@@ -2538,13 +2538,17 @@ pub async fn game() -> Html<String> {
         }}
 
         // ========== SCORE CHANGE ANIMATION ==========
+        function formatCash(amount) {{
+            return '$' + Math.abs(amount).toLocaleString();
+        }}
+
         function showScoreChange(playerIdx, amount) {{
             const playerEl = document.querySelectorAll('.player')[playerIdx];
             if (!playerEl) return;
 
             const change = document.createElement('span');
             change.className = 'score-change ' + (amount >= 0 ? 'positive' : 'negative');
-            change.textContent = (amount >= 0 ? '+' : '') + '$' + Math.abs(amount).toLocaleString();
+            change.textContent = (amount >= 0 ? '+' : '-') + formatCash(amount);
 
             const scoreEl = playerEl.querySelector('.player-score');
             if (scoreEl) {{
@@ -3042,10 +3046,11 @@ pub async fn game() -> Html<String> {
                     const wildcards = p.wild_cards || 0;
                     const wildcardHtml = wildcards > 0 ?
                         `<div class="player-wildcards">${{'<div class="wildcard-icon">🃏</div>'.repeat(wildcards)}}</div>` : '';
+                    const score = (p.total || 0) + (p.round_bank || 0);
                     return `
                         <div class="player ${{idx === gameState.active_idx ? 'active' : ''}}">
                             <span class="player-name">${{p.name}}${{idx === myPlayerIdx ? ' (you)' : ''}}${{wildcardHtml}}</span>
-                            <span class="player-score">${{(p.total || 0) + (p.round_bank || 0)}}</span>
+                            <span class="player-score">${{formatCash(score)}}</span>
                         </div>
                     `;
                 }}).join('');
