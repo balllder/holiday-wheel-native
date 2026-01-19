@@ -19,6 +19,7 @@ import {
   selectIsMyTurn,
   selectCanBuzz,
   VOWELS,
+  useToast,
 } from '@holiday-wheel/shared';
 import type { WedgeValue } from '@holiday-wheel/shared';
 import type { RootStackParamList } from '../navigation/AppNavigator';
@@ -47,6 +48,9 @@ export function GameScreen({ navigation, route }: GameScreenProps): React.JSX.El
   const lastSpinIdx = useGameStore((state) => state.lastSpinIndex);
   const isMyTurn = useGameStore(selectIsMyTurn);
   const canBuzz = useGameStore(selectCanBuzz);
+
+  // Toast notifications
+  const { showToast, ToastComponent } = useToast();
 
   // Wheel rotation state
   const [wheelRotation, setWheelRotation] = useState(0);
@@ -126,7 +130,7 @@ export function GameScreen({ navigation, route }: GameScreenProps): React.JSX.El
 
     // Set up toast handler
     socketService.setToastCallback((msg) => {
-      Alert.alert('Notice', msg);
+      showToast(msg);
     });
 
     // Set up session invalidation handler
@@ -153,7 +157,7 @@ export function GameScreen({ navigation, route }: GameScreenProps): React.JSX.El
     return () => {
       socketService.disconnect();
     };
-  }, [room, token, serverUrl, navigation]);
+  }, [room, token, serverUrl, navigation, showToast]);
 
   // Join game as player when connected
   useEffect(() => {
@@ -429,8 +433,9 @@ export function GameScreen({ navigation, route }: GameScreenProps): React.JSX.El
   );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Connection status */}
+    <View style={{ flex: 1 }}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        {/* Connection status */}
       <View style={[styles.statusBar, connected ? styles.connected : styles.disconnected]}>
         <Text style={styles.statusText}>
           {connected ? '● Connected' : '○ Connecting...'}
@@ -515,9 +520,11 @@ export function GameScreen({ navigation, route }: GameScreenProps): React.JSX.El
         )}
       </View>
 
-      {/* Players */}
-      {renderPlayers()}
-    </ScrollView>
+        {/* Players */}
+        {renderPlayers()}
+      </ScrollView>
+      <ToastComponent />
+    </View>
   );
 }
 
