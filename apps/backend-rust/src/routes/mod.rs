@@ -4152,7 +4152,7 @@ pub async fn admin() -> Html<String> {
                                     <span class="connection-dot ${{p.is_connected ? 'connected' : 'disconnected'}}"></span>
                                     ${{p.name}}${{idx === activeIdx ? ' ▶' : ''}}
                                 </span>
-                                <span class="player-score-admin">Total: $${{(p.total || 0).toLocaleString()}} | Round: $${{(p.round_bank || 0).toLocaleString()}}${{p.wild_cards > 0 ? ' | 🃏' + p.wild_cards : ''}}</span>
+                                <span class="player-score-admin">Total: $${{(p.total || 0).toLocaleString()}} | Round: $${{(p.round_bank || 0).toLocaleString()}}</span>
                             </div>
                             <div class="player-actions">
                                 <button class="btn btn-sm btn-secondary" onclick="resetPlayerScore('${{r.name}}', ${{idx}})">Reset</button>
