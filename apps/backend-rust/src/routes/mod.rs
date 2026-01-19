@@ -4267,7 +4267,7 @@ pub async fn admin() -> Html<String> {
         }}
 
         async function resetPlayerScore(room, playerIdx) {{
-            if (!confirm('Reset this player\\'s score to $0?')) return;
+            if (!confirm("Reset this player's score to $0?")) return;
             const res = await fetch(`/auth/api/admin/rooms/${{encodeURIComponent(room)}}/players/${{playerIdx}}/reset`, {{
                 method: 'POST',
                 credentials: 'include'
