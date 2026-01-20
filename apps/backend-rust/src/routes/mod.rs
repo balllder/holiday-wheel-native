@@ -3955,6 +3955,7 @@ pub async fn game() -> Html<String> {
 
         // Get auth token from localStorage
         const token = localStorage.getItem('auth_token') || '';
+        console.log('Auth token from localStorage:', token ? 'present (' + token.substring(0, 20) + '...)' : 'MISSING - please log out and log in again');
 
         const urlParams = new URLSearchParams(window.location.search);
         const room = urlParams.get('room') || 'main';
@@ -5757,9 +5758,10 @@ pub async fn game() -> Html<String> {
             try {{
                 const token = localStorage.getItem('auth_token');
                 const response = await fetch('/auth/api/packs', {{
-                    headers: {{
+                    credentials: 'include',
+                    headers: token ? {{
                         'Authorization': `Bearer ${{token}}`
-                    }}
+                    }} : {{}}
                 }});
                 const data = await response.json();
                 if (data.ok && data.packs) {{
