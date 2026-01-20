@@ -678,6 +678,7 @@ impl Database {
                 pack_id: row.get::<Option<i64>, _>("active_pack_id"),
                 disconnect_timeout_secs: row.get::<Option<i64>, _>("disconnect_timeout_secs").unwrap_or(300),
                 turn_timer_seconds: row.try_get::<Option<i32>, _>("turn_timer_seconds").ok().flatten().unwrap_or(10),
+                buzz_timer_seconds: row.try_get::<Option<i32>, _>("buzz_timer_seconds").ok().flatten().unwrap_or(5),
             })
         } else {
             Ok(RoomConfig::default())

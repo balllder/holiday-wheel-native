@@ -1882,6 +1882,7 @@ async fn admin_save_settings(
         pack_id,
         disconnect_timeout_secs: req.disconnect_timeout_secs.unwrap_or(existing.disconnect_timeout_secs),
         turn_timer_seconds: req.turn_timer_seconds.unwrap_or(existing.turn_timer_seconds),
+        buzz_timer_seconds: existing.buzz_timer_seconds,
     };
 
     match state.db.set_room_config(&room_name, &config, pack_id).await {

@@ -3827,6 +3827,11 @@ pub async fn game() -> Html<String> {
                 <span class="turn-timer-text" id="turnTimerText">10s</span>
             </div>
 
+            <div class="turn-timer" id="buzzTimer" style="display: none;">
+                <span class="turn-timer-icon">🔔</span>
+                <span class="turn-timer-text" id="buzzTimerText">5s</span>
+            </div>
+
             <div class="guess-input" id="guessArea">
                 <label class="guess-label" for="letterInput">Select a Consonant</label>
                 <input type="text" id="letterInput" maxlength="1" placeholder="A-Z" style="font-size: 24px; padding: 0;">
@@ -5447,8 +5452,10 @@ pub async fn game() -> Html<String> {
             document.getElementById('buyVowelBtn').disabled = isSpectating || !isMyTurn || isTossup || isFinalRound;
             document.getElementById('buyVowelBtn').style.display = (isTossup || isFinalRound) ? 'none' : 'inline-block';
             document.getElementById('solveBtn').disabled = isSpectating || (!isMyTurn && !canBuzz) || isFinalRound;
-            document.getElementById('guessArea').style.display = (isTossup || isFinalRound) ? 'none' : 'flex';
-            document.getElementById('letterInput').disabled = isSpectating || isFinalRound || !isMyTurn;
+            // Show guess area during toss-up for the controller (active player who buzzed in)
+            const isTossupController = isTossup && isMyTurn && gameState.tossup?.remaining_seconds > 0;
+            document.getElementById('guessArea').style.display = (isTossup && !isTossupController) || isFinalRound ? 'none' : 'flex';
+            document.getElementById('letterInput').disabled = isSpectating || isFinalRound || (!isMyTurn && !isTossupController);
 
             // Flash the input when it's player's turn and they need to guess a letter
             const currentWedge = gameState.current_wedge;
@@ -5499,6 +5506,49 @@ pub async fn game() -> Html<String> {
                 turnTimerLocalRemaining = null;
             }}
 
+            // ========== BUZZ TIMER DISPLAY ==========
+            const buzzTimerEl = document.getElementById('buzzTimer');
+            const buzzTimerTextEl = document.getElementById('buzzTimerText');
+            const buzzTimeRemaining = gameState.tossup?.remaining_seconds;
+
+            // Clear any existing buzz timer interval when state updates
+            if (buzzTimerInterval) {{
+                clearInterval(buzzTimerInterval);
+                buzzTimerInterval = null;
+            }}
+
+            if (isTossup && buzzTimeRemaining !== null && buzzTimeRemaining !== undefined && buzzTimeRemaining > 0) {{
+                buzzTimerEl.style.display = 'flex';
+                buzzTimerEl.classList.add('active');
+                buzzTimerLocalRemaining = buzzTimeRemaining;
+                buzzTimerTextEl.textContent = buzzTimerLocalRemaining + 's';
+                buzzTimerEl.classList.toggle('urgent', buzzTimerLocalRemaining <= 2);
+
+                // Start local countdown interval
+                buzzTimerInterval = setInterval(() => {{
+                    buzzTimerLocalRemaining--;
+                    if (buzzTimerLocalRemaining > 0) {{
+                        buzzTimerTextEl.textContent = buzzTimerLocalRemaining + 's';
+                        buzzTimerEl.classList.toggle('urgent', buzzTimerLocalRemaining <= 2);
+                        // Play tick sound
+                        if (buzzTimerLocalRemaining <= 2) {{
+                            SoundService.timerUrgent();
+                        }}
+                    }} else {{
+                        // Timer expired - play buzzer and hide
+                        SoundService.timesUp();
+                        buzzTimerEl.style.display = 'none';
+                        buzzTimerEl.classList.remove('active', 'urgent');
+                        clearInterval(buzzTimerInterval);
+                        buzzTimerInterval = null;
+                    }}
+                }}, 1000);
+            }} else {{
+                buzzTimerEl.style.display = 'none';
+                buzzTimerEl.classList.remove('active', 'urgent');
+                buzzTimerLocalRemaining = null;
+            }}
+
             // Buzz button for toss-up
             const buzzBtn = document.getElementById('buzzBtn');
             buzzBtn.style.display = canBuzz && !isFinalRound ? 'inline-block' : 'none';
@@ -5539,6 +5589,8 @@ pub async fn game() -> Html<String> {
         let notificationTimeout = null;
         let turnTimerInterval = null;
         let turnTimerLocalRemaining = null;
+        let buzzTimerInterval = null;
+        let buzzTimerLocalRemaining = null;
 
         function showNotification(msg, type = 'info', duration = 5000) {{
             const notif = document.getElementById('notification');
@@ -5652,7 +5704,10 @@ pub async fn game() -> Html<String> {
             const input = document.getElementById('letterInput');
             const letter = letterParam || input.value.toUpperCase();
             if (letter && letter.length === 1) {{
-                socket.emit('guess', {{ room, letter }});
+                // Use tossup_guess during toss-up mode, regular guess otherwise
+                const isTossup = gameState && gameState.phase === 'tossup';
+                const eventName = isTossup ? 'tossup_guess' : 'guess';
+                socket.emit(eventName, {{ room, letter }});
                 // Only clear if not called with a parameter (event listener handles its own clearing)
                 if (!letterParam) {{
                     input.value = '';

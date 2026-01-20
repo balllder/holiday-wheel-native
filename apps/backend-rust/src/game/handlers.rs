@@ -146,6 +146,18 @@ pub struct FinalPickRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct FinalPickConsonantsRequest {
+    pub room: String,
+    pub letters: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FinalPickVowelRequest {
+    pub room: String,
+    pub letter: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct SetActivePack {
     pub room: String,
     pub pack_id: Option<i64>,
@@ -1177,12 +1189,89 @@ pub fn register_handlers(io: &SocketIo) {
                             // Broadcast to all in room
                             let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": format!("{} buzzed in!", name) }));
                             toast!(socket, &format!("{} buzzed in!", name));
+
+                            // Spawn background task to check for buzz timer expiry
+                            if game.config.buzz_timer_seconds > 0 {
+                                let state_clone = state.clone();
+                                let room_clone = req.room.clone();
+                                let timer_seconds = game.config.buzz_timer_seconds as u64;
+                                let buzzer_name = name.clone();
+                                tokio::spawn(async move {
+                                    // Wait for timer to expire (plus small buffer)
+                                    tokio::time::sleep(Duration::from_secs(timer_seconds + 1)).await;
+
+                                    // Check if timer expired and lock out player
+                                    let mut manager = state_clone.game_manager.write().await;
+                                    if let Some(game) = manager.get_room_mut(&room_clone) {
+                                        if game.phase == GamePhase::Tossup
+                                            && game.buzz_timer_expired()
+                                            && game.tossup.controller_sid.is_some()
+                                        {
+                                            // Timer expired - lock out the player
+                                            info!(
+                                                "Buzz timer expired for {} in room {}, locking out",
+                                                buzzer_name, room_clone
+                                            );
+                                            game.tossup_buzz_timeout();
+
+                                            // Broadcast update
+                                            if let Some(io) = state_clone.io.get() {
+                                                let msg = format!("{} ran out of time!", buzzer_name);
+                                                if let Some(ns) = io.of("/") {
+                                                    let _ = ns.to(room_clone.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
+                                                }
+                                                if let Some(ns) = io.of("/") {
+                                                    let _ = ns.to(room_clone).emit("state", &game.get_state());
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                            }
                         }
                         Err(msg) => {
                             toast!(socket, msg);
                         }
                     }
                     broadcast_state!(socket, req.room, game.get_state());
+                }
+            },
+        );
+
+        // Guess a letter during toss-up
+        socket.on(
+            "tossup_guess",
+            |socket: SocketRef, Data(req): Data<GuessRequest>, State(state): State<Arc<AppState>>| async move {
+                info!("Toss-up guess '{}' in room {}", req.letter, req.room);
+
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    if game.phase != GamePhase::Tossup {
+                        toast!(socket, "Not in toss-up mode.");
+                        return;
+                    }
+
+                    // Only the controller (who buzzed in) can guess
+                    if game.tossup.controller_sid.as_deref() != Some(socket.id.as_str()) {
+                        toast!(socket, "Only the player who buzzed in can guess.");
+                        return;
+                    }
+
+                    if let Some(letter) = req.letter.chars().next() {
+                        let result = game.tossup_guess_letter(letter);
+                        let msg = match result {
+                            GuessResult::Correct(count) => format!("{} {}(s)!", count, letter.to_uppercase()),
+                            GuessResult::Incorrect => {
+                                format!("No {}s - locked out!", letter.to_uppercase())
+                            }
+                            GuessResult::AlreadyUsed => "Letter already used".to_string(),
+                            GuessResult::InvalidLetter => "Invalid letter".to_string(),
+                            _ => "Error".to_string(),
+                        };
+                        toast!(socket, &msg);
+                        let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": &msg }));
+                        broadcast_state!(socket, req.room, game.get_state());
+                    }
                 }
             },
         );
@@ -1293,6 +1382,114 @@ pub fn register_handlers(io: &SocketIo) {
                         }
                         broadcast_state!(socket, req.room, game.get_state());
                     }
+                }
+            },
+        );
+
+        // Final pick consonants (web client sends array of consonants)
+        socket.on(
+            "final_pick_consonant",
+            |socket: SocketRef, Data(req): Data<FinalPickConsonantsRequest>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    if !game.is_active_player(socket.id.as_str(), false) {
+                        toast!(socket, "Only the active player can pick.");
+                        return;
+                    }
+
+                    for letter in &req.letters {
+                        if let Some(l) = letter.chars().next() {
+                            let _ = game.final_pick_consonant(l);
+                        }
+                    }
+                    broadcast_state!(socket, req.room, game.get_state());
+                }
+            },
+        );
+
+        // Final pick vowel (web client sends single vowel)
+        socket.on(
+            "final_pick_vowel",
+            |socket: SocketRef, Data(req): Data<FinalPickVowelRequest>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    if !game.is_active_player(socket.id.as_str(), false) {
+                        toast!(socket, "Only the active player can pick.");
+                        return;
+                    }
+
+                    if let Some(letter) = req.letter.chars().next() {
+                        let _ = game.final_pick_vowel(letter);
+                    }
+                    broadcast_state!(socket, req.room, game.get_state());
+                }
+            },
+        );
+
+        // Final start timer (web client requests to start the solve timer)
+        socket.on(
+            "final_start_timer",
+            |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    if !game.is_active_player(socket.id.as_str(), false) {
+                        toast!(socket, "Only the active player can start the timer.");
+                        return;
+                    }
+
+                    if game.phase != GamePhase::Final {
+                        toast!(socket, "Not in final round.");
+                        return;
+                    }
+
+                    if !game.final_all_picks_complete() {
+                        toast!(socket, "Complete all picks first.");
+                        return;
+                    }
+
+                    // Reveal the picked letters and start the timer
+                    game.final_start_solve();
+
+                    let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": "Time to solve!" }));
+                    toast!(socket, "Time to solve!");
+
+                    // Spawn background task to auto-end final round when timer expires
+                    let state_clone = state.clone();
+                    let room_clone = req.room.clone();
+                    let final_seconds = game.config.final_seconds as u64;
+                    tokio::spawn(async move {
+                        // Wait for timer to expire (plus small buffer)
+                        tokio::time::sleep(Duration::from_secs(final_seconds + 1)).await;
+
+                        // Check if timer expired and auto-end final round
+                        let mut manager = state_clone.game_manager.write().await;
+                        if let Some(game) = manager.get_room_mut(&room_clone) {
+                            if game.phase == GamePhase::Final && game.final_timer_expired() {
+                                // Timer expired - end final round
+                                let player_name = game.players.get(game.active_idx)
+                                    .map(|p| p.name.clone())
+                                    .unwrap_or_else(|| "Player".to_string());
+                                info!(
+                                    "Final round timer expired for {} in room {}, auto-ending",
+                                    player_name, room_clone
+                                );
+                                game.end_final();
+
+                                // Broadcast update
+                                if let Some(io) = state_clone.io.get() {
+                                    let msg = format!("Time's up! {} didn't solve in time.", player_name);
+                                    if let Some(ns) = io.of("/") {
+                                        let _ = ns.to(room_clone.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
+                                    }
+                                    if let Some(ns) = io.of("/") {
+                                        let _ = ns.to(room_clone).emit("state", &game.get_state());
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    broadcast_state!(socket, req.room, game.get_state());
                 }
             },
         );

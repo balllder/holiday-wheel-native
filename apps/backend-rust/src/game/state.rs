@@ -127,6 +127,9 @@ pub struct RoomConfig {
     /// Seconds for turn timer after spin (0 = disabled, default 10)
     #[serde(default = "default_turn_timer")]
     pub turn_timer_seconds: i32,
+    /// Seconds for toss-up buzz timer after buzzing in (0 = disabled, default 5)
+    #[serde(default = "default_buzz_timer")]
+    pub buzz_timer_seconds: i32,
 }
 
 fn default_disconnect_timeout() -> i64 {
@@ -135,6 +138,10 @@ fn default_disconnect_timeout() -> i64 {
 
 fn default_turn_timer() -> i32 {
     10 // 10 seconds default
+}
+
+fn default_buzz_timer() -> i32 {
+    5 // 5 seconds default for toss-up buzz timer
 }
 
 impl Default for RoomConfig {
@@ -149,6 +156,7 @@ impl Default for RoomConfig {
             pack_id: None, // All packs by default
             disconnect_timeout_secs: 300, // 5 minutes
             turn_timer_seconds: 10, // 10 seconds to guess after spin
+            buzz_timer_seconds: 5, // 5 seconds to solve after buzzing in
         }
     }
 }
@@ -161,6 +169,8 @@ pub struct TossupState {
     pub reveal_order: Vec<char>,
     pub allowed_player_idxs: Vec<usize>,
     pub is_tiebreaker: bool,
+    /// Unix timestamp when buzz timer expires (None = no timer active)
+    pub buzz_timer_end_ts: Option<f64>,
 }
 
 /// Final round state
@@ -790,6 +800,16 @@ impl Game {
 
         self.tossup.controller_sid = Some(socket_id.to_string());
         self.active_idx = player_idx;
+
+        // Start buzz timer if configured
+        if self.config.buzz_timer_seconds > 0 {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f64();
+            self.tossup.buzz_timer_end_ts = Some(now + self.config.buzz_timer_seconds as f64);
+        }
+
         Ok(player_idx)
     }
 
@@ -798,6 +818,7 @@ impl Game {
         if let Some(sid) = self.tossup.controller_sid.take() {
             self.tossup.locked_sids.insert(sid);
         }
+        self.tossup.buzz_timer_end_ts = None;
     }
 
     /// Handle correct toss-up answer
@@ -808,6 +829,72 @@ impl Game {
         }
         // Reveal all
         self.reveal_all();
+        self.tossup.buzz_timer_end_ts = None;
+    }
+
+    /// Handle buzz timer expiry - locks out the player who buzzed
+    pub fn tossup_buzz_timeout(&mut self) {
+        if let Some(sid) = self.tossup.controller_sid.take() {
+            self.tossup.locked_sids.insert(sid);
+        }
+        self.tossup.buzz_timer_end_ts = None;
+    }
+
+    /// Get remaining buzz timer seconds (None if no timer or expired)
+    pub fn buzz_timer_remaining(&self) -> Option<f64> {
+        self.tossup.buzz_timer_end_ts.and_then(|end_ts| {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f64();
+            let remaining = end_ts - now;
+            if remaining > 0.0 {
+                Some(remaining)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Check if buzz timer has expired (and there was a timer active)
+    pub fn buzz_timer_expired(&self) -> bool {
+        if let Some(end_ts) = self.tossup.buzz_timer_end_ts {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f64();
+            now >= end_ts
+        } else {
+            false
+        }
+    }
+
+    /// Guess a letter during toss-up (no spin required, no vowel cost)
+    /// Returns (correct, count) - correct means the letter was found
+    pub fn tossup_guess_letter(&mut self, letter: char) -> GuessResult {
+        let letter = letter.to_ascii_uppercase();
+
+        if !letter.is_ascii_alphabetic() {
+            return GuessResult::InvalidLetter;
+        }
+
+        if self.used_letters.contains(&letter) {
+            return GuessResult::AlreadyUsed;
+        }
+
+        self.used_letters.insert(letter);
+
+        let answer_upper = self.puzzle.answer.to_uppercase();
+        let count = answer_upper.chars().filter(|&c| c == letter).count();
+
+        if count > 0 {
+            self.revealed.insert(letter);
+            GuessResult::Correct(count)
+        } else {
+            // Wrong guess during toss-up = locked out
+            self.tossup_wrong_answer();
+            GuessResult::Incorrect
+        }
     }
 
     /// End toss-up mode
@@ -901,6 +988,14 @@ impl Game {
     /// Check if all final picks are complete
     pub fn final_all_picks_complete(&self) -> bool {
         self.final_state.picks_consonants.len() >= 3 && self.final_state.pick_vowel.is_some()
+    }
+
+    /// Start the running phase of final round (called automatically when picks complete,
+    /// or can be called manually via final_start_solve)
+    pub fn final_start_solve(&mut self) {
+        if self.final_state.stage == FinalStage::Pick && self.final_all_picks_complete() {
+            self.final_start_running();
+        }
     }
 
     /// Start the running phase of final round
@@ -1062,6 +1157,7 @@ impl Game {
                 locked_player_idxs: tossup_locked_idxs,
                 allowed_player_idxs: self.tossup.allowed_player_idxs.clone(),
                 is_tiebreaker: self.tossup.is_tiebreaker,
+                remaining_seconds: self.buzz_timer_remaining().map(|r| r.ceil() as i32),
             },
             final_round: FinalStateClient {
                 stage: self.final_state.stage,
@@ -1124,6 +1220,7 @@ pub struct TossupStateClient {
     pub locked_player_idxs: Vec<usize>,
     pub allowed_player_idxs: Vec<usize>,
     pub is_tiebreaker: bool,
+    pub remaining_seconds: Option<i32>,
 }
 
 /// Final picks for client
