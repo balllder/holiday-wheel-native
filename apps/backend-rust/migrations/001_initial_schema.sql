@@ -105,6 +105,8 @@ CREATE TABLE IF NOT EXISTS room_config (
     puzzle_display_seconds INTEGER,
     prize_wedge_names TEXT,
     disconnect_timeout_secs INTEGER DEFAULT 300,
+    turn_timer_seconds INTEGER DEFAULT 10,
+    buzz_timer_seconds INTEGER DEFAULT 5,
     FOREIGN KEY(active_pack_id) REFERENCES packs(id)
 );
 
