@@ -1,0 +1,2431 @@
+[2026-01-19T08:43:13.309Z] PROMPT
+============================================================
+Analyze this codebase for security vulnerabilities:
+- Check for hardcoded secrets (API keys, passwords)
+- Identify SQL injection risks
+- Find XSS vulnerabilities
+- Check for insecure dependencies
+- Identify authentication/authorization issues
+
+Provide a JSON report with:
+{
+  "vulnerabilities": [{ "severity": "high|medium|low", "file": "...", "line": N, "description": "..." }],
+  "riskScore": 0-100,
+  "recommendations": ["..."]
+}
+
+## Codebase Context
+
+--- .eslintrc.js ---
+module.exports = {
+  root: true,
+  parser: '@typescript-eslint/parser',
+  plugins: ['@typescript-eslint'],
+  extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended'],
+  parserOptions: {
+    ecmaVersion: 2022,
+    sourceType: 'module',
+  },
+  env: {
+    node: true,
+    es6: true,
+  },
+  rules: {
+    '@typescript-eslint/no-unused-vars': [
+      'warn',
+      { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+    ],
+    '@typescript-eslint/no-explicit-any': 'warn',
+  },
+};
+
+
+--- babel.config.js ---
+module.exports = {
+  presets: [
+    ['@babel/preset-env', { targets: { node: 'current' } }],
+    '@babel/preset-typescript',
+    ['@babel/preset-react', { runtime: 'automatic' }],
+  ],
+};
+
+
+--- jest.config.js ---
+module.exports = {
+  testEnvironment: 'node',
+  roots: ['<rootDir>/src'],
+  testMatch: ['**/__tests__/**/*.test.{ts,tsx}'],
+  transform: {
+    '^.+\\.(ts|tsx|js|jsx)$': 'babel-jest',
+  },
+  transformIgnorePatterns: [],
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  collectCoverageFrom: [
+    'src/**/*.{ts,tsx}',
+    '!src/**/*.d.ts',
+    '!src/index.ts',
+  ],
+};
+
+
+--- jest.mocks.js ---
+// Mock react-native for shared package tests
+const mockComponent = (name) => {
+  const React = require('react');
+  return ({ children, ...props }) => React.createElement(name, props, children);
+};
+
+const StyleSheet = {
+  create: (styles) => styles,
+  flatten: (style) => {
+    if (Array.isArray(style)) {
+      return Object.assign({}, ...style.filter(Boolean));
+    }
+    return style || {};
+  },
+};
+
+module.exports = {
+  View: mockComponent('View'),
+  Text: mockComponent('Text'),
+  StyleSheet,
+  Animated: {
+    View: mockComponent('Animated.View'),
+    Text: mockComponent('Animated.Text'),
+    Value: jest.fn(() => ({
+      setValue: jest.fn(),
+      interpolate: jest.fn(() => ({ __getValue: jest.fn() })),
+    })),
+    timing: jest.fn(() => ({
+      start: jest.fn((cb) => cb && cb()),
+    })),
+    spring: jest.fn(() => ({
+      start: jest.fn((cb) => cb && cb()),
+    })),
+    createAnimatedComponent: jest.fn((component) => component),
+  },
+  Easing: {
+    linear: jest.fn(),
+    ease: jest.fn(),
+    out: jest.fn((fn) => fn),
+  },
+  // SVG mocks
+  Svg: mockComponent('Svg'),
+  Path: mockComponent('Path'),
+  G: mockComponent('G'),
+  Circle: mockComponent('Circle'),
+  Rect: mockComponent('Rect'),
+  // Default export for SVG
+  default: mockComponent('Svg'),
+};
+
+
+--- jest.setup.js (truncated) ---
+/* eslint-env jest */
+
+// Variable names must start with 'mock' for Jest to allow them in mock factories
+
+// Mock AsyncStorage
+const mockAsyncStorage = {
+  setItem: jest.fn(() => Promise.resolve()),
+  getItem: jest.fn(() => Promise.resolve(null)),
+  removeItem: jest.fn(() => Promise.resolve()),
+  clear: jest.fn(() => Promise.resolve()),
+  getAllKeys: jest.fn(() => Promise.resolve([])),
+  multiGet: jest.fn(() => Promise.resolve([])),
+  multiSet: jest.fn(() => Promise.resolve()),
+  multiRemove: jest.fn(() => Promise.resolve()),
+};
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: mockAsyncStorage,
+  ...mockAsyncStorage,
+}));
+
+// Make mock accessible globally for tests
+global.mockAsyncStorage = mockAsyncStorage;
+
+// Mock react-native
+const mockStyleSheet = {
+  create: (styles) => styles,
+  flatten: (style) => {
+    if (Array.isArray(style)) {
+      return Object.assign({}, ...style.filter(Boolean));
+    }
+    return style || {};
+  },
+};
+
+jest.mock('react-native', () => {
+  const React = require('react');
+  const mockComponent = (name) => {
+    return ({ children, ...props }) =>
+      React.createElement(name, props, children);
+  };
+  return {
+    View: mockComponent('View'),
+    Text: mockComponent('Text'),
+    TouchableOpacity: mockComponent('TouchableOpacity'),
+    Modal: mockComponent('Modal'),
+    Pressable: mockComponent('Pressable'),
+    StyleSheet: mockStyleSheet,
+    Animated: {
+      View: mockComponent('Animated.View'),
+      Text: mockComponent('Animated.Text'),
+      Value: jest.fn(() => ({
+        setValue: jest.fn(),
+        interpolate: jest.fn(() => ({ __getValue: jest.fn() })),
+      })),
+      timing: jest.fn(() => ({
+        start: jest.fn((cb) => cb && cb()),
+        stop: jest.fn(),
+      })),
+      spring: jest.fn(() => ({
+        start: jest.fn((cb) => cb && cb()),
+        stop: jest.fn(),
+      })),
+      sequence: jest.fn(() => ({
+        start: jest.fn((cb) => cb && cb()),
+        stop: jest.fn(),
+      })),
+      parallel: jest.fn(() => ({
+        start: jest.fn((cb) => cb && cb()),
+        stop: jest.fn(),
+      })),
+      delay: jest.fn(() => ({
+        start: jest.fn((cb) => cb && cb()),
+        stop: jest.fn(),
+      })),
+      loop: jest.fn((animation) => ({
+        start: jest.fn((cb) => {
+          animation.start && animation.start();
+          cb && cb();
+        }),
+        stop: jest.fn(),
+      })),
+      createAnimatedComponent: jest.fn((component) => component),
+    },
+    Easing: {
+      linear: jest.fn(),
+      ease: jest.fn(),
+      out: jest.fn((fn) => fn),
+    },
+    Platform: {
+      OS: 'ios',
+      select: jest.fn((obj) => obj.ios || obj.default),
+    },
+    Dimensions: {
+      get: jest.fn(() => ({ width: 400, height: 800 })),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+    },
+  };
+});
+
+// Mock react-native-reanimated
+jest.mock('react-native-reanimated', () => {
+  const React = require('react');
+  const mockComponent = (name) => {
+    return ({ children, ...props }) =>
+      React.createElement(name, props, children);
+  };
+
+  // Mock shared value that stores and returns values
+  const mockUseSharedValue = (initialValue) => {
+    const ref = { value: initialValue };
+    return ref;
+  };
+
+  // Mock animated style that returns empty object
+  const mockUseAnimatedStyle = (styleGetter) => {
+    // In tests, return an empty object
+    return {};
+  };
+
+  // Mock animation functions that immediately complete
+  const mockWithTiming = (toValue, config, callback) => {
+    if (callback) callback(true);
+    return toValue;
+  };
+
+  const mockWithSpring = (toValue, config, callback) => {
+    if (callback) callback(true);
+    return toValue;
+  };
+
+  const mockWithSequence = (...values) => {
+    return values[values.length - 1];
+  };
+
+  const mockWithDelay = (delay, value) => {
+    return value;
+  };
+
+  const mockRunOnJS = (fn) => fn;
+
+  const mockInterpolate = (value, inputRange, outputRange) => {
+    return outputRange[0];
+  };
+
+  return {
+    __esModule: true,
+    default: {
+      View: mockComponent('Animated.View'),
+      Text: mockComponent('Animated.Text'),
+      Image: mockComponent('Animated.Image'),
+      createAnimatedComponent: (component) => component,
+    },
+    useSharedValue: mockUseSharedValue,
+    useAnimatedStyle: mockUseAnimatedStyle,
+    withTiming: mockWithTiming,
+    withSpring: mockWithSpring,
+    withSequence: mockWithSequence,
+    withDelay: mockWithDelay,
+    runOnJS: mockRunOnJS,
+    interpolate: mockInterpolate,
+    Easing: {
+      linear: jest.fn(),
+      ease: jest.fn(),
+      inOut: jest.fn(() => jest.fn()),
+    },
+  };
+});
+
+// Mock react-native-svg
+jest.mock('react-native-svg', () => {
+  const React = require('react');
+  const mockComponent = (name) => {
+    return ({ children, ...props }) =>
+      React.createElement(name, props, children);
+  };
+  return {
+    __esModule: true,
+    default: mockComponent('Svg'),
+    Svg: mockComponent('Svg'),
+    Path: mockComponent('Pat
+
+--- src/components/ui/index.ts ---
+// Modern UI Theme Components
+export { GradientBackground, SimpleGradient } from './GradientBackground';
+export type { GradientBackgroundProps } from './GradientBackground';
+
+export { GlassCard, GlassCardHeader, GlassCardContent, GlassCardFooter } from './GlassCard';
+export type { GlassCardProps } from './GlassCard';
+
+export { GoldButton } from './GoldButton';
+export type { GoldButtonProps } from './GoldButton';
+
+
+--- src/constants/__tests__/index.test.ts (truncated) ---
+import {
+  ALPHABET,
+  VOWELS,
+  CONSONANTS,
+  ROW_WIDTHS,
+  DEFAULT_VOWEL_COST,
+  DEFAULT_FINAL_SECONDS,
+  DEFAULT_FINAL_JACKPOT,
+  FINAL_RSTLNE,
+  WHEEL_COLORS,
+  SPECIAL_COLORS,
+  THEME,
+  MODERN_THEME,
+} from '../index';
+
+describe('Constants', () => {
+  describe('ALPHABET', () => {
+    it('contains all 26 letters', () => {
+      expect(ALPHABET).toBe('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+      expect(ALPHABET.length).toBe(26);
+    });
+  });
+
+  describe('VOWELS', () => {
+    it('contains AEIOU', () => {
+      expect(VOWELS).toBe('AEIOU');
+      expect(VOWELS.length).toBe(5);
+    });
+  });
+
+  describe('CONSONANTS', () => {
+    it('contains 21 consonants', () => {
+      expect(CONSONANTS.length).toBe(21);
+      expect(CONSONANTS).not.toContain('A');
+      expect(CONSONANTS).not.toContain('E');
+      expect(CONSONANTS).not.toContain('I');
+      expect(CONSONANTS).not.toContain('O');
+      expect(CONSONANTS).not.toContain('U');
+    });
+  });
+
+  describe('ROW_WIDTHS', () => {
+    it('defines 4 rows', () => {
+      expect(ROW_WIDTHS).toHaveLength(4);
+      expect(ROW_WIDTHS).toEqual([12, 14, 14, 12]);
+    });
+  });
+
+  describe('Default values', () => {
+    it('defines vowel cost', () => {
+      expect(DEFAULT_VOWEL_COST).toBe(250);
+    });
+
+    it('defines final round seconds', () => {
+      expect(DEFAULT_FINAL_SECONDS).toBe(30);
+    });
+
+    it('defines final jackpot', () => {
+      expect(DEFAULT_FINAL_JACKPOT).toBe(10000);
+    });
+  });
+
+  describe('FINAL_RSTLNE', () => {
+    it('contains the free letters R, S, T, L, N, E', () => {
+      expect(FINAL_RSTLNE).toEqual(['R', 'S', 'T', 'L', 'N', 'E']);
+    });
+  });
+
+  describe('WHEEL_COLORS', () => {
+    it('defines 20 colors', () => {
+      expect(WHEEL_COLORS).toHaveLength(20);
+    });
+
+    it('contains valid hex colors', () => {
+      WHEEL_COLORS.forEach((color) => {
+        expect(color).toMatch(/^#[0-9a-fA-F]{6}$/);
+      });
+    });
+  });
+
+  describe('SPECIAL_COLORS', () => {
+    it('defines special wedge colors', () => {
+      expect(SPECIAL_COLORS.BANKRUPT).toBe('#000000');
+      expect(SPECIAL_COLORS['LOSE A TURN']).toBe('#ffffff');
+      expect(SPECIAL_COLORS['FREE PLAY']).toBe('#39ff14');
+      expect(SPECIAL_COLORS.PRIZE).toBe('#c0c0c0');
+    });
+  });
+});
+
+describe('THEME', () => {
+  it('has dark and light themes', () => {
+    expect(THEME.dark).toBeDefined();
+    expect(THEME.light).toBeDefined();
+  });
+
+  describe('dark theme', () => {
+    it('has required color properties', () => {
+      expect(THEME.dark.bg).toBeDefined();
+      expect(THEME.dark.card).toBeDefined();
+      expect(THEME.dark.text).toBeDefined();
+      expect(THEME.dark.gold).toBeDefined();
+      expect(THEME.dark.accent).toBeDefined();
+      expect(THEME.dark.boardBg).toBeDefined();
+    });
+  });
+
+  describe('light theme', () => {
+    it('has required color properties', () => {
+      expect(THEME.light.bg).toBeDefined();
+      expect(THEME.light.card).toBeDefined();
+      expect(THEME.light.text).toBeDefined();
+      expect(THEME.light.gold).toBeDefined();
+      expect(THEME.light.accent).toBeDefined();
+      expect(THEME.light.boardBg).toBeDefined();
+    });
+  });
+});
+
+describe('MODERN_THEME', () => {
+  describe('colors', () => {
+    it('has primary colors', () => {
+      expect(MODERN_THEME.colors.primary).toBe('#d4af37');
+      expect(MODERN_THEME.colors.primaryLight).toBeDefined();
+      expect(MODERN_THEME.colors.primaryDark).toBeDefined();
+      expect(MODERN_THEME.colors.primaryGlow).toBeDefined();
+    });
+
+    it('has accent colors', () => {
+      expect(MODERN_THEME.colors.accent).toBe('#6366f1');
+      expect(MODERN_THEME.colors.accentLight).toBeDefined();
+      expect(MODERN_THEME.colors.accentDark).toBeDefined();
+    });
+
+    it('has semantic colors', () => {
+      expect(MODERN_THEME.colors.success).toBeDefined();
+      expect(MODERN_THEME.colors.danger).toBeDefined();
+      expect(MODERN_THEME.colors.warning).toBeDefined();
+      expect(MODERN_THEME.colors.info).toBeDefined();
+    });
+
+    it('has neutral colors', () => {
+      expect(MODERN_THEME.colors.background).toBeDefined();
+      expect(MODERN_THEME.colors.surface).toBeDefined();
+      expect(MODERN_THEME.colors.border).toBeDefined();
+    });
+
+    it('has text colors', () => {
+      expect(MODERN_THEME.colors.text).toBeDefined();
+      expect(MODERN_THEME.colors.textSecondary).toBeDefined();
+      expect(MODERN_THEME.colors.textMuted).toBeDefined();
+    });
+
+    it('has game-specific colors', () => {
+      expect(MODERN_THEME.colors.boardBg).toBeDefined();
+      expect(MODERN_THEME.colors.boardFrame).toBeDefined();
+      expect(MODERN_THEME.colors.emptyCell).toBeDefined();
+      expect(MODERN_THEME.colors.letterTile).toBeDefined();
+    });
+  });
+
+  describe('gradients', () => {
+    it('has background gradients', () => {
+      expect(MODERN_THEME.gradients.backgroundPrimary).toBeDefined();
+      expect(MODERN_THEME.gradients.backgroundPrimary.colors).toHaveLength(2);
+      expect(MODERN_THEME.gradients.background
+
+--- src/constants/index.ts (truncated) ---
+// Constants matching the Flask backend
+
+// Theme exports
+export * from './theme';
+
+export const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+export const VOWELS = 'AEIOU';
+export const CONSONANTS = ALPHABET.split('').filter((c) => !VOWELS.includes(c)).join('');
+
+// Puzzle board row widths (TV-authentic 4-row layout)
+export const ROW_WIDTHS = [12, 14, 14, 12];
+
+// Default config values
+export const DEFAULT_VOWEL_COST = 250;
+export const DEFAULT_FINAL_SECONDS = 30;
+export const DEFAULT_FINAL_JACKPOT = 10000;
+
+// Final round free letters
+export const FINAL_RSTLNE = ['R', 'S', 'T', 'L', 'N', 'E'];
+
+// Wheel colors (index-based, matching app.js WHEEL_COLORS)
+export const WHEEL_COLORS = [
+  '#e74c3c', // red
+  '#3498db', // blue
+  '#f39c12', // orange
+  '#9b59b6', // purple
+  '#1abc9c', // teal
+  '#e91e63', // pink
+  '#00bcd4', // cyan
+  '#ff9800', // amber
+  '#8bc34a', // light green
+  '#795548', // brown
+  '#607d8b', // blue grey
+  '#ff5722', // deep orange
+  '#673ab7', // deep purple
+  '#009688', // dark teal
+  '#ffc107', // yellow
+  '#2196f3', // light blue
+  '#4caf50', // green
+  '#f44336', // bright red
+  '#03a9f4', // sky blue
+  '#cddc39', // lime
+];
+
+// Special wedge colors
+export const SPECIAL_COLORS = {
+  BANKRUPT: '#000000',
+  'LOSE A TURN': '#ffffff',
+  'FREE PLAY': '#39ff14', // neon green
+  PRIZE: '#c0c0c0', // silver
+};
+
+// Theme colors (matching styles.css)
+export const THEME = {
+  dark: {
+    bg: '#0d0628',
+    card: '#1a0a3e',
+    text: '#ffffff',
+    muted: 'rgba(255,255,255,0.7)',
+    gold: '#d4af37',
+    goldLight: '#ffd700',
+    accent: '#6c5ce7',
+    boardBg: '#1a5cb8',
+    boardFrame: '#d4af37',
+    emptyCell: '#228b22',
+    letterTile: '#ffffff',
+    letterText: '#1a1a2e',
+  },
+  light: {
+    bg: '#e8f4ff',
+    card: '#ffffff',
+    text: '#1a1a2e',
+    muted: 'rgba(0,0,0,0.6)',
+    gold: '#b8860b',
+    goldLight: '#daa520',
+    accent: '#5a4fcf',
+    boardBg: '#1a5cb8',
+    boardFrame: '#b8860b',
+    emptyCell: '#228b22',
+    letterTile: '#ffffff',
+    letterText: '#1a1a2e',
+  },
+};
+
+/**
+ * Modern UI Theme - Enhanced visual design
+ *
+ * Features:
+ * - Gradient backgrounds
+ * - Glassmorphism effects
+ * - Glow and shadow effects
+ * - Better color hierarchy
+ */
+export const MODERN_THEME = {
+  // Base colors
+  colors: {
+    // Primary palette
+    primary: '#d4af37',
+    primaryLight: '#ffd700',
+    primaryDark: '#b8860b',
+    primaryGlow: 'rgba(212, 175, 55, 0.4)',
+
+    // Accent colors
+    accent: '#6366f1', // Indigo
+    accentLight: '#818cf8',
+    accentDark: '#4f46e5',
+    accentGlow: 'rgba(99, 102, 241, 0.4)',
+
+    // Semantic colors
+    success: '#22c55e',
+    successGlow: 'rgba(34, 197, 94, 0.4)',
+    danger: '#ef4444',
+    dangerGlow: 'rgba(239, 68, 68, 0.4)',
+    warning: '#f59e0b',
+    warningGlow: 'rgba(245, 158, 11, 0.4)',
+    info: '#3b82f6',
+    infoGlow: 'rgba(59, 130, 246, 0.4)',
+
+    // Neutral colors
+    background: '#0d0628',
+    backgroundLight: '#1a0a3e',
+    surface: '#1a0a3e',
+    surfaceLight: '#2a1a4e',
+    border: '#333',
+    borderLight: '#444',
+
+    // Text colors
+    text: '#ffffff',
+    textSecondary: 'rgba(255, 255, 255, 0.7)',
+    textMuted: 'rgba(255, 255, 255, 0.5)',
+    textOnPrimary: '#1a0a3e',
+
+    // Game-specific colors
+    boardBg: '#1a5cb8',
+    boardFrame: '#d4af37',
+    emptyCell: '#228b22',
+    letterTile: '#ffffff',
+    letterText: '#1a1a2e',
+    wheelPointer: '#d4af37',
+
+    // Aliases for backward compatibility
+    gold: '#d4af37',
+    goldLight: '#ffd700',
+  },
+
+  // Gradient definitions (for use with LinearGradient components)
+  gradients: {
+    // Background gradients
+    backgroundPrimary: {
+      colors: ['#1a0a3e', '#0d0628'],
+      start: { x: 0, y: 0 },
+      end: { x: 0, y: 1 },
+    },
+    backgroundRadial: {
+      colors: ['#2a1a4e', '#0d0628'],
+      start: { x: 0.5, y: 0 },
+      end: { x: 0.5, y: 1 },
+    },
+
+    // Button gradients
+    buttonPrimary: {
+      colors: ['#ffd700', '#d4af37'],
+      start: { x: 0, y: 0 },
+      end: { x: 0, y: 1 },
+    },
+    buttonSecondary: {
+      colors: ['#6366f1', '#4f46e5'],
+      start: { x: 0, y: 0 },
+      end: { x: 0, y: 1 },
+    },
+    buttonDanger: {
+      colors: ['#f87171', '#ef4444'],
+      start: { x: 0, y: 0 },
+      end: { x: 0, y: 1 },
+    },
+    buttonSuccess: {
+      colors: ['#4ade80', '#22c55e'],
+      start: { x: 0, y: 0 },
+      end: { x: 0, y: 1 },
+    },
+
+    // Card gradients
+    cardGlass: {
+      colors: ['rgba(26, 10, 62, 0.8)', 'rgba(26, 10, 62, 0.6)'],
+      start: { x: 0, y: 0 },
+      end: { x: 0, y: 1 },
+    },
+
+    // Gold shimmer for highlights
+    goldShimmer: {
+      colors: ['#ffd700', '#d4af37', '#b8860b', '#d4af37', '#ffd700'],
+      start: { x: 0, y: 0 },
+      end: { x: 1, y: 0 },
+    },
+  },
+
+  // Glassmorphism effects
+  glass: {
+    background: 'rgba(26, 10, 62, 0.7)',
+    backgroundLight: 'rgba(42, 26, 78, 0.7)',
+    blur: 10,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+  },
+
+  // Shadow definitions
+  shadows: {
+    // Elevation shadows
+
+
+--- src/constants/theme.ts ---
+/**
+ * Modern UI Theme System
+ *
+ * Centralized theme constants for consistent styling across the app.
+ * Provides colors, spacing, border radius, and shadow definitions.
+ */
+
+export const theme = {
+  colors: {
+    // Background gradient colors
+    background: {
+      start: '#1a0a3e',
+      end: '#0d0628',
+    },
+
+    // Card/Surface colors
+    card: 'rgba(26, 10, 62, 0.8)',
+    cardBorder: 'rgba(212, 175, 55, 0.3)',
+    cardBorderHover: 'rgba(212, 175, 55, 0.5)',
+
+    // Primary gold colors
+    gold: '#d4af37',
+    goldLight: '#ffd700',
+    goldDark: '#b8860b',
+    goldGlow: 'rgba(212, 175, 55, 0.4)',
+
+    // Accent colors
+    accent: '#6366f1',
+    accentLight: '#818cf8',
+    accentDark: '#4f46e5',
+    accentGlow: 'rgba(99, 102, 241, 0.4)',
+
+    // Semantic colors
+    success: '#22c55e',
+    successGlow: 'rgba(34, 197, 94, 0.4)',
+    danger: '#ef4444',
+    dangerGlow: 'rgba(239, 68, 68, 0.4)',
+    warning: '#f59e0b',
+    warningGlow: 'rgba(245, 158, 11, 0.4)',
+    info: '#3b82f6',
+    infoGlow: 'rgba(59, 130, 246, 0.4)',
+
+    // Text colors
+    text: '#ffffff',
+    textSecondary: 'rgba(255, 255, 255, 0.7)',
+    textMuted: 'rgba(255, 255, 255, 0.5)',
+    textOnGold: '#1a0a3e',
+
+    // Glass effect colors
+    glassBorder: 'rgba(255, 255, 255, 0.1)',
+    glassBackground: 'rgba(26, 10, 62, 0.7)',
+  },
+
+  // Spacing scale (in pixels)
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 16,
+    lg: 24,
+    xl: 32,
+    '2xl': 48,
+    '3xl': 64,
+  },
+
+  // Border radius scale
+  borderRadius: {
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 24,
+    '2xl': 32,
+    full: 9999,
+  },
+
+  // Shadow definitions for React Native
+  shadows: {
+    sm: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    md: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+    lg: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.4,
+      shadowRadius: 16,
+      elevation: 12,
+    },
+    // Glow shadows
+    goldGlow: {
+      shadowColor: '#d4af37',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.6,
+      shadowRadius: 15,
+      elevation: 10,
+    },
+    accentGlow: {
+      shadowColor: '#6366f1',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.6,
+      shadowRadius: 15,
+      elevation: 10,
+    },
+    dangerGlow: {
+      shadowColor: '#ef4444',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.6,
+      shadowRadius: 15,
+      elevation: 10,
+    },
+    successGlow: {
+      shadowColor: '#22c55e',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.6,
+      shadowRadius: 15,
+      elevation: 10,
+    },
+  },
+
+  // Typography scale
+  typography: {
+    fontSize: {
+      xs: 10,
+      sm: 12,
+      md: 14,
+      lg: 16,
+      xl: 18,
+      '2xl': 24,
+      '3xl': 30,
+      '4xl': 36,
+    },
+    fontWeight: {
+      normal: '400' as const,
+      medium: '500' as const,
+      semibold: '600' as const,
+      bold: '700' as const,
+    },
+  },
+
+  // Animation durations (in ms)
+  animation: {
+    fast: 150,
+    normal: 300,
+    slow: 500,
+  },
+
+  // Glass effect configuration
+  glass: {
+    blur: 10,
+    borderWidth: 1,
+  },
+} as const;
+
+// Type exports for TypeScript consumers
+export type Theme = typeof theme;
+export type ThemeColors = typeof theme.colors;
+export type ThemeSpacing = typeof theme.spacing;
+export type ThemeBorderRadius = typeof theme.borderRadius;
+export type ThemeShadows = typeof theme.shadows;
+
+
+--- src/hooks/index.ts ---
+export { useConfetti, useConfettiSimple } from './useConfetti';
+export type { UseConfettiOptions, UseConfettiReturn } from './useConfetti';
+
+export { useToast, useToastHelpers } from './useToast';
+export type { UseToastOptions, UseToastReturn, ToastState } from './useToast';
+
+
+--- src/hooks/useConfetti.ts (truncated) ---
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useGameStore } from '../stores/gameStore';
+import type { ConfettiVariant, ConfettiRef } from '../components/Confetti';
+
+/**
+ * Configuration options for useConfetti hook
+ */
+export interface UseConfettiOptions {
+  /** Auto-trigger on puzzle solve (default: true) */
+  autoTriggerOnSolve?: boolean;
+  /** Auto-trigger on round win (default: true) */
+  autoTriggerOnRoundWin?: boolean;
+  /** Auto-trigger on game win (default: true) */
+  autoTriggerOnGameWin?: boolean;
+  /** Duration before auto-hide in ms (default: none - waits for animation) */
+  autoHideDuration?: number;
+  /** Callback when confetti is triggered */
+  onTrigger?: (variant: ConfettiVariant) => void;
+  /** Callback when confetti animation completes */
+  onComplete?: () => void;
+}
+
+/**
+ * Return type for useConfetti hook
+ */
+export interface UseConfettiReturn {
+  /** Whether confetti is currently showing */
+  isActive: boolean;
+  /** Current variant being displayed */
+  currentVariant: ConfettiVariant | null;
+  /** Trigger confetti with specified variant */
+  trigger: (variant?: ConfettiVariant) => void;
+  /** Stop confetti animation */
+  stop: () => void;
+  /** Ref to attach to Confetti component for imperative control */
+  confettiRef: React.RefObject<ConfettiRef | null>;
+  /** Props to spread on Confetti component */
+  confettiProps: {
+    active: boolean;
+    variant: ConfettiVariant;
+    onComplete: () => void;
+  };
+}
+
+/**
+ * Hook to manage confetti celebrations with game state integration
+ *
+ * Features:
+ * - Auto-triggers confetti on puzzle solve, round win, and game win
+ * - Provides imperative trigger method for manual control
+ * - Automatically selects appropriate variant based on event type
+ * - Integrates with game store to detect celebration events
+ *
+ * @example
+ * // Basic usage with auto-trigger
+ * const { confettiProps } = useConfetti();
+ * return <Confetti {...confettiProps} />;
+ *
+ * @example
+ * // Manual trigger
+ * const { trigger, confettiProps } = useConfetti({ autoTriggerOnSolve: false });
+ * const handleWin = () => trigger('gameWin');
+ * return <Confetti {...confettiProps} />;
+ *
+ * @example
+ * // With ref for imperative control
+ * const { confettiRef, confettiProps } = useConfetti();
+ * const handleCustomEvent = () => confettiRef.current?.trigger('roundWin');
+ * return <Confetti ref={confettiRef} {...confettiProps} />;
+ */
+export function useConfetti(options: UseConfettiOptions = {}): UseConfettiReturn {
+  const {
+    autoTriggerOnSolve = true,
+    autoTriggerOnRoundWin = true,
+    autoTriggerOnGameWin = true,
+    autoHideDuration,
+    onTrigger,
+    onComplete,
+  } = options;
+
+  const [isActive, setIsActive] = useState(false);
+  const [currentVariant, setCurrentVariant] = useState<ConfettiVariant | null>(null);
+  const confettiRef = useRef<ConfettiRef | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Track previous game state for detecting changes
+  const prevRevealedCountRef = useRef<number>(0);
+  const prevPhaseRef = useRef<string>('normal');
+  const prevRoundRef = useRef<number>(0);
+
+  // Game state selectors
+  const revealed = useGameStore((state) => state.revealed);
+  const phase = useGameStore((state) => state.phase);
+  const puzzle = useGameStore((state) => state.puzzle);
+  const round = useGameStore((state) => state.round);
+
+  // Trigger confetti
+  const trigger = useCallback(
+    (variant: ConfettiVariant = 'solve') => {
+      // Clear any pending auto-hide timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
+      setCurrentVariant(variant);
+      setIsActive(true);
+      onTrigger?.(variant);
+
+      // Use ref for imperative trigger if available
+      confettiRef.current?.trigger(variant);
+
+      // Auto-hide after duration if specified
+      if (autoHideDuration) {
+        timeoutRef.current = setTimeout(() => {
+          setIsActive(false);
+          setCurrentVariant(null);
+        }, autoHideDuration);
+      }
+    },
+    [autoHideDuration, onTrigger]
+  );
+
+  // Stop confetti
+  const stop = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    setIsActive(false);
+    setCurrentVariant(null);
+    confettiRef.current?.stop();
+  }, []);
+
+  // Handle animation complete
+  const handleComplete = useCallback(() => {
+    setIsActive(false);
+    setCurrentVariant(null);
+    onComplete?.();
+  }, [onComplete]);
+
+  // Detect puzzle solve by checking if all letters are revealed
+  useEffect(() => {
+    if (!autoTriggerOnSolve) return;
+
+    const answer = puzzle.answer?.toUpperCase() || '';
+    const letterSet = new Set(answer.replace(/[^A-Z]/g, '').split(''));
+    const allRevealed = letterSet.size > 0 && [...letterSet].every((l) => revealed.has(l));
+    const prevCount = prevRevealedCountRef.current;
+    const currentCount = revealed.size;
+
+    // Trigge
+
+--- src/hooks/useToast.ts ---
+import React, { useState, useCallback, useMemo } from 'react';
+import { Toast, ToastType, ToastProps } from '../components/Toast';
+
+export interface UseToastOptions {
+  /** Default duration for toasts (default: 3000ms) */
+  defaultDuration?: number;
+  /** Default type for toasts (default: 'info') */
+  defaultType?: ToastType;
+}
+
+export interface ToastState {
+  message: string;
+  type: ToastType;
+  duration: number;
+}
+
+export interface UseToastReturn {
+  /** Show a toast notification */
+  showToast: (message: string, type?: ToastType, duration?: number) => void;
+  /** Hide the current toast */
+  hideToast: () => void;
+  /** Toast component to render */
+  ToastComponent: React.FC;
+  /** Current visibility state */
+  isVisible: boolean;
+}
+
+/**
+ * useToast - Hook for managing toast notifications
+ *
+ * Provides a simple API to show/hide toast notifications with
+ * automatic state management.
+ *
+ * @example
+ * function MyComponent() {
+ *   const { showToast, ToastComponent } = useToast();
+ *
+ *   const handleSave = async () => {
+ *     try {
+ *       await saveData();
+ *       showToast('Saved successfully!', 'success');
+ *     } catch (error) {
+ *       showToast('Failed to save', 'error');
+ *     }
+ *   };
+ *
+ *   return (
+ *     <View>
+ *       <Button onPress={handleSave} title="Save" />
+ *       <ToastComponent />
+ *     </View>
+ *   );
+ * }
+ *
+ * @example
+ * // With custom defaults
+ * const { showToast, ToastComponent } = useToast({
+ *   defaultDuration: 5000,
+ *   defaultType: 'info',
+ * });
+ */
+export function useToast(options: UseToastOptions = {}): UseToastReturn {
+  const { defaultDuration = 3000, defaultType = 'info' } = options;
+
+  const [visible, setVisible] = useState(false);
+  const [toastState, setToastState] = useState<ToastState>({
+    message: '',
+    type: defaultType,
+    duration: defaultDuration,
+  });
+
+  const showToast = useCallback(
+    (message: string, type?: ToastType, duration?: number) => {
+      setToastState({
+        message,
+        type: type ?? defaultType,
+        duration: duration ?? defaultDuration,
+      });
+      setVisible(true);
+    },
+    [defaultType, defaultDuration]
+  );
+
+  const hideToast = useCallback(() => {
+    setVisible(false);
+  }, []);
+
+  // Memoize the ToastComponent to prevent unnecessary re-renders
+  const ToastComponent = useMemo(() => {
+    const Component: React.FC = () =>
+      React.createElement(Toast, {
+        message: toastState.message,
+        visible: visible,
+        onHide: hideToast,
+        duration: toastState.duration,
+        type: toastState.type,
+        testID: 'toast-notification',
+      } as ToastProps);
+
+    Component.displayName = 'ToastComponent';
+    return Component;
+  }, [toastState.message, toastState.type, toastState.duration, visible, hideToast]);
+
+  return {
+    showToast,
+    hideToast,
+    ToastComponent,
+    isVisible: visible,
+  };
+}
+
+/**
+ * Convenience shortcuts for common toast types
+ */
+export function useToastHelpers(options: UseToastOptions = {}) {
+  const { showToast, hideToast, ToastComponent, isVisible } = useToast(options);
+
+  const showInfo = useCallback(
+    (message: string, duration?: number) => {
+      showToast(message, 'info', duration);
+    },
+    [showToast]
+  );
+
+  const showSuccess = useCallback(
+    (message: string, duration?: number) => {
+      showToast(message, 'success', duration);
+    },
+    [showToast]
+  );
+
+  const showError = useCallback(
+    (message: string, duration?: number) => {
+      showToast(message, 'error', duration);
+    },
+    [showToast]
+  );
+
+  const showWarning = useCallback(
+    (message: string, duration?: number) => {
+      showToast(message, 'warning', duration);
+    },
+    [showToast]
+  );
+
+  return {
+    showToast,
+    showInfo,
+    showSuccess,
+    showError,
+    showWarning,
+    hideToast,
+    ToastComponent,
+    isVisible,
+  };
+}
+
+export default useToast;
+
+
+--- src/index.ts ---
+// Types
+export * from './types';
+
+// Constants
+export * from './constants';
+
+// UI Components (Modern Theme)
+export {
+  GradientBackground,
+  SimpleGradient,
+  GlassCard,
+  GlassCardHeader,
+  GlassCardContent,
+  GlassCardFooter,
+  GoldButton,
+} from './components/ui';
+export type {
+  GradientBackgroundProps,
+  GlassCardProps,
+  GoldButtonProps,
+} from './components/ui';
+
+// Components
+export { AnimatedWheel } from './components/AnimatedWheel';
+export { AnimatedScore, useScoreAnimation } from './components/AnimatedScore';
+export type { AnimatedScoreProps } from './components/AnimatedScore';
+export { AnimatedButton, SpinButton, BuzzButton } from './components/AnimatedButton';
+export type { AnimatedButtonProps } from './components/AnimatedButton';
+export { LetterCell } from './components/LetterCell';
+export type { LetterCellProps, LetterState } from './components/LetterCell';
+export { PuzzleBoard } from './components/PuzzleBoard';
+export type { PuzzleBoardProps } from './components/PuzzleBoard';
+export { Confetti } from './components/Confetti';
+export type { ConfettiProps, ConfettiRef, ConfettiVariant } from './components/Confetti';
+export { Toast } from './components/Toast';
+export type { ToastProps, ToastType } from './components/Toast';
+
+// Hooks
+export { useConfetti, useConfettiSimple } from './hooks/useConfetti';
+export type { UseConfettiOptions, UseConfettiReturn } from './hooks/useConfetti';
+export { useToast, useToastHelpers } from './hooks/useToast';
+export type { UseToastOptions, UseToastReturn, ToastState } from './hooks/useToast';
+export { PhaseTransition, usePhaseTransition } from './components/PhaseTransition';
+export type { PhaseTransitionProps, GamePhase } from './components/PhaseTransition';
+export { MysteryWedgeModal } from './components/MysteryWedgeModal';
+export type { MysteryWedgeModalProps } from './components/MysteryWedgeModal';
+export { ExpressModeIndicator } from './components/ExpressModeIndicator';
+export type { ExpressModeIndicatorProps } from './components/ExpressModeIndicator';
+export { WildCardButton } from './components/WildCardButton';
+export type { WildCardButtonProps } from './components/WildCardButton';
+export { RoundProgressIndicator } from './components/RoundProgressIndicator';
+export type { RoundProgressIndicatorProps } from './components/RoundProgressIndicator';
+export { TossupValueDisplay } from './components/TossupValueDisplay';
+export type { TossupValueDisplayProps } from './components/TossupValueDisplay';
+
+// Stores
+export {
+  useGameStore,
+  selectIsMyTurn,
+  selectIsTossupController,
+  selectIsFinalActive,
+  selectCanBuzz,
+  selectActivePlayer,
+  selectMyPlayer,
+  selectIsMysteryAwaitingChoice,
+  selectIsMysteryRevealing,
+  selectIsExpressActive,
+  selectExpressCorrectCount,
+  selectMyWildCards,
+  selectCanUseWildCard,
+  selectIsMultiRoundEnabled,
+  selectCurrentRound,
+  selectTotalRounds,
+  selectCurrentRoundConfig,
+  selectRoundProgress,
+  selectIsTripleTossup,
+  selectTripleTossupIndex,
+  selectCurrentTossupValue,
+  selectTossupRevealDelay,
+  selectIsAutoReveal,
+  selectNextRevealIndex,
+} from './stores/gameStore';
+
+export {
+  useAuthStore,
+  selectIsAuthenticated,
+} from './stores/authStore';
+
+// Services
+export { socketService } from './services/socketService';
+export { authService } from './services/authService';
+export { configService } from './services/configService';
+export { passkeyService } from './services/passkeyService';
+export { oauthService } from './services/oauthService';
+export {
+  soundService,
+  SOUND_FILES,
+  type SoundType,
+  type SoundConfig,
+  type AudioProvider,
+} from './services/soundService';
+
+
+--- src/services/__tests__/authService.test.ts (truncated) ---
+import { authService } from '../authService';
+import { passkeyService } from '../passkeyService';
+import { oauthService } from '../oauthService';
+
+// Mock the dependent services
+jest.mock('../passkeyService', () => ({
+  passkeyService: {
+    setBaseUrl: jest.fn(),
+  },
+}));
+
+jest.mock('../oauthService', () => ({
+  oauthService: {
+    setBaseUrl: jest.fn(),
+  },
+}));
+
+// Mock fetch globally
+const mockFetch = jest.fn();
+global.fetch = mockFetch;
+
+describe('authService', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    authService.setBaseUrl('http://localhost:5000');
+  });
+
+  describe('setBaseUrl', () => {
+    it('sets the base URL', () => {
+      authService.setBaseUrl('http://example.com:3000');
+      expect(authService.getBaseUrl()).toBe('http://example.com:3000');
+    });
+
+    it('removes trailing slash from URL', () => {
+      authService.setBaseUrl('http://example.com:3000/');
+      expect(authService.getBaseUrl()).toBe('http://example.com:3000');
+    });
+
+    it('syncs URL to passkeyService', () => {
+      authService.setBaseUrl('http://example.com:3000');
+      expect(passkeyService.setBaseUrl).toHaveBeenCalledWith(
+        'http://example.com:3000'
+      );
+    });
+
+    it('syncs URL to oauthService', () => {
+      authService.setBaseUrl('http://example.com:3000');
+      expect(oauthService.setBaseUrl).toHaveBeenCalledWith(
+        'http://example.com:3000'
+      );
+    });
+  });
+
+  describe('getBaseUrl', () => {
+    it('returns the current base URL', () => {
+      authService.setBaseUrl('http://test.com');
+      expect(authService.getBaseUrl()).toBe('http://test.com');
+    });
+  });
+
+  describe('login', () => {
+    it('sends login request with email and password', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            ok: true,
+            token: 'auth-token',
+            user: { id: 1, email: 'test@example.com', display_name: 'Test' },
+          }),
+      });
+
+      const result = await authService.login('test@example.com', 'password123');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:5000/auth/api/login',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: 'test@example.com',
+            password: 'password123',
+          }),
+        }
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.token).toBe('auth-token');
+      expect(result.user?.email).toBe('test@example.com');
+    });
+
+    it('returns error response on failed login', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            ok: false,
+            error: 'Invalid credentials',
+          }),
+      });
+
+      const result = await authService.login('test@example.com', 'wrongpass');
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Invalid credentials');
+    });
+
+    it('handles network error', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network failure'));
+
+      const result = await authService.login('test@example.com', 'password');
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Network failure');
+    });
+
+    it('handles non-Error exceptions', async () => {
+      mockFetch.mockRejectedValueOnce('Unknown error');
+
+      const result = await authService.login('test@example.com', 'password');
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Network error');
+    });
+  });
+
+  describe('register', () => {
+    it('sends registration request with all fields', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            ok: true,
+            token: 'new-token',
+            user: { id: 2, email: 'new@example.com', display_name: 'New User' },
+          }),
+      });
+
+      const result = await authService.register(
+        'new@example.com',
+        'securepass',
+        'New User'
+      );
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:5000/auth/register',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: 'new@example.com',
+            password: 'securepass',
+            display_name: 'New User',
+          }),
+        }
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.user?.display_name).toBe('New User');
+    });
+
+    it('returns error on duplicate email', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            ok: false,
+            error: 'Email already registered',
+          }),
+      });
+
+      const result = await authService.register(
+        'existing@example.com',
+        'password',
+        'User'
+      );
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Email already registered');
+    }
+
+--- src/services/__tests__/configService.test.ts ---
+import { configService } from '../configService';
+
+// Use the global mock from jest.setup.js
+declare const global: {
+  mockAsyncStorage: {
+    getItem: jest.Mock;
+    setItem: jest.Mock;
+    removeItem: jest.Mock;
+    clear: jest.Mock;
+    getAllKeys: jest.Mock;
+    multiGet: jest.Mock;
+    multiSet: jest.Mock;
+    multiRemove: jest.Mock;
+  };
+};
+
+describe('configService', () => {
+  const mockGetItem = global.mockAsyncStorage.getItem;
+  const mockSetItem = global.mockAsyncStorage.setItem;
+
+  beforeEach(() => {
+    // Clear all mocks before each test
+    jest.clearAllMocks();
+    // Clear cached URL
+    configService.clearCache();
+  });
+
+  describe('getServerUrl', () => {
+    it('returns cached URL if available', async () => {
+      // First set a URL to cache it
+      await configService.setServerUrl('http://cached.test:5000');
+
+      // Should return cached URL without hitting storage
+      const url = await configService.getServerUrl();
+
+      expect(url).toBe('http://cached.test:5000');
+      // getItem should not be called since URL is cached
+      expect(mockGetItem).not.toHaveBeenCalled();
+    });
+
+    it('loads URL from AsyncStorage if not cached', async () => {
+      mockGetItem.mockResolvedValueOnce('http://stored.test:5000');
+
+      const url = await configService.getServerUrl();
+
+      expect(url).toBe('http://stored.test:5000');
+      expect(mockGetItem).toHaveBeenCalledWith('@holiday_wheel_server_url');
+    });
+
+    it('returns default URL if nothing stored', async () => {
+      mockGetItem.mockResolvedValueOnce(null);
+
+      const url = await configService.getServerUrl();
+
+      expect(url).toBe('http://192.168.1.100:5000');
+    });
+
+    it('returns default URL if AsyncStorage throws', async () => {
+      mockGetItem.mockRejectedValueOnce(new Error('Storage error'));
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+
+      const url = await configService.getServerUrl();
+
+      expect(url).toBe('http://192.168.1.100:5000');
+      expect(consoleSpy).toHaveBeenCalled();
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('setServerUrl', () => {
+    it('saves URL to cache and AsyncStorage', async () => {
+      mockSetItem.mockResolvedValueOnce(undefined);
+
+      await configService.setServerUrl('http://new.test:5000');
+
+      expect(mockSetItem).toHaveBeenCalledWith(
+        '@holiday_wheel_server_url',
+        'http://new.test:5000'
+      );
+
+      // Verify it's cached
+      const url = await configService.getServerUrl();
+      expect(url).toBe('http://new.test:5000');
+    });
+
+    it('handles AsyncStorage errors gracefully', async () => {
+      mockSetItem.mockRejectedValueOnce(new Error('Storage error'));
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+
+      // Should not throw
+      await configService.setServerUrl('http://fail.test:5000');
+
+      expect(consoleSpy).toHaveBeenCalled();
+
+      // URL should still be cached in memory
+      const url = await configService.getServerUrl();
+      expect(url).toBe('http://fail.test:5000');
+
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('getDefaultUrls', () => {
+    it('returns default URL configuration', () => {
+      const defaults = configService.getDefaultUrls();
+
+      expect(defaults).toEqual({
+        android_emulator: 'http://10.0.2.2:5000',
+        ios_simulator: 'http://localhost:5000',
+        device: 'http://192.168.1.100:5000',
+      });
+    });
+  });
+
+  describe('clearCache', () => {
+    it('clears the cached URL', async () => {
+      // Set a URL first
+      await configService.setServerUrl('http://cached.test:5000');
+
+      // Clear cache
+      configService.clearCache();
+
+      // Now getServerUrl should try AsyncStorage again
+      mockGetItem.mockResolvedValueOnce('http://different.test:5000');
+      const url = await configService.getServerUrl();
+
+      expect(mockGetItem).toHaveBeenCalled();
+      expect(url).toBe('http://different.test:5000');
+    });
+  });
+});
+
+
+--- src/services/__tests__/oauthService.test.ts (truncated) ---
+import { oauthService } from '../oauthService';
+
+// Mock fetch globally
+const mockFetch = jest.fn();
+global.fetch = mockFetch;
+
+describe('oauthService', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    oauthService.setBaseUrl('http://localhost:5000');
+  });
+
+  describe('setBaseUrl', () => {
+    it('sets the base URL', () => {
+      oauthService.setBaseUrl('http://example.com:3000');
+      // Verify by making a request and checking the URL
+      mockFetch.mockResolvedValueOnce({
+        json: () => Promise.resolve({ ok: true }),
+      });
+
+      oauthService.googleAuth('test-token');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://example.com:3000/auth/api/oauth/google',
+        expect.any(Object)
+      );
+    });
+
+    it('removes trailing slash from URL', () => {
+      oauthService.setBaseUrl('http://example.com:3000/');
+      mockFetch.mockResolvedValueOnce({
+        json: () => Promise.resolve({ ok: true }),
+      });
+
+      oauthService.googleAuth('test-token');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://example.com:3000/auth/api/oauth/google',
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('googleAuth', () => {
+    it('sends Google auth request with id token', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            ok: true,
+            token: 'auth-token',
+            user: { id: 1, email: 'user@gmail.com', display_name: 'Google User' },
+          }),
+      });
+
+      const result = await oauthService.googleAuth('google-id-token');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:5000/auth/api/oauth/google',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ id_token: 'google-id-token' }),
+        }
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.token).toBe('auth-token');
+      expect(result.user?.email).toBe('user@gmail.com');
+    });
+
+    it('returns error response on failed auth', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            ok: false,
+            error: 'Invalid token',
+          }),
+      });
+
+      const result = await oauthService.googleAuth('invalid-token');
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Invalid token');
+    });
+
+    it('handles network error', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network failure'));
+
+      const result = await oauthService.googleAuth('token');
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Network failure');
+    });
+
+    it('handles non-Error exceptions', async () => {
+      mockFetch.mockRejectedValueOnce('Unknown error');
+
+      const result = await oauthService.googleAuth('token');
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Network error');
+    });
+  });
+
+  describe('appleAuth', () => {
+    it('sends Apple auth request with identity token only', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            ok: true,
+            token: 'auth-token',
+            user: { id: 1, email: 'user@icloud.com', display_name: 'Apple User' },
+          }),
+      });
+
+      const result = await oauthService.appleAuth('apple-identity-token');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:5000/auth/api/oauth/apple',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            identity_token: 'apple-identity-token',
+            user_identifier: undefined,
+            email: undefined,
+            full_name: undefined,
+          }),
+        }
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.token).toBe('auth-token');
+    });
+
+    it('sends Apple auth request with all optional fields', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            ok: true,
+            token: 'auth-token',
+            user: { id: 1, email: 'john@icloud.com', display_name: 'John Doe' },
+          }),
+      });
+
+      const result = await oauthService.appleAuth(
+        'apple-identity-token',
+        'apple-user-id-123',
+        'john@icloud.com',
+        { givenName: 'John', familyName: 'Doe' }
+      );
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:5000/auth/api/oauth/apple',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            identity_token: 'apple-identity-token',
+            user_identifier: 'apple-user-id-123',
+            email: 'john@icloud.com',
+            full_name: {
+              given_name: 'John',
+              family_name: 'Doe',
+            },
+          }),
+        }
+      )
+
+--- src/services/__tests__/passkeyService.test.ts (truncated) ---
+import { passkeyService } from '../passkeyService';
+
+// Mock fetch globally
+const mockFetch = jest.fn();
+global.fetch = mockFetch;
+
+describe('passkeyService', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    passkeyService.setBaseUrl('http://localhost:5000');
+  });
+
+  describe('setBaseUrl', () => {
+    it('sets the base URL', () => {
+      passkeyService.setBaseUrl('http://example.com:3000');
+      mockFetch.mockResolvedValueOnce({
+        json: () => Promise.resolve({ ok: true }),
+      });
+
+      passkeyService.loginStart();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://example.com:3000/auth/api/passkey/login/start',
+        expect.any(Object)
+      );
+    });
+
+    it('removes trailing slash from URL', () => {
+      passkeyService.setBaseUrl('http://example.com:3000/');
+      mockFetch.mockResolvedValueOnce({
+        json: () => Promise.resolve({ ok: true }),
+      });
+
+      passkeyService.loginStart();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://example.com:3000/auth/api/passkey/login/start',
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('registerStart', () => {
+    it('sends registration start request with email and display name', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            ok: true,
+            options: { challenge: 'test-challenge' },
+          }),
+      });
+
+      const result = await passkeyService.registerStart(
+        'user@example.com',
+        'Test User'
+      );
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:5000/auth/api/passkey/register/start',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: 'user@example.com',
+            display_name: 'Test User',
+          }),
+        }
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.options).toEqual({ challenge: 'test-challenge' });
+    });
+
+    it('returns error on failed request', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            ok: false,
+            error: 'Email already registered',
+          }),
+      });
+
+      const result = await passkeyService.registerStart(
+        'existing@example.com',
+        'User'
+      );
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Email already registered');
+    });
+
+    it('handles network error', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network failure'));
+
+      const result = await passkeyService.registerStart('user@example.com', 'User');
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Network failure');
+    });
+
+    it('handles non-Error exceptions', async () => {
+      mockFetch.mockRejectedValueOnce('Unknown error');
+
+      const result = await passkeyService.registerStart('user@example.com', 'User');
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Network error');
+    });
+  });
+
+  describe('registerFinish', () => {
+    it('sends registration finish request with credential', async () => {
+      const mockCredential = {
+        id: 'credential-id',
+        rawId: 'raw-id',
+        response: { attestationObject: 'attestation', clientDataJSON: 'client-data' },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            ok: true,
+            token: 'auth-token',
+            user: { id: 1, email: 'user@example.com', display_name: 'User' },
+          }),
+      });
+
+      const result = await passkeyService.registerFinish(
+        'user@example.com',
+        mockCredential
+      );
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:5000/auth/api/passkey/register/finish',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: 'user@example.com',
+            credential: mockCredential,
+          }),
+        }
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.token).toBe('auth-token');
+    });
+
+    it('handles network error', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Connection refused'));
+
+      const result = await passkeyService.registerFinish('user@example.com', {});
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Connection refused');
+    });
+  });
+
+  describe('loginStart', () => {
+    it('sends login start request without email', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            ok: true,
+            options: { challenge: 'login-challenge' },
+          }),
+      });
+
+      const result = await passkeyService.loginStart();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:5000/auth/api/passkey/login/start',
+        {
+          method: 'PO
+
+--- src/services/__tests__/socketService.test.ts (truncated) ---
+import { socketService } from '../socketService';
+import { useGameStore } from '../../stores/gameStore';
+
+// Mock socket.io-client
+const mockSocket = {
+  connected: false,
+  on: jest.fn(),
+  emit: jest.fn(),
+  disconnect: jest.fn(),
+};
+
+jest.mock('socket.io-client', () => ({
+  io: jest.fn(() => mockSocket),
+}));
+
+// Import the mocked io
+import { io } from 'socket.io-client';
+
+describe('socketService', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSocket.connected = false;
+    mockSocket.on.mockReset();
+    mockSocket.emit.mockReset();
+    mockSocket.disconnect.mockReset();
+    useGameStore.getState().reset();
+    // Reset the socket service internal state
+    socketService.disconnect();
+  });
+
+  describe('connect', () => {
+    it('creates a socket connection with correct options', () => {
+      socketService.connect('http://localhost:5000', 'my-token');
+
+      expect(io).toHaveBeenCalledWith('http://localhost:5000', {
+        transports: ['websocket', 'polling'],
+        auth: { token: 'my-token' },
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+      });
+    });
+
+    it('connects without token when not provided', () => {
+      socketService.connect('http://localhost:5000');
+
+      expect(io).toHaveBeenCalledWith('http://localhost:5000', {
+        transports: ['websocket', 'polling'],
+        auth: undefined,
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+      });
+    });
+
+    it('sets up event listeners after connecting', () => {
+      socketService.connect('http://localhost:5000');
+
+      expect(mockSocket.on).toHaveBeenCalledWith('connect', expect.any(Function));
+      expect(mockSocket.on).toHaveBeenCalledWith('disconnect', expect.any(Function));
+      expect(mockSocket.on).toHaveBeenCalledWith('connect_error', expect.any(Function));
+      expect(mockSocket.on).toHaveBeenCalledWith('state', expect.any(Function));
+      expect(mockSocket.on).toHaveBeenCalledWith('you', expect.any(Function));
+      expect(mockSocket.on).toHaveBeenCalledWith('host_granted', expect.any(Function));
+      expect(mockSocket.on).toHaveBeenCalledWith('toast', expect.any(Function));
+    });
+
+    it('does not reconnect if already connected', () => {
+      mockSocket.connected = true;
+      socketService.connect('http://localhost:5000');
+      socketService.connect('http://localhost:5000'); // Second call
+
+      // io should only be called once
+      expect(io).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('disconnect', () => {
+    it('disconnects the socket', () => {
+      socketService.connect('http://localhost:5000');
+      socketService.disconnect();
+
+      expect(mockSocket.disconnect).toHaveBeenCalled();
+    });
+
+    it('sets connected state to false', () => {
+      socketService.connect('http://localhost:5000');
+      useGameStore.getState().setConnected(true);
+      socketService.disconnect();
+
+      expect(useGameStore.getState().connected).toBe(false);
+    });
+  });
+
+  describe('event handlers', () => {
+    let eventHandlers: Record<string, (...args: unknown[]) => void>;
+
+    beforeEach(() => {
+      eventHandlers = {};
+      mockSocket.on.mockImplementation((event, handler) => {
+        eventHandlers[event] = handler;
+      });
+      socketService.connect('http://localhost:5000');
+    });
+
+    it('handles connect event', () => {
+      eventHandlers['connect']();
+
+      expect(useGameStore.getState().connected).toBe(true);
+    });
+
+    it('handles disconnect event', () => {
+      useGameStore.getState().setConnected(true);
+      eventHandlers['disconnect']();
+
+      expect(useGameStore.getState().connected).toBe(false);
+    });
+
+    it('handles state event', () => {
+      const serverState = {
+        phase: 'normal',
+        puzzle: { id: 1, category: 'TEST', answer: 'HELLO' },
+        revealed: ['H', 'E'],
+        used: ['H', 'E', 'X'],
+        players: [{ id: 1, name: 'Player', total: 100, prizes: [], round_bank: 0, round_prizes: [], claimed_sid: null, claimed_user_id: null }],
+        active_idx: 0,
+        wheel_slots: [500, 600],
+        wheel_index: 1,
+        last_spin_index: 0,
+        current_wedge: 500,
+        packs: [],
+        active_pack_id: null,
+        active_pack_name: null,
+        db: { used: 0, total: 10, unused: 10 },
+        host: { claimed: false, player_idx: null },
+        tossup: { controller_player_idx: null, locked_player_idxs: [], allowed_player_idxs: [], remaining_seconds: null },
+        final: { stage: 'off', picks_consonants: [], pick_vowel: null, remaining_seconds: null },
+      };
+
+      eventHandlers['state'](serverState);
+
+      const state = useGameStore.getState();
+      expect(state.phase).toBe('normal');
+      expect(state.puzzle.answer).toBe('HELLO');
+      expect(state.revealed).toEqual(new Set(['H', 'E']));
+    });
+
+    it('handles you event', () => {
+      eventHandlers['you']({ player_idx: 2 });
+
+      expect(useGameStore.getState().myPlayerIdx).toBe(2);
+  
+
+--- src/services/__tests__/soundService.test.ts (truncated) ---
+import {
+  soundService,
+  SOUND_FILES,
+  AudioProvider,
+  SoundType,
+} from '../soundService';
+
+describe('soundService', () => {
+  let mockProvider: jest.Mocked<AudioProvider>;
+
+  beforeEach(() => {
+    soundService.reset();
+    mockProvider = {
+      play: jest.fn().mockResolvedValue(undefined),
+      stop: jest.fn().mockResolvedValue(undefined),
+      stopAll: jest.fn().mockResolvedValue(undefined),
+      setVolume: jest.fn(),
+      setMuted: jest.fn(),
+      preload: jest.fn().mockResolvedValue(undefined),
+    };
+  });
+
+  describe('setAudioProvider', () => {
+    it('sets the audio provider', () => {
+      soundService.setAudioProvider(mockProvider);
+      expect(soundService.getAudioProvider()).toBe(mockProvider);
+    });
+
+    it('initializes provider with current volume and mute state', () => {
+      soundService.setVolume(0.5);
+      soundService.setMuted(true);
+      soundService.setAudioProvider(mockProvider);
+
+      expect(mockProvider.setVolume).toHaveBeenCalledWith(0.5);
+      expect(mockProvider.setMuted).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('play', () => {
+    beforeEach(() => {
+      soundService.setAudioProvider(mockProvider);
+    });
+
+    it('plays a sound', async () => {
+      await soundService.play('wheelSpin');
+      expect(mockProvider.play).toHaveBeenCalledWith('wheelSpin', {
+        volume: 1.0,
+      });
+    });
+
+    it('plays a sound with custom config', async () => {
+      await soundService.play('wheelTick', { volume: 0.5, loop: true });
+      expect(mockProvider.play).toHaveBeenCalledWith('wheelTick', {
+        volume: 0.5,
+        loop: true,
+      });
+    });
+
+    it('applies master volume to sound', async () => {
+      soundService.setVolume(0.5);
+      await soundService.play('correctLetter', { volume: 0.8 });
+      expect(mockProvider.play).toHaveBeenCalledWith('correctLetter', {
+        volume: 0.4, // 0.8 * 0.5
+      });
+    });
+
+    it('does not play when muted', async () => {
+      soundService.setMuted(true);
+      await soundService.play('wrongLetter');
+      expect(mockProvider.play).not.toHaveBeenCalled();
+    });
+
+    it('does not play when disabled', async () => {
+      soundService.setEnabled(false);
+      await soundService.play('bankrupt');
+      expect(mockProvider.play).not.toHaveBeenCalled();
+    });
+
+    it('handles play errors gracefully', async () => {
+      mockProvider.play.mockRejectedValueOnce(new Error('Audio error'));
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+      await soundService.play('loseTurn');
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[SoundService] Failed to play loseTurn:',
+        expect.any(Error)
+      );
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('stop', () => {
+    beforeEach(() => {
+      soundService.setAudioProvider(mockProvider);
+    });
+
+    it('stops a specific sound', async () => {
+      await soundService.stop('wheelSpin');
+      expect(mockProvider.stop).toHaveBeenCalledWith('wheelSpin');
+    });
+
+    it('handles stop errors gracefully', async () => {
+      mockProvider.stop.mockRejectedValueOnce(new Error('Stop error'));
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+      await soundService.stop('wheelSpin');
+
+      expect(consoleSpy).toHaveBeenCalled();
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('stopAll', () => {
+    beforeEach(() => {
+      soundService.setAudioProvider(mockProvider);
+    });
+
+    it('stops all sounds', async () => {
+      await soundService.stopAll();
+      expect(mockProvider.stopAll).toHaveBeenCalled();
+    });
+
+    it('handles errors gracefully', async () => {
+      mockProvider.stopAll.mockRejectedValueOnce(new Error('Stop all error'));
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+      await soundService.stopAll();
+
+      expect(consoleSpy).toHaveBeenCalled();
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('volume', () => {
+    beforeEach(() => {
+      soundService.setAudioProvider(mockProvider);
+    });
+
+    it('sets and gets volume', () => {
+      soundService.setVolume(0.7);
+      expect(soundService.getVolume()).toBe(0.7);
+      expect(mockProvider.setVolume).toHaveBeenCalledWith(0.7);
+    });
+
+    it('clamps volume to 0-1 range', () => {
+      soundService.setVolume(-0.5);
+      expect(soundService.getVolume()).toBe(0);
+
+      soundService.setVolume(1.5);
+      expect(soundService.getVolume()).toBe(1);
+    });
+  });
+
+  describe('mute', () => {
+    beforeEach(() => {
+      soundService.setAudioProvider(mockProvider);
+    });
+
+    it('sets and gets mute state', () => {
+      soundService.setMuted(true);
+      expect(soundService.isMuted()).toBe(true);
+      expect(mockProvider.setMuted).toHaveBeenCalledWith(true);
+
+      soundService.setMuted(false);
+      expect(soundService.isMuted()).toBe(false);
+      expect(mockProvider.setMuted).toHaveBeenCalledWith(false);
+    });
+  });
+
+  describe('enabled', () => {
+    beforeEach(() => {
+  
+
+--- src/services/authService.ts ---
+import type { AuthResponse, RoomInfo, User } from '../types';
+import { passkeyService } from './passkeyService';
+import { oauthService } from './oauthService';
+
+class AuthService {
+  private baseUrl: string = '';
+
+  /**
+   * Set the base URL for API calls
+   * Also syncs the URL to passkey and oauth services
+   */
+  setBaseUrl(url: string): void {
+    this.baseUrl = url.replace(/\/$/, ''); // Remove trailing slash
+    // Sync to related services
+    passkeyService.setBaseUrl(this.baseUrl);
+    oauthService.setBaseUrl(this.baseUrl);
+  }
+
+  /**
+   * Get the current base URL
+   */
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  /**
+   * Login with email and password
+   */
+  async login(email: string, password: string): Promise<AuthResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/auth/api/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Network error',
+      };
+    }
+  }
+
+  /**
+   * Register a new account
+   */
+  async register(
+    email: string,
+    password: string,
+    displayName: string
+  ): Promise<AuthResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          display_name: displayName,
+        }),
+      });
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Network error',
+      };
+    }
+  }
+
+  /**
+   * Get list of active rooms
+   */
+  async getRooms(token: string): Promise<{ rooms: RoomInfo[] }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/auth/api/rooms`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        return { rooms: [] };
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch rooms:', error);
+      return { rooms: [] };
+    }
+  }
+
+  /**
+   * Verify the current token is valid
+   */
+  async verifyToken(token: string): Promise<{ ok: boolean; user?: User }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/auth/api/verify`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        return { ok: false };
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      return { ok: false };
+    }
+  }
+}
+
+// Singleton instance
+export const authService = new AuthService();
+
+
+## Instructions
+
+Analyze the above codebase context and provide your response following the format specified in the task.

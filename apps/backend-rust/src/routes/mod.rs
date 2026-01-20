@@ -5979,7 +5979,7 @@ pub async fn admin() -> Html<String> {
             border-radius: 4px;
             font-size: 12px;
         }}
-        .badge-success {{ background: #2d8f4e; }}
+        .badge-success {{ background: #2d8f4e; color: #fff; }}
         .badge-warning {{ background: #c9a227; color: #000; }}
         .badge-danger {{ background: #c0392b; }}
         .btn-sm {{
