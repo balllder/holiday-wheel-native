@@ -1848,6 +1848,7 @@ struct SaveSettingsRequest {
     pack_id: Option<i64>,
     disconnect_timeout_secs: Option<i64>,
     turn_timer_seconds: Option<i32>,
+    buzz_timer_seconds: Option<i32>,
 }
 
 async fn admin_save_settings(
@@ -1882,7 +1883,7 @@ async fn admin_save_settings(
         pack_id,
         disconnect_timeout_secs: req.disconnect_timeout_secs.unwrap_or(existing.disconnect_timeout_secs),
         turn_timer_seconds: req.turn_timer_seconds.unwrap_or(existing.turn_timer_seconds),
-        buzz_timer_seconds: existing.buzz_timer_seconds,
+        buzz_timer_seconds: req.buzz_timer_seconds.unwrap_or(existing.buzz_timer_seconds),
     };
 
     match state.db.set_room_config(&room_name, &config, pack_id).await {

@@ -6519,6 +6519,11 @@ pub async fn admin() -> Html<String> {
                         <input type="number" id="settingsTurnTimer" value="10" min="0" max="60" placeholder="10">
                         <small style="color:#888;display:block;margin-top:4px;">Time limit to guess a letter after spinning. Default: 10 seconds</small>
                     </div>
+                    <div class="form-group">
+                        <label>Toss-Up Buzz Timer (seconds, 0 = disabled)</label>
+                        <input type="number" id="settingsBuzzTimer" value="5" min="0" max="30" placeholder="5">
+                        <small style="color:#888;display:block;margin-top:4px;">Time limit to solve after buzzing in during toss-up. Default: 5 seconds</small>
+                    </div>
                 </div>
 
                 <button class="btn" onclick="saveSettings()" style="margin-top: 24px; width: 100%;">Save Settings</button>
@@ -7064,6 +7069,7 @@ pub async fn admin() -> Html<String> {
                     document.getElementById('settingsPackId').value = data.config.pack_id || 0;
                     document.getElementById('settingsDisconnectTimeout').value = data.config.disconnect_timeout_secs ?? 300;
                     document.getElementById('settingsTurnTimer').value = data.config.turn_timer_seconds ?? 10;
+                    document.getElementById('settingsBuzzTimer').value = data.config.buzz_timer_seconds ?? 5;
                 }}
             }} catch (e) {{
                 console.error('Failed to load settings:', e);
@@ -7081,7 +7087,8 @@ pub async fn admin() -> Html<String> {
                 prize_wedge_names: document.getElementById('settingsPrizeWedges').value.split(',').map(s => s.trim()).filter(s => s),
                 pack_id: packId > 0 ? packId : null,
                 disconnect_timeout_secs: parseInt(document.getElementById('settingsDisconnectTimeout').value) || 300,
-                turn_timer_seconds: parseInt(document.getElementById('settingsTurnTimer').value) ?? 10
+                turn_timer_seconds: parseInt(document.getElementById('settingsTurnTimer').value) ?? 10,
+                buzz_timer_seconds: parseInt(document.getElementById('settingsBuzzTimer').value) ?? 5
             }};
             try {{
                 const res = await fetch(`/auth/api/admin/settings/${{encodeURIComponent(room)}}`, {{

@@ -713,8 +713,8 @@ impl Database {
 
         sqlx::query(
             r#"
-            INSERT INTO room_config (room_name, active_pack_id, vowel_cost, final_seconds, final_jackpot, prize_replace_csv, puzzle_display_seconds, prize_wedge_names, disconnect_timeout_secs)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO room_config (room_name, active_pack_id, vowel_cost, final_seconds, final_jackpot, prize_replace_csv, puzzle_display_seconds, prize_wedge_names, disconnect_timeout_secs, turn_timer_seconds, buzz_timer_seconds)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(room_name) DO UPDATE SET
                 active_pack_id = excluded.active_pack_id,
                 vowel_cost = excluded.vowel_cost,
@@ -723,7 +723,9 @@ impl Database {
                 prize_replace_csv = excluded.prize_replace_csv,
                 puzzle_display_seconds = excluded.puzzle_display_seconds,
                 prize_wedge_names = excluded.prize_wedge_names,
-                disconnect_timeout_secs = excluded.disconnect_timeout_secs
+                disconnect_timeout_secs = excluded.disconnect_timeout_secs,
+                turn_timer_seconds = excluded.turn_timer_seconds,
+                buzz_timer_seconds = excluded.buzz_timer_seconds
             "#,
         )
         .bind(room_name)
@@ -735,6 +737,8 @@ impl Database {
         .bind(config.puzzle_display_seconds)
         .bind(&prize_wedge_csv)
         .bind(config.disconnect_timeout_secs)
+        .bind(config.turn_timer_seconds)
+        .bind(config.buzz_timer_seconds)
         .execute(&self.pool)
         .await?;
         Ok(())
