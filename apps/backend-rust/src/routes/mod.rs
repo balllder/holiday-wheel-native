@@ -5164,8 +5164,9 @@ pub async fn game() -> Html<String> {
                 const unrevealedCount = allLetters.filter(c => !currentRevealed.has(c)).length;
                 const isFinalLetter = newlyRevealed.length > 0 && unrevealedCount === 0;
 
-                // Check if this was a vowel purchase (all newly revealed are vowels)
-                const isVowelPurchase = newlyRevealed.length > 0 && newlyRevealed.every(c => VOWELS.has(c));
+                // Check if this was a vowel purchase (exactly 1 unique vowel revealed, and puzzle not solved)
+                // A vowel purchase reveals only 1 vowel letter type. If puzzle is solved (isFinalLetter), it's not a purchase.
+                const isVowelPurchase = newlyRevealed.length === 1 && VOWELS.has(newlyRevealed[0]) && !isFinalLetter;
 
                 // Count instances of newly revealed letters in the puzzle for value display
                 let letterInstanceCount = 0;
