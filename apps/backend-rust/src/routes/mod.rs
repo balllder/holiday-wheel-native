@@ -5489,9 +5489,11 @@ pub async fn game() -> Html<String> {
                     if (turnTimerLocalRemaining > 0) {{
                         turnTimerTextEl.textContent = turnTimerLocalRemaining + 's';
                         turnTimerEl.classList.toggle('urgent', turnTimerLocalRemaining <= 3);
-                        // Play tick sound
+                        // Play tick sound every second
                         if (turnTimerLocalRemaining <= 3) {{
                             SoundService.timerUrgent();
+                        }} else {{
+                            SoundService.timerTick();
                         }}
                     }} else {{
                         // Timer expired - play buzzer and hide
@@ -5530,9 +5532,11 @@ pub async fn game() -> Html<String> {
                     if (buzzTimerLocalRemaining > 0) {{
                         buzzTimerTextEl.textContent = buzzTimerLocalRemaining + 's';
                         buzzTimerEl.classList.toggle('urgent', buzzTimerLocalRemaining <= 2);
-                        // Play tick sound
+                        // Play tick sound every second
                         if (buzzTimerLocalRemaining <= 2) {{
                             SoundService.timerUrgent();
+                        }} else {{
+                            SoundService.timerTick();
                         }}
                     }} else {{
                         // Timer expired - play buzzer and hide

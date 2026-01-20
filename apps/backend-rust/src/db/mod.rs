@@ -1977,6 +1977,7 @@ mod tests {
             pack_id: Some(1),
             disconnect_timeout_secs: 300,
             turn_timer_seconds: 10,
+            buzz_timer_seconds: 5,
         };
 
         db.set_room_config("custom-room", &config, Some(1)).await.unwrap();
@@ -2572,6 +2573,7 @@ mod tests {
             pack_id: Some(1),
             disconnect_timeout_secs: 600,
             turn_timer_seconds: 10,
+            buzz_timer_seconds: 5,
         };
 
         db.set_room_config("config-test", &config1, Some(1)).await.unwrap();
@@ -2587,6 +2589,7 @@ mod tests {
             pack_id: Some(2),
             disconnect_timeout_secs: 120,
             turn_timer_seconds: 10,
+            buzz_timer_seconds: 5,
         };
 
         db.set_room_config("config-test", &config2, Some(2)).await.unwrap();

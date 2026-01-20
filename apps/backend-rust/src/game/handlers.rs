@@ -1156,6 +1156,40 @@ pub fn register_handlers(io: &SocketIo) {
                     game.start_tossup();
                     toast!(socket, "Toss-up started! Buzz in to solve!");
                     broadcast_state!(socket, req.room, game.get_state());
+
+                    // Spawn background task to reveal letters progressively
+                    let state_clone = state.clone();
+                    let room_clone = req.room.clone();
+                    tokio::spawn(async move {
+                        // Reveal letters every 1.5 seconds until solved or ended
+                        loop {
+                            tokio::time::sleep(Duration::from_millis(1500)).await;
+
+                            let mut manager = state_clone.game_manager.write().await;
+                            if let Some(game) = manager.get_room_mut(&room_clone) {
+                                // Stop if no longer in toss-up
+                                if game.phase != GamePhase::Tossup {
+                                    break;
+                                }
+
+                                // Reveal one letter
+                                let revealed = game.tossup_reveal_step(1);
+                                if revealed > 0 {
+                                    // Broadcast updated state
+                                    if let Some(io) = state_clone.io.get() {
+                                        if let Some(ns) = io.of("/") {
+                                            let _ = ns.to(room_clone.clone()).emit("state", &game.get_state());
+                                        }
+                                    }
+                                } else {
+                                    // No more letters to reveal
+                                    break;
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                    });
                 }
             },
         );
