@@ -6570,7 +6570,7 @@ pub async fn admin() -> Html<String> {
                     // Find if user is in any room
                     const userRoom = u.current_room || null;
                     const roomBadge = userRoom
-                        ? `<a href="/game?room=${{encodeURIComponent(userRoom)}}" class="badge badge-success" style="text-decoration:none;">${{userRoom}}</a>`
+                        ? `<a href="/game?room=${{encodeURIComponent(userRoom)}}" class="badge badge-success" style="text-decoration:none;color:#fff;">${{userRoom}}</a>`
                         : '<span style="color:#666;">-</span>';
                     return `
                     <tr>
