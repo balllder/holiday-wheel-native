@@ -39,7 +39,8 @@ See `.env.example` for all available options.
 | `DB_PATH` | SQLite database path | `puzzles.db` |
 | `DATABASE_URL` | Alternative: SQLite URL (e.g., `sqlite:puzzles.db`) | - |
 | `PORT` | Server port | `5000` |
-| `HOST_CODE` | Code to claim host mode | `holiday` |
+| `HOST_CODE` | Code to claim host mode (change in production!) | `holiday` |
+| `CORS_ORIGINS` | Comma-separated allowed origins (enables strict mode) | - |
 | `ADMIN_EMAIL` | Email to auto-grant admin on login | - |
 | `RUST_LOG` | Log level | `info` |
 
@@ -47,7 +48,7 @@ See `.env.example` for all available options.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SSL_ENABLED` | Enable HTTPS | `false` |
+| `SSL_ENABLED` | Enable HTTPS (also enables HSTS header) | `false` |
 | `SSL_CERT` | Path to certificate PEM file | - |
 | `SSL_KEY` | Path to private key PEM file | - |
 
@@ -128,10 +129,12 @@ docker run -p 5000:5000 \
 ```json
 {
   "email": "user@example.com",
-  "password": "password123",
+  "password": "Password123!",
   "display_name": "Player Name"
 }
 ```
+
+> **Password Requirements:** Minimum 8 characters, must include uppercase, lowercase, digit, and special character.
 
 **Login Request:**
 ```json
@@ -665,6 +668,7 @@ sqlx migrate add <migration_name>
 - `002_additional_indexes.sql` - Performance indexes
 - `003_add_avatar.sql` - User avatar support
 - `004_rename_final_to_bonus.sql` - Rename final_* columns to bonus_*
+- `005_add_remember_token_expires.sql` - Session token expiration support
 
 **Migration best practices:**
 - Always test migrations against existing databases with data
@@ -692,11 +696,35 @@ podman run -p 5000:5000 -v ./data:/app/data holiday-wheel-backend
 
 ## Security Notes
 
-- Passkey users have no password (password_hash is NULL)
-- OAuth users are auto-verified (no email confirmation needed)
-- WebAuthn challenges expire after 5 minutes
-- JWT tokens are sent via `Authorization: Bearer <token>` header
+### Authentication & Sessions
+
+- **Password Requirements:** Minimum 8 characters with uppercase, lowercase, digit, and special character
+- **Session Tokens:** Hashed with SHA-256 before database storage; expire after 30 days
+- **JWT Tokens:** Sent via `Authorization: Bearer <token>` header
+- **Passkey Users:** No password (password_hash is NULL), auto-verified
+- **OAuth Users:** Auto-verified (no email confirmation needed)
+- **WebAuthn Challenges:** Expire after 5 minutes
+
+### CORS Configuration
+
+- **Permissive Mode** (default): Allows any origin, credentials disabled - for development only
+- **Strict Mode** (set `CORS_ORIGINS`): Only listed origins allowed, credentials enabled
+  - Example: `CORS_ORIGINS=https://example.com,https://app.example.com`
+
+### Production Checklist
+
+- [ ] Set `HOST_CODE` to a strong, unique value (server warns if using default)
+- [ ] Set `CORS_ORIGINS` to your allowed domains
+- [ ] Enable `SSL_ENABLED=true` with valid certificates (enables HSTS)
+- [ ] Set `WEBAUTHN_RP_ORIGIN` to your HTTPS URL
+- [ ] Consider rate limiting on auth endpoints
+
+### Error Handling
+
+- API returns generic error messages to clients (e.g., "An unexpected error occurred")
+- Detailed errors are logged server-side only to prevent information leakage
+
+### Client Storage
+
 - Web client stores tokens in `localStorage` (convenient but vulnerable to XSS)
-  - For higher security, consider HttpOnly cookies or in-memory storage
-- For production, always use HTTPS with a valid certificate
-- Rate limiting on auth endpoints is recommended for production
+- For higher security, consider HttpOnly cookies or in-memory storage
