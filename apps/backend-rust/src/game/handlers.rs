@@ -164,6 +164,12 @@ pub struct SetActivePack {
     pub pack_name: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SetRoundRequest {
+    pub room: String,
+    pub round: u8,
+}
+
 // ========== HELPER MACROS ==========
 
 macro_rules! toast {
@@ -351,28 +357,50 @@ pub fn handle_guess(
 ) -> Result<String, &'static str> {
     let game = manager.get_room_mut(room).ok_or("Room not found")?;
 
-    if game.phase != super::state::GamePhase::Normal {
-        return Err("Letter guesses are only allowed during normal rounds.");
-    }
+    match game.phase {
+        super::state::GamePhase::Normal => {
+            if !game.is_active_player(socket_id, false) {
+                return Err("Only the active player can guess.");
+            }
 
-    if !game.is_active_player(socket_id, false) {
-        return Err("Only the active player can guess.");
-    }
+            let result = game.guess_consonant(letter);
+            let msg = match result {
+                super::state::GuessResult::Correct(count) => {
+                    format!("{} {}(s)!", count, letter.to_uppercase())
+                }
+                super::state::GuessResult::Incorrect => format!("No {}s", letter.to_uppercase()),
+                super::state::GuessResult::AlreadyUsed => "Letter already used".to_string(),
+                super::state::GuessResult::InvalidLetter => {
+                    "Invalid letter (must be a consonant)".to_string()
+                }
+                super::state::GuessResult::NotEnoughMoney => "Not enough money".to_string(),
+                super::state::GuessResult::NeedToSpin => "Spin before guessing a consonant".to_string(),
+            };
+            Ok(msg)
+        }
+        super::state::GamePhase::Final => {
+            // Final Spin round - active player guesses consonants using fixed spin value
+            if !game.is_active_player(socket_id, false) {
+                return Err("Only the active player can guess.");
+            }
 
-    let result = game.guess_consonant(letter);
-    let msg = match result {
-        super::state::GuessResult::Correct(count) => {
-            format!("{} {}(s)!", count, letter.to_uppercase())
+            let result = game.final_spin_guess_consonant(letter);
+            let msg = match result {
+                super::state::GuessResult::Correct(count) => {
+                    format!("{} {}(s)!", count, letter.to_uppercase())
+                }
+                super::state::GuessResult::Incorrect => format!("No {}s", letter.to_uppercase()),
+                super::state::GuessResult::AlreadyUsed => "Letter already used".to_string(),
+                super::state::GuessResult::InvalidLetter => {
+                    "Invalid letter (must be a consonant)".to_string()
+                }
+                super::state::GuessResult::NotEnoughMoney => "Not enough money".to_string(),
+                super::state::GuessResult::NeedToSpin => "Host must spin first".to_string(),
+            };
+            Ok(msg)
         }
-        super::state::GuessResult::Incorrect => format!("No {}s", letter.to_uppercase()),
-        super::state::GuessResult::AlreadyUsed => "Letter already used".to_string(),
-        super::state::GuessResult::InvalidLetter => {
-            "Invalid letter (must be a consonant)".to_string()
-        }
-        super::state::GuessResult::NotEnoughMoney => "Not enough money".to_string(),
-        super::state::GuessResult::NeedToSpin => "Spin before guessing a consonant".to_string(),
-    };
-    Ok(msg)
+        _ => Err("Letter guesses are only allowed during normal or final spin rounds."),
+    }
 }
 
 /// Process solve attempt
@@ -412,17 +440,30 @@ pub fn handle_solve(
                 Ok((false, "Incorrect! You're locked out.".to_string(), None))
             }
         }
-        super::state::GamePhase::Final => {
+        super::state::GamePhase::Bonus => {
             if !game.is_active_player(socket_id, false) {
                 return Err("Only the active player can solve.");
             }
-            let solved = game.final_solve(attempt);
+            let solved = game.bonus_solve(attempt);
             let msg = if solved {
-                format!("Correct! You win the ${} jackpot!", game.config.final_jackpot)
+                format!("Correct! You win the ${} jackpot!", game.config.bonus_jackpot)
             } else {
                 "Incorrect!".to_string()
             };
             Ok((solved, msg, None))
+        }
+        super::state::GamePhase::Final => {
+            // Final Spin round - any player can solve when it's their turn
+            if !game.is_active_player(socket_id, false) {
+                return Err("Only the active player can solve.");
+            }
+            let solved = game.solve(attempt);
+            if solved {
+                let delay = Some(game.config.puzzle_display_seconds as u64);
+                Ok((true, "Correct! Puzzle solved!".to_string(), delay))
+            } else {
+                Ok((false, "Incorrect!".to_string(), None))
+            }
         }
     }
 }
@@ -842,10 +883,10 @@ pub fn register_handlers(io: &SocketIo) {
                         game.config.vowel_cost = v;
                     }
                     if let Some(v) = req.config.final_seconds {
-                        game.config.final_seconds = v;
+                        game.config.bonus_seconds = v;
                     }
                     if let Some(v) = req.config.final_jackpot {
-                        game.config.final_jackpot = v;
+                        game.config.bonus_jackpot = v;
                     }
                     if let Some(v) = req.config.prize_replace_cash_values {
                         game.config.prize_replace_cash_values = v;
@@ -1032,30 +1073,54 @@ pub fn register_handlers(io: &SocketIo) {
 
                 let mut manager = state.game_manager.write().await;
                 if let Some(game) = manager.get_room_mut(&req.room) {
-                    if game.phase != GamePhase::Normal {
-                        toast!(socket, "Vowels can only be bought during normal rounds.");
-                        return;
-                    }
+                    match game.phase {
+                        GamePhase::Normal => {
+                            if !game.is_active_player(socket.id.as_str(), false) {
+                                toast!(socket, "Only the active player can buy vowels.");
+                                return;
+                            }
 
-                    if !game.is_active_player(socket.id.as_str(), false) {
-                        toast!(socket, "Only the active player can buy vowels.");
-                        return;
-                    }
+                            if let Some(letter) = req.letter.chars().next() {
+                                let result = game.buy_vowel(letter);
+                                let msg = match result {
+                                    GuessResult::Correct(count) => format!("{} {}(s)!", count, letter.to_uppercase()),
+                                    GuessResult::Incorrect => format!("No {}s", letter.to_uppercase()),
+                                    GuessResult::AlreadyUsed => "Letter already used".to_string(),
+                                    GuessResult::InvalidLetter => "Must be a vowel".to_string(),
+                                    GuessResult::NotEnoughMoney => format!("Need ${} to buy a vowel", game.config.vowel_cost),
+                                    GuessResult::NeedToSpin => "Cannot buy vowel now".to_string(),
+                                };
+                                toast!(socket, &msg);
+                                // Broadcast to entire room (including spectators)
+                                let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": &msg }));
+                                broadcast_state!(socket, req.room, game.get_state());
+                            }
+                        }
+                        GamePhase::Final => {
+                            // Final Spin - vowels are FREE
+                            if !game.is_active_player(socket.id.as_str(), false) {
+                                toast!(socket, "Only the active player can call vowels.");
+                                return;
+                            }
 
-                    if let Some(letter) = req.letter.chars().next() {
-                        let result = game.buy_vowel(letter);
-                        let msg = match result {
-                            GuessResult::Correct(count) => format!("{} {}(s)!", count, letter.to_uppercase()),
-                            GuessResult::Incorrect => format!("No {}s", letter.to_uppercase()),
-                            GuessResult::AlreadyUsed => "Letter already used".to_string(),
-                            GuessResult::InvalidLetter => "Must be a vowel".to_string(),
-                            GuessResult::NotEnoughMoney => format!("Need ${} to buy a vowel", game.config.vowel_cost),
-                            GuessResult::NeedToSpin => "Cannot buy vowel now".to_string(),
-                        };
-                        toast!(socket, &msg);
-                        // Broadcast to entire room (including spectators)
-                        let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": &msg }));
-                        broadcast_state!(socket, req.room, game.get_state());
+                            if let Some(letter) = req.letter.chars().next() {
+                                let result = game.final_spin_buy_vowel(letter);
+                                let msg = match result {
+                                    GuessResult::Correct(count) => format!("{} {}(s)!", count, letter.to_uppercase()),
+                                    GuessResult::Incorrect => format!("No {}s", letter.to_uppercase()),
+                                    GuessResult::AlreadyUsed => "Letter already used".to_string(),
+                                    GuessResult::InvalidLetter => "Must be a vowel".to_string(),
+                                    GuessResult::NotEnoughMoney => "Not enough money".to_string(),
+                                    GuessResult::NeedToSpin => "Host must spin first".to_string(),
+                                };
+                                toast!(socket, &msg);
+                                let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": &msg }));
+                                broadcast_state!(socket, req.room, game.get_state());
+                            }
+                        }
+                        _ => {
+                            toast!(socket, "Vowels can only be called during normal or final spin rounds.");
+                        }
                     }
                 }
             },
@@ -1113,21 +1178,37 @@ pub fn register_handlers(io: &SocketIo) {
                                     let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
                                 }
                             }
-                            GamePhase::Final => {
+                            GamePhase::Bonus => {
                                 if !game.is_active_player(socket.id.as_str(), false) {
                                     toast!(socket, "Only the active player can solve.");
                                     return;
                                 }
-                                let solved = game.final_solve(&req.attempt);
+                                let solved = game.bonus_solve(&req.attempt);
                                 let msg = if solved {
-                                    format!("Correct! You win the ${} jackpot!", game.config.final_jackpot)
+                                    format!("Correct! You win the ${} jackpot!", game.config.bonus_jackpot)
                                 } else {
                                     "Incorrect!".to_string()
                                 };
                                 toast!(socket, &msg);
                                 // Broadcast to entire room (including spectators)
                                 let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": &msg }));
-                                // No auto-advance for final round
+                                // No auto-advance for bonus round
+                            }
+                            GamePhase::Final => {
+                                // Final Spin round - active player can solve
+                                if !game.is_active_player(socket.id.as_str(), false) {
+                                    toast!(socket, "Only the active player can solve.");
+                                    return;
+                                }
+                                let solved = game.solve(&req.attempt);
+                                let msg = if solved {
+                                    auto_advance_delay = Some(game.config.puzzle_display_seconds as u64);
+                                    "Correct! Puzzle solved!"
+                                } else {
+                                    "Incorrect!"
+                                };
+                                toast!(socket, msg);
+                                let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
                             }
                         }
                         broadcast_state!(socket, req.room, game.get_state());
@@ -1310,9 +1391,94 @@ pub fn register_handlers(io: &SocketIo) {
             },
         );
 
-        // ========== FINAL ROUND ==========
+        // ========== FINAL SPIN ROUND ==========
 
-        // Start final round
+        // Start Final Spin round (host spins once, players take turns, free vowels)
+        socket.on(
+            "start_final_spin",
+            |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    if !game.is_host(socket.id.as_str()) {
+                        toast!(socket, "Host only.");
+                        return;
+                    }
+                    game.start_final_spin();
+                    toast!(socket, "Final Spin round started! Host, spin the wheel!");
+                    broadcast_state!(socket, req.room, game.get_state());
+                }
+            },
+        );
+
+        // Host performs the final spin (sets the value for all letters)
+        socket.on(
+            "final_spin_spin",
+            |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    if !game.is_host(socket.id.as_str()) {
+                        toast!(socket, "Host only.");
+                        return;
+                    }
+                    if game.phase != GamePhase::Final {
+                        toast!(socket, "Not in Final Spin phase.");
+                        return;
+                    }
+                    if game.final_spin.spin_done {
+                        toast!(socket, "Final spin already done.");
+                        return;
+                    }
+
+                    // Spin the wheel
+                    if let Some(wedge) = game.spin() {
+                        // Extract the cash value from the wedge
+                        let spin_value = match &wedge {
+                            super::WedgeValue::Cash(amount) => *amount,
+                            super::WedgeValue::Prize { .. } => 500, // Default value for prize wedges
+                            super::WedgeValue::FreePlay => 500, // Free play treated as $500
+                            super::WedgeValue::Bankrupt | super::WedgeValue::LoseTurn => {
+                                // Re-spin if bankrupt or lose turn
+                                let wedge_name = if matches!(wedge, super::WedgeValue::Bankrupt) { "BANKRUPT" } else { "LOSE A TURN" };
+                                toast!(socket, &format!("Landed on {}! Spinning again...", wedge_name));
+                                broadcast_state!(socket, req.room, game.get_state());
+                                return;
+                            }
+                        };
+
+                        // Add $1000 bonus (TV rules: final spin adds $1000)
+                        let final_value = spin_value + 1000;
+                        game.set_final_spin_value(final_value);
+
+                        let msg = format!("Final Spin value: ${}! Players, start calling letters!", final_value);
+                        toast!(socket, &msg);
+                        let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": &msg }));
+                        broadcast_state!(socket, req.room, game.get_state());
+                    }
+                }
+            },
+        );
+
+        // End Final Spin round
+        socket.on(
+            "end_final_spin",
+            |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    if !game.is_host(socket.id.as_str()) {
+                        toast!(socket, "Host only.");
+                        return;
+                    }
+                    game.end_final_spin();
+                    toast!(socket, "Final Spin round ended.");
+                    broadcast_state!(socket, req.room, game.get_state());
+                }
+            },
+        );
+
+        // ========== BONUS ROUND ==========
+
+        // Start bonus round (RSTLNE revealed, pick 3 consonants + 1 vowel)
+        // Note: "start_final" kept for backwards compatibility with web client
         socket.on(
             "start_final",
             |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
@@ -1322,14 +1488,31 @@ pub fn register_handlers(io: &SocketIo) {
                         toast!(socket, "Host only.");
                         return;
                     }
-                    game.start_final();
-                    toast!(socket, "Final round started! Pick 3 consonants and 1 vowel.");
+                    game.start_bonus();
+                    toast!(socket, "Bonus round started! Pick 3 consonants and 1 vowel.");
                     broadcast_state!(socket, req.room, game.get_state());
                 }
             },
         );
 
-        // End final round
+        // Also register as "start_bonus" for new clients
+        socket.on(
+            "start_bonus",
+            |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    if !game.is_host(socket.id.as_str()) {
+                        toast!(socket, "Host only.");
+                        return;
+                    }
+                    game.start_bonus();
+                    toast!(socket, "Bonus round started! Pick 3 consonants and 1 vowel.");
+                    broadcast_state!(socket, req.room, game.get_state());
+                }
+            },
+        );
+
+        // End bonus round (kept as "end_final" for compatibility)
         socket.on(
             "end_final",
             |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
@@ -1339,8 +1522,25 @@ pub fn register_handlers(io: &SocketIo) {
                         toast!(socket, "Host only.");
                         return;
                     }
-                    game.end_final();
-                    toast!(socket, "Final round ended.");
+                    game.end_bonus();
+                    toast!(socket, "Bonus round ended.");
+                    broadcast_state!(socket, req.room, game.get_state());
+                }
+            },
+        );
+
+        // Also register as "end_bonus" for new clients
+        socket.on(
+            "end_bonus",
+            |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    if !game.is_host(socket.id.as_str()) {
+                        toast!(socket, "Host only.");
+                        return;
+                    }
+                    game.end_bonus();
+                    toast!(socket, "Bonus round ended.");
                     broadcast_state!(socket, req.room, game.get_state());
                 }
             },
@@ -1359,9 +1559,9 @@ pub fn register_handlers(io: &SocketIo) {
 
                     if let Some(letter) = req.letter.chars().next() {
                         let result = if req.kind == "consonant" {
-                            game.final_pick_consonant(letter)
+                            game.bonus_pick_consonant(letter)
                         } else if req.kind == "vowel" {
-                            game.final_pick_vowel(letter)
+                            game.bonus_pick_vowel(letter)
                         } else {
                             Err("Invalid pick kind")
                         };
@@ -1369,22 +1569,22 @@ pub fn register_handlers(io: &SocketIo) {
                         match result {
                             Ok(()) => {
                                 toast!(socket, &format!("Picked {}: {}", req.kind, letter.to_uppercase()));
-                                if game.final_all_picks_complete() {
+                                if game.bonus_all_picks_complete() {
                                     let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": "All picks complete! Solve now!" }));
                                     toast!(socket, "All picks complete! Solve now!");
 
                                     // Spawn background task to auto-end final round when timer expires
                                     let state_clone = state.clone();
                                     let room_clone = req.room.clone();
-                                    let final_seconds = game.config.final_seconds as u64;
+                                    let bonus_seconds = game.config.bonus_seconds as u64;
                                     tokio::spawn(async move {
                                         // Wait for timer to expire (plus small buffer)
-                                        tokio::time::sleep(Duration::from_secs(final_seconds + 1)).await;
+                                        tokio::time::sleep(Duration::from_secs(bonus_seconds + 1)).await;
 
                                         // Check if timer expired and auto-end final round
                                         let mut manager = state_clone.game_manager.write().await;
                                         if let Some(game) = manager.get_room_mut(&room_clone) {
-                                            if game.phase == GamePhase::Final && game.final_timer_expired() {
+                                            if game.phase == GamePhase::Bonus && game.bonus_timer_expired() {
                                                 // Timer expired - end final round
                                                 let player_name = game.players.get(game.active_idx)
                                                     .map(|p| p.name.clone())
@@ -1393,7 +1593,7 @@ pub fn register_handlers(io: &SocketIo) {
                                                     "Final round timer expired for {} in room {}, auto-ending",
                                                     player_name, room_clone
                                                 );
-                                                game.end_final();
+                                                game.end_bonus();
 
                                                 // Broadcast update
                                                 if let Some(io) = state_clone.io.get() {
@@ -1433,7 +1633,7 @@ pub fn register_handlers(io: &SocketIo) {
 
                     for letter in &req.letters {
                         if let Some(l) = letter.chars().next() {
-                            let _ = game.final_pick_consonant(l);
+                            let _ = game.bonus_pick_consonant(l);
                         }
                     }
                     broadcast_state!(socket, req.room, game.get_state());
@@ -1453,7 +1653,7 @@ pub fn register_handlers(io: &SocketIo) {
                     }
 
                     if let Some(letter) = req.letter.chars().next() {
-                        let _ = game.final_pick_vowel(letter);
+                        let _ = game.bonus_pick_vowel(letter);
                     }
                     broadcast_state!(socket, req.room, game.get_state());
                 }
@@ -1471,18 +1671,18 @@ pub fn register_handlers(io: &SocketIo) {
                         return;
                     }
 
-                    if game.phase != GamePhase::Final {
+                    if game.phase != GamePhase::Bonus {
                         toast!(socket, "Not in final round.");
                         return;
                     }
 
-                    if !game.final_all_picks_complete() {
+                    if !game.bonus_all_picks_complete() {
                         toast!(socket, "Complete all picks first.");
                         return;
                     }
 
                     // Reveal the picked letters and start the timer
-                    game.final_start_solve();
+                    game.bonus_start_solve();
 
                     let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": "Time to solve!" }));
                     toast!(socket, "Time to solve!");
@@ -1490,15 +1690,15 @@ pub fn register_handlers(io: &SocketIo) {
                     // Spawn background task to auto-end final round when timer expires
                     let state_clone = state.clone();
                     let room_clone = req.room.clone();
-                    let final_seconds = game.config.final_seconds as u64;
+                    let bonus_seconds = game.config.bonus_seconds as u64;
                     tokio::spawn(async move {
                         // Wait for timer to expire (plus small buffer)
-                        tokio::time::sleep(Duration::from_secs(final_seconds + 1)).await;
+                        tokio::time::sleep(Duration::from_secs(bonus_seconds + 1)).await;
 
                         // Check if timer expired and auto-end final round
                         let mut manager = state_clone.game_manager.write().await;
                         if let Some(game) = manager.get_room_mut(&room_clone) {
-                            if game.phase == GamePhase::Final && game.final_timer_expired() {
+                            if game.phase == GamePhase::Bonus && game.bonus_timer_expired() {
                                 // Timer expired - end final round
                                 let player_name = game.players.get(game.active_idx)
                                     .map(|p| p.name.clone())
@@ -1507,7 +1707,7 @@ pub fn register_handlers(io: &SocketIo) {
                                     "Final round timer expired for {} in room {}, auto-ending",
                                     player_name, room_clone
                                 );
-                                game.end_final();
+                                game.end_bonus();
 
                                 // Broadcast update
                                 if let Some(io) = state_clone.io.get() {
@@ -1522,6 +1722,57 @@ pub fn register_handlers(io: &SocketIo) {
                             }
                         }
                     });
+
+                    broadcast_state!(socket, req.room, game.get_state());
+                }
+            },
+        );
+
+        // ========== ROUND MANAGEMENT ==========
+
+        // Advance to the next round (host only)
+        socket.on(
+            "advance_round",
+            |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    if !game.is_host(socket.id.as_str()) {
+                        toast!(socket, "Only the host can advance rounds.");
+                        return;
+                    }
+
+                    let old_round = game.current_round();
+                    game.advance_round();
+                    let new_round = game.current_round();
+
+                    if old_round != new_round {
+                        let msg = format!("Round {} begins!", new_round);
+                        let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
+                        toast!(socket, &msg);
+                    } else {
+                        toast!(socket, "Already at round 4.");
+                    }
+
+                    broadcast_state!(socket, req.room, game.get_state());
+                }
+            },
+        );
+
+        // Set a specific round (host only)
+        socket.on(
+            "set_round",
+            |socket: SocketRef, Data(req): Data<SetRoundRequest>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    if !game.is_host(socket.id.as_str()) {
+                        toast!(socket, "Only the host can set rounds.");
+                        return;
+                    }
+
+                    game.set_round(req.round);
+                    let msg = format!("Round set to {}", game.current_round());
+                    let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
+                    toast!(socket, &msg);
 
                     broadcast_state!(socket, req.room, game.get_state());
                 }
@@ -1985,7 +2236,7 @@ mod tests {
 
         let result = handle_guess(&mut manager, "test-room", "socket1", 'H');
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("only allowed during normal rounds"));
+        assert!(result.unwrap_err().contains("only allowed during normal or final spin rounds"));
     }
 
     // ========== SOLVE PUZZLE TESTS ==========
@@ -2099,8 +2350,8 @@ mod tests {
         let mut manager = create_test_manager_with_players("test-room");
         {
             let game = manager.get_room_mut("test-room").unwrap();
-            game.start_final();
-            game.final_state.stage = super::super::state::FinalStage::Running;
+            game.start_bonus();
+            game.bonus_state.stage = super::super::state::BonusStage::Running;
         }
 
         let result = handle_solve(&mut manager, "test-room", "socket1", "HELLO WORLD");
@@ -2113,7 +2364,7 @@ mod tests {
 
         // Verify jackpot awarded
         let game = manager.get_room("test-room").unwrap();
-        assert_eq!(game.players[0].total, game.config.final_jackpot);
+        assert_eq!(game.players[0].total, game.config.bonus_jackpot);
     }
 
     // ========== BUZZ (TOSS-UP) TESTS ==========

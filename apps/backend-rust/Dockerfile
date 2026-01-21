@@ -7,7 +7,7 @@
 # Stage 1: Builder
 # -----------------------------------------------------------------------------
 # Using Rust 1.85+ which supports edition 2024 (required by home crate v0.5.12)
-FROM rust:1.85-slim AS builder
+FROM docker.io/library/rust:1.85-slim AS builder
 
 # Install build dependencies for OpenSSL (vendored), SQLite, and Swagger UI download
 RUN apt-get update && apt-get install -y \
@@ -43,7 +43,7 @@ RUN test -f /app/target/release/holiday-wheel-backend
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime
 # -----------------------------------------------------------------------------
-FROM debian:bookworm-slim AS runtime
+FROM docker.io/library/debian:bookworm-slim AS runtime
 
 # Install runtime dependencies
 # - ca-certificates: for HTTPS connections

@@ -1875,8 +1875,8 @@ async fn admin_save_settings(
 
     let config = crate::game::RoomConfig {
         vowel_cost: req.vowel_cost.unwrap_or(existing.vowel_cost),
-        final_seconds: req.final_seconds.unwrap_or(existing.final_seconds),
-        final_jackpot: req.final_jackpot.unwrap_or(existing.final_jackpot),
+        bonus_seconds: req.final_seconds.unwrap_or(existing.bonus_seconds),
+        bonus_jackpot: req.final_jackpot.unwrap_or(existing.bonus_jackpot),
         prize_replace_cash_values: existing.prize_replace_cash_values,
         puzzle_display_seconds: req.puzzle_display_seconds.unwrap_or(existing.puzzle_display_seconds),
         prize_wedge_names: req.prize_wedge_names.unwrap_or(existing.prize_wedge_names),

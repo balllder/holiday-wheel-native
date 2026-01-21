@@ -118,19 +118,42 @@ authService.setBaseUrl(API_BASE_URL);
 socketService.connect(API_BASE_URL, token);
 ```
 
+## Game Flow
+
+**Toss-up** (once at game start) → **Rounds 1-4** (winner goes first next round) → **Bonus**
+
 ## Game Phases
 
-1. **normal**: Player spins wheel, guesses letters
-2. **tossup**: Players can buzz in
-3. **final**: Hidden letters, limited time
+1. **tossup**: Game start only - determines who plays first in Round 1
+2. **normal**: Standard gameplay - spin wheel, guess letters, buy vowels, solve
+3. **final**: Final Spin mode - one spin sets value for all turns, free vowels
+4. **bonus**: Winner's bonus round - pick letters, 10 seconds to solve for jackpot
+
+## Rounds
+
+Games have 4 rounds (1-4). Round winner goes first in the next round.
+
+Host controls:
+- `start_tossup` / `end_tossup` - Toss-up phase (game start)
+- `advance_round` - Move to next round (1→2→3→4)
+- `set_round` - Set specific round (1-4)
+- `start_final_spin` / `end_final_spin` - Final Spin mode
+- Round indicator shows "Round X / 4" in UI
 
 ## Socket Events
 
 Key events handled in `socketService.ts`:
-- `state` - Full game state sync
+- `state` - Full game state sync (includes `round`, `phase`, `final_spin`, `bonus`)
 - `rooms` - Available room list
 - `notification` - Server messages
 - `error` - Error handling
+
+### Host Control Events
+- `spin`, `new_round`, `new_game` - Basic game flow
+- `advance_round`, `set_round` - Round management (1-4)
+- `start_tossup`, `end_tossup` - Toss-up phase control
+- `start_final_spin`, `end_final_spin` - Final Spin mode
+- `start_bonus`, `end_bonus` - Bonus round control
 
 ## TV-Specific Patterns
 
@@ -189,10 +212,16 @@ Players can join games hosted on TV in multiple ways:
 
 The TV app includes host controls (`HostControlPanel.tsx`):
 - **Game Flow**: New Puzzle, Spin, Reveal All, New Game
-- **Phase Control**: Start/End Toss-up, Start/End Final
+- **Round Control**: Round selector (1-4), Next Round button
+- **Phase Control**: Start/End Toss-up, Start/End Final Spin, Start/End Bonus
 - **Player Management**: Set active player, view scores
 
 Toggle with Menu button during gameplay.
+
+The web client also has host controls with:
+- Round selector dropdown and "Next Round" button
+- Phase buttons for Toss-up, Final Spin, and Bonus modes
+- Round display in sidebar ("Round: X / 4")
 
 ## Backend Configuration
 

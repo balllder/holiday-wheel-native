@@ -2842,24 +2842,30 @@ pub async fn game() -> Html<String> {
             color: #000;
         }}
 
+        /* Input row with timer */
+        .input-timer-row {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 20px;
+        }}
+
         /* Turn timer countdown */
         .turn-timer {{
             display: none;
             align-items: center;
             justify-content: center;
             gap: 8px;
-            padding: 10px 18px;
+            padding: 12px 20px;
             background: linear-gradient(135deg, rgba(255, 68, 68, 0.3), rgba(255, 136, 0, 0.3));
             border: 2px solid #ff4444;
             border-radius: 10px;
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 1000;
             font-size: 18px;
             font-weight: bold;
             box-shadow: 0 4px 15px rgba(255, 68, 68, 0.4);
             animation: timerPulse 1s ease-in-out infinite;
+            min-width: 90px;
         }}
         .turn-timer.active {{
             display: flex;
@@ -2900,7 +2906,6 @@ pub async fn game() -> Html<String> {
             flex-direction: column;
             align-items: center;
             gap: 8px;
-            margin-top: 20px;
         }}
         .guess-label {{
             color: #d4af37;
@@ -3822,19 +3827,21 @@ pub async fn game() -> Html<String> {
                 <button class="btn btn-danger" id="buzzBtn" onclick="buzz()" style="display: none;">🔔 BUZZ IN!</button>
             </div>
 
-            <div class="turn-timer" id="turnTimer">
-                <span class="turn-timer-icon">⏱️</span>
-                <span class="turn-timer-text" id="turnTimerText">10s</span>
-            </div>
+            <div class="input-timer-row">
+                <div class="turn-timer" id="turnTimer">
+                    <span class="turn-timer-icon">⏱️</span>
+                    <span class="turn-timer-text" id="turnTimerText">10s</span>
+                </div>
 
-            <div class="turn-timer" id="buzzTimer" style="display: none;">
-                <span class="turn-timer-icon">🔔</span>
-                <span class="turn-timer-text" id="buzzTimerText">5s</span>
-            </div>
+                <div class="turn-timer" id="buzzTimer" style="display: none;">
+                    <span class="turn-timer-icon">🔔</span>
+                    <span class="turn-timer-text" id="buzzTimerText">5s</span>
+                </div>
 
-            <div class="guess-input" id="guessArea">
-                <label class="guess-label" for="letterInput">Select a Consonant</label>
-                <input type="text" id="letterInput" maxlength="1" placeholder="A-Z" style="font-size: 24px; padding: 0;">
+                <div class="guess-input" id="guessArea">
+                    <label class="guess-label" for="letterInput">Select a Consonant</label>
+                    <input type="text" id="letterInput" maxlength="1" placeholder="A-Z" style="font-size: 24px; padding: 0;">
+                </div>
             </div>
 
             <div class="host-controls" id="hostControls" style="display: none; margin-top: 20px; padding-top: 16px; border-top: 1px solid #333;">
@@ -3847,7 +3854,18 @@ pub async fn game() -> Html<String> {
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;">
                     <button class="btn" id="tossupBtn" onclick="toggleTossup()">Start Toss-up</button>
-                    <button class="btn" id="finalBtn" onclick="toggleFinal()">Start Final</button>
+                    <button class="btn" id="finalSpinBtn" onclick="toggleFinalSpin()">Start Final Spin</button>
+                    <button class="btn" id="bonusBtn" onclick="toggleBonus()">Start Bonus</button>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;">
+                    <span style="color: #888; font-size: 14px;">Round:</span>
+                    <select id="roundSelect" onchange="setRound()" style="padding: 8px 12px; border-radius: 8px; background: #1a1a2e; color: #fff; border: 2px solid #333; font-size: 14px; cursor: pointer; min-width: 80px;">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="advanceRound()">Next Round</button>
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                     <select id="packSelect" onchange="changePack()" style="padding: 8px 12px; border-radius: 8px; background: #1a1a2e; color: #fff; border: 2px solid #333; font-size: 14px; cursor: pointer;">
@@ -3872,6 +3890,7 @@ pub async fn game() -> Html<String> {
 
             <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #333;">
                 <p style="color: #888; font-size: 14px;">Room: <span id="roomName">-</span></p>
+                <p style="color: #888; font-size: 14px; margin-top: 4px;">Round: <span id="roundDisplay" style="color: #d4af37; font-weight: bold;">1</span> / 4</p>
                 <p style="color: #888; font-size: 14px; margin-top: 4px;">Phase: <span id="phase">Connecting...</span></p>
             </div>
         </div>
@@ -4499,7 +4518,7 @@ pub async fn game() -> Html<String> {
             bonusState.prizeAmount = 0;
             bonusState.pickedConsonants = [];
             bonusState.pickedVowel = null;
-            bonusState.totalSeconds = gameState?.config?.final_seconds || 10;
+            bonusState.totalSeconds = gameState?.config?.bonus_seconds || gameState?.config?.final_seconds || 10;
             bonusState.remainingSeconds = bonusState.totalSeconds;
 
             const avatar = getAvatarEmoji(avatarId);
@@ -4593,7 +4612,8 @@ pub async fn game() -> Html<String> {
 
             const phases = {{
                 'tossup': {{ title: 'TOSS-UP!', subtitle: 'Buzz in to answer!' }},
-                'final': {{ title: 'BONUS ROUND!', subtitle: 'Pick your letters wisely...' }},
+                'final': {{ title: 'FINAL SPIN!', subtitle: 'Call letters - vowels are FREE!' }},
+                'bonus': {{ title: 'BONUS ROUND!', subtitle: 'Pick your letters wisely...' }},
                 'normal': {{ title: 'SPIN THE WHEEL!', subtitle: 'Good luck!' }},
             }};
 
@@ -5045,37 +5065,49 @@ pub async fn game() -> Html<String> {
             document.getElementById('category').textContent = gameState.puzzle?.category || '-';
 
             // ========== ROUND PROGRESS ==========
-            const roundState = gameState.round;
+            // gameState.round is a simple number (1-4)
+            const currentRound = gameState.round || 1;
+            const totalRounds = 4;
             const roundIndicator = document.getElementById('roundIndicator');
-            if (roundState && roundState.enabled && roundState.total_rounds > 0) {{
+
+            // Update sidebar round display
+            document.getElementById('roundDisplay').textContent = currentRound;
+
+            // Update host controls round select
+            const roundSelect = document.getElementById('roundSelect');
+            if (roundSelect && roundSelect.value !== String(currentRound)) {{
+                roundSelect.value = String(currentRound);
+            }}
+
+            // Update round indicator UI
+            if (roundIndicator) {{
                 roundIndicator.classList.add('active');
-                document.getElementById('roundNumber').textContent = 'ROUND ' + roundState.current_round;
-                document.getElementById('roundTotal').textContent = 'of ' + roundState.total_rounds;
+                document.getElementById('roundNumber').textContent = 'ROUND ' + currentRound;
+                document.getElementById('roundTotal').textContent = 'of ' + totalRounds;
 
                 // Render round dots
                 let dotsHtml = '';
-                for (let i = 1; i <= roundState.total_rounds; i++) {{
-                    const dotClass = i < roundState.current_round ? 'completed' :
-                                    i === roundState.current_round ? 'current' : '';
+                for (let i = 1; i <= totalRounds; i++) {{
+                    const dotClass = i < currentRound ? 'completed' :
+                                    i === currentRound ? 'current' : '';
                     dotsHtml += `<div class="round-dot ${{dotClass}}"></div>`;
                 }}
                 document.getElementById('roundDots').innerHTML = dotsHtml;
 
-                // Round badges
+                // Round badges based on current phase
                 let badgesHtml = '';
-                const currentConfig = roundState.rounds?.[roundState.current_round - 1];
-                if (currentConfig) {{
-                    if (currentConfig.type && currentConfig.type !== 'normal') {{
-                        const typeLabels = {{ tossup: 'TOSS-UP', speed: 'SPEED', bonus: 'BONUS' }};
-                        badgesHtml += `<span class="round-badge type">${{typeLabels[currentConfig.type] || currentConfig.type.toUpperCase()}}</span>`;
-                    }}
-                    if (currentConfig.value_multiplier > 1) {{
-                        badgesHtml += `<span class="round-badge multiplier">${{currentConfig.value_multiplier}}x</span>`;
-                    }}
+                const phaseLower = phase.toLowerCase();
+                if (phaseLower === 'tossup') {{
+                    badgesHtml += `<span class="round-badge type">TOSS-UP</span>`;
+                }} else if (phaseLower === 'final') {{
+                    badgesHtml += `<span class="round-badge type">FINAL SPIN</span>`;
+                }} else if (phaseLower === 'bonus') {{
+                    badgesHtml += `<span class="round-badge type">BONUS</span>`;
+                }}
+                if (currentRound === 4) {{
+                    badgesHtml += `<span class="round-badge multiplier">SPEED</span>`;
                 }}
                 document.getElementById('roundBadges').innerHTML = badgesHtml;
-            }} else {{
-                roundIndicator.classList.remove('active');
             }}
 
             // ========== TOSS-UP DISPLAY ==========
@@ -5363,11 +5395,11 @@ pub async fn game() -> Html<String> {
                 }}).join('');
             }}
 
-            // ========== FINAL/BONUS ROUND DISPLAY ==========
-            const finalState = gameState.final;
-            if (phase === 'final' && finalState && finalState.stage !== 'off') {{
+            // ========== BONUS ROUND DISPLAY ==========
+            const bonusStateData = gameState.bonus;
+            if (phase === 'bonus' && bonusStateData && bonusStateData.stage !== 'off') {{
                 // Sync server state with local bonus state
-                const serverStage = finalState.stage?.toLowerCase() || 'off';
+                const serverStage = bonusStateData.stage?.toLowerCase() || 'off';
 
                 // Map server stages to client stages
                 // Server: Off, Pick, Running, Done
@@ -5382,22 +5414,22 @@ pub async fn game() -> Html<String> {
 
                     // If server already past pick phase, skip to appropriate stage
                     if (serverStage === 'running') {{
-                        bonusState.prizeAmount = finalState.jackpot || 50000;
-                        bonusState.pickedConsonants = finalState.picks?.consonants || [];
-                        bonusState.pickedVowel = finalState.picks?.vowel || null;
+                        bonusState.prizeAmount = bonusStateData.jackpot || 50000;
+                        bonusState.pickedConsonants = bonusStateData.picks?.consonants || [];
+                        bonusState.pickedVowel = bonusStateData.picks?.vowel || null;
                         updatePickedLettersDisplay();
                         showBonusStage('solve');
                     }} else if (serverStage === 'done') {{
-                        bonusState.prizeAmount = finalState.jackpot || 50000;
-                        bonusState.pickedConsonants = finalState.picks?.consonants || [];
-                        bonusState.pickedVowel = finalState.picks?.vowel || null;
+                        bonusState.prizeAmount = bonusStateData.jackpot || 50000;
+                        bonusState.pickedConsonants = bonusStateData.picks?.consonants || [];
+                        bonusState.pickedVowel = bonusStateData.picks?.vowel || null;
                         updatePickedLettersDisplay();
                         showBonusStage('result');
                     }}
                 }} else {{
                     // Already active - sync timer and stage
                     if (serverStage === 'running') {{
-                        bonusState.remainingSeconds = finalState.remaining_seconds || 0;
+                        bonusState.remainingSeconds = bonusStateData.remaining_seconds || 0;
                         updateBonusTimer(bonusState.remainingSeconds);
 
                         // Update bonus category
@@ -5407,8 +5439,8 @@ pub async fn game() -> Html<String> {
                         const answer = gameState.puzzle?.answer || '';
                         const givenLetters = new Set(['R', 'S', 'T', 'L', 'N', 'E']);
                         const pickedLetters = new Set([
-                            ...(finalState.picks?.consonants || []),
-                            finalState.picks?.vowel || ''
+                            ...(bonusStateData.picks?.consonants || []),
+                            bonusStateData.picks?.vowel || ''
                         ].filter(c => c));
                         const revealed = new Set([...givenLetters, ...pickedLetters, ...(gameState.revealed || [])]);
                         renderBonusPuzzleBoard(answer, revealed);
@@ -5426,7 +5458,7 @@ pub async fn game() -> Html<String> {
                         }}
                     }}
                 }}
-            }} else if (bonusState.active && (phase !== 'final' || !finalState || finalState.stage === 'off')) {{
+            }} else if (bonusState.active && (phase !== 'bonus' || !bonusStateData || bonusStateData.stage === 'off')) {{
                 // Final round ended - clean up
                 closeBonusRound();
             }}
@@ -5434,7 +5466,9 @@ pub async fn game() -> Html<String> {
             // ========== CONTROLS VISIBILITY ==========
             const isMyTurn = !isSpectating && gameState.active_idx === myPlayerIdx;
             const isTossup = phase === 'tossup';
-            const isFinalRound = phase === 'final' && finalState && finalState.stage !== 'off';
+            const isFinalSpin = phase === 'final';
+            const isBonusRound = phase === 'bonus' && bonusStateData && bonusStateData.stage !== 'off';
+            const isFinalRound = isBonusRound; // Backwards compat alias
             const canBuzz = !isSpectating && isTossup && myPlayerIdx !== null &&
                 !(gameState.tossup?.locked_player_idxs || []).includes(myPlayerIdx);
 
@@ -5566,14 +5600,19 @@ pub async fn game() -> Html<String> {
 
             // Update host control buttons based on phase
             const tossupBtn = document.getElementById('tossupBtn');
-            const finalBtn = document.getElementById('finalBtn');
+            const finalSpinBtn = document.getElementById('finalSpinBtn');
+            const bonusBtn = document.getElementById('bonusBtn');
             if (tossupBtn) {{
                 tossupBtn.textContent = isTossup ? 'End Toss-up' : 'Start Toss-up';
                 tossupBtn.classList.toggle('btn-danger', isTossup);
             }}
-            if (finalBtn) {{
-                finalBtn.textContent = isFinalRound ? 'End Final' : 'Start Final';
-                finalBtn.classList.toggle('btn-danger', isFinalRound);
+            if (finalSpinBtn) {{
+                finalSpinBtn.textContent = isFinalSpin ? 'End Final Spin' : 'Start Final Spin';
+                finalSpinBtn.classList.toggle('btn-danger', isFinalSpin);
+            }}
+            if (bonusBtn) {{
+                bonusBtn.textContent = isBonusRound ? 'End Bonus' : 'Start Bonus';
+                bonusBtn.classList.toggle('btn-danger', isBonusRound);
             }}
 
             // Populate active player dropdown
@@ -5796,12 +5835,40 @@ pub async fn game() -> Html<String> {
             }}
         }}
 
-        function toggleFinal() {{
+        function toggleFinalSpin() {{
             const phase = (gameState?.phase || '').toLowerCase();
             if (phase === 'final') {{
-                socket.emit('end_final', {{ room }});
+                socket.emit('end_final_spin', {{ room }});
             }} else {{
-                socket.emit('start_final', {{ room }});
+                socket.emit('start_final_spin', {{ room }});
+            }}
+        }}
+
+        function toggleBonus() {{
+            const phase = (gameState?.phase || '').toLowerCase();
+            if (phase === 'bonus') {{
+                socket.emit('end_bonus', {{ room }});
+            }} else {{
+                socket.emit('start_bonus', {{ room }});
+            }}
+        }}
+
+        // Legacy function for backwards compatibility
+        function toggleFinal() {{
+            toggleBonus();
+        }}
+
+        // ========== ROUND MANAGEMENT ==========
+
+        function advanceRound() {{
+            socket.emit('advance_round', {{ room }});
+        }}
+
+        function setRound() {{
+            const select = document.getElementById('roundSelect');
+            const roundNum = parseInt(select.value);
+            if (roundNum >= 1 && roundNum <= 4) {{
+                socket.emit('set_round', {{ room, round: roundNum }});
             }}
         }}
 

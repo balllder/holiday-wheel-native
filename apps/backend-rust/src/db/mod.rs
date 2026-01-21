@@ -642,7 +642,7 @@ impl Database {
     /// Get room config
     pub async fn get_room_config(&self, room_name: &str) -> Result<RoomConfig, DbError> {
         let row = sqlx::query(
-            "SELECT active_pack_id, vowel_cost, final_seconds, final_jackpot, prize_replace_csv, puzzle_display_seconds, prize_wedge_names, disconnect_timeout_secs FROM room_config WHERE room_name = ?",
+            "SELECT active_pack_id, vowel_cost, bonus_seconds, bonus_jackpot, prize_replace_csv, puzzle_display_seconds, prize_wedge_names, disconnect_timeout_secs FROM room_config WHERE room_name = ?",
         )
         .bind(room_name)
         .fetch_optional(&self.pool)
@@ -670,8 +670,8 @@ impl Database {
 
             Ok(RoomConfig {
                 vowel_cost: row.get::<Option<i32>, _>("vowel_cost").unwrap_or(250),
-                final_seconds: row.get::<Option<i32>, _>("final_seconds").unwrap_or(30),
-                final_jackpot: row.get::<Option<i32>, _>("final_jackpot").unwrap_or(10000),
+                bonus_seconds: row.get::<Option<i32>, _>("bonus_seconds").unwrap_or(30),
+                bonus_jackpot: row.get::<Option<i32>, _>("bonus_jackpot").unwrap_or(10000),
                 prize_replace_cash_values: prize_values,
                 puzzle_display_seconds: row.get::<Option<i32>, _>("puzzle_display_seconds").unwrap_or(30),
                 prize_wedge_names,
@@ -713,13 +713,13 @@ impl Database {
 
         sqlx::query(
             r#"
-            INSERT INTO room_config (room_name, active_pack_id, vowel_cost, final_seconds, final_jackpot, prize_replace_csv, puzzle_display_seconds, prize_wedge_names, disconnect_timeout_secs, turn_timer_seconds, buzz_timer_seconds)
+            INSERT INTO room_config (room_name, active_pack_id, vowel_cost, bonus_seconds, bonus_jackpot, prize_replace_csv, puzzle_display_seconds, prize_wedge_names, disconnect_timeout_secs, turn_timer_seconds, buzz_timer_seconds)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(room_name) DO UPDATE SET
                 active_pack_id = excluded.active_pack_id,
                 vowel_cost = excluded.vowel_cost,
-                final_seconds = excluded.final_seconds,
-                final_jackpot = excluded.final_jackpot,
+                bonus_seconds = excluded.bonus_seconds,
+                bonus_jackpot = excluded.bonus_jackpot,
                 prize_replace_csv = excluded.prize_replace_csv,
                 puzzle_display_seconds = excluded.puzzle_display_seconds,
                 prize_wedge_names = excluded.prize_wedge_names,
@@ -731,8 +731,8 @@ impl Database {
         .bind(room_name)
         .bind(active_pack_id)
         .bind(config.vowel_cost)
-        .bind(config.final_seconds)
-        .bind(config.final_jackpot)
+        .bind(config.bonus_seconds)
+        .bind(config.bonus_jackpot)
         .bind(&prize_csv)
         .bind(config.puzzle_display_seconds)
         .bind(&prize_wedge_csv)
@@ -1963,8 +1963,8 @@ mod tests {
 
         // Should return defaults
         assert_eq!(config.vowel_cost, 250);
-        assert_eq!(config.final_seconds, 30);
-        assert_eq!(config.final_jackpot, 10000);
+        assert_eq!(config.bonus_seconds, 30);
+        assert_eq!(config.bonus_jackpot, 10000);
     }
 
     #[tokio::test]
@@ -1973,8 +1973,8 @@ mod tests {
 
         let config = RoomConfig {
             vowel_cost: 500,
-            final_seconds: 60,
-            final_jackpot: 50000,
+            bonus_seconds: 60,
+            bonus_jackpot: 50000,
             prize_replace_cash_values: vec![1000, 2000, 3000],
             puzzle_display_seconds: 45,
             prize_wedge_names: vec!["PRIZE 1".to_string(), "PRIZE 2".to_string()],
@@ -1988,8 +1988,8 @@ mod tests {
 
         let loaded = db.get_room_config("custom-room").await.unwrap();
         assert_eq!(loaded.vowel_cost, 500);
-        assert_eq!(loaded.final_seconds, 60);
-        assert_eq!(loaded.final_jackpot, 50000);
+        assert_eq!(loaded.bonus_seconds, 60);
+        assert_eq!(loaded.bonus_jackpot, 50000);
         assert_eq!(loaded.prize_replace_cash_values, vec![1000, 2000, 3000]);
         assert_eq!(loaded.prize_wedge_names, vec!["PRIZE 1", "PRIZE 2"]);
     }
@@ -2569,8 +2569,8 @@ mod tests {
 
         let config1 = RoomConfig {
             vowel_cost: 300,
-            final_seconds: 45,
-            final_jackpot: 20000,
+            bonus_seconds: 45,
+            bonus_jackpot: 20000,
             prize_replace_cash_values: vec![1000, 2000],
             puzzle_display_seconds: 60,
             prize_wedge_names: vec!["CAR".to_string()],
@@ -2585,8 +2585,8 @@ mod tests {
         // Update with different values
         let config2 = RoomConfig {
             vowel_cost: 400,
-            final_seconds: 60,
-            final_jackpot: 30000,
+            bonus_seconds: 60,
+            bonus_jackpot: 30000,
             prize_replace_cash_values: vec![500],
             puzzle_display_seconds: 90,
             prize_wedge_names: vec!["TRIP".to_string(), "BOAT".to_string()],
@@ -2600,8 +2600,8 @@ mod tests {
 
         let loaded = db.get_room_config("config-test").await.unwrap();
         assert_eq!(loaded.vowel_cost, 400);
-        assert_eq!(loaded.final_seconds, 60);
-        assert_eq!(loaded.final_jackpot, 30000);
+        assert_eq!(loaded.bonus_seconds, 60);
+        assert_eq!(loaded.bonus_jackpot, 30000);
         assert_eq!(loaded.prize_replace_cash_values, vec![500]);
         assert_eq!(loaded.puzzle_display_seconds, 90);
         assert_eq!(loaded.prize_wedge_names, vec!["TRIP", "BOAT"]);
@@ -2977,5 +2977,328 @@ mod tests {
         // Updating a nonexistent user should not error (SQL UPDATE affects 0 rows)
         let result = db.update_user_profile(99999, Some("Name"), Some(5)).await;
         assert!(result.is_ok());
+    }
+
+    // ========== MIGRATION TESTS ==========
+    // These tests verify that migrations work correctly against existing databases
+    // with old schemas. They simulate the scenario where a user has an existing
+    // database from a previous version.
+
+    /// Helper to create a database with old schema (before migration 004)
+    /// This simulates an existing database that needs migration
+    async fn create_old_schema_db() -> (tempfile::NamedTempFile, SqlitePool) {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap();
+        let db_url = format!("sqlite:{}?mode=rwc", path);
+
+        let pool = SqlitePool::connect(&db_url).await.unwrap();
+
+        // Create the old schema manually (before migration 004 renaming)
+        // This is the schema from migrations 001-003 with old column names
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                password_hash TEXT,
+                display_name TEXT NOT NULL,
+                verified INTEGER NOT NULL DEFAULT 0,
+                verification_token TEXT,
+                verification_token_expires INTEGER,
+                reset_token TEXT,
+                reset_token_expires INTEGER,
+                created_at INTEGER NOT NULL,
+                last_login_at INTEGER,
+                remember_token TEXT,
+                is_admin INTEGER NOT NULL DEFAULT 0,
+                avatar_id INTEGER NOT NULL DEFAULT 1
+            )
+        "#).execute(&pool).await.unwrap();
+
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS packs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE
+            )
+        "#).execute(&pool).await.unwrap();
+
+        sqlx::query("INSERT OR IGNORE INTO packs (id, name) VALUES (1, 'Default')")
+            .execute(&pool).await.unwrap();
+
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS puzzles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                pack_id INTEGER NOT NULL DEFAULT 1,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                FOREIGN KEY(pack_id) REFERENCES packs(id)
+            )
+        "#).execute(&pool).await.unwrap();
+
+        // OLD schema: final_seconds and final_jackpot (before migration 004)
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS room_config (
+                room_name TEXT PRIMARY KEY,
+                active_pack_id INTEGER,
+                vowel_cost INTEGER,
+                final_seconds INTEGER,
+                final_jackpot INTEGER,
+                prize_replace_csv TEXT,
+                puzzle_display_seconds INTEGER,
+                prize_wedge_names TEXT,
+                disconnect_timeout_secs INTEGER DEFAULT 300,
+                turn_timer_seconds INTEGER DEFAULT 10,
+                buzz_timer_seconds INTEGER DEFAULT 5,
+                FOREIGN KEY(active_pack_id) REFERENCES packs(id)
+            )
+        "#).execute(&pool).await.unwrap();
+
+        // Create sqlx migrations tracking table (simulating previous migrations applied)
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS _sqlx_migrations (
+                version BIGINT PRIMARY KEY,
+                description TEXT NOT NULL,
+                installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                success BOOLEAN NOT NULL,
+                checksum BLOB NOT NULL,
+                execution_time BIGINT NOT NULL
+            )
+        "#).execute(&pool).await.unwrap();
+
+        // Mark migrations 001-003 as already applied
+        sqlx::query(r#"
+            INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time)
+            VALUES
+                (1, 'initial_schema', 1, X'00', 0),
+                (2, 'additional_indexes', 1, X'00', 0),
+                (3, 'add_avatar', 1, X'00', 0)
+        "#).execute(&pool).await.unwrap();
+
+        (tmp, pool)
+    }
+
+    #[tokio::test]
+    async fn test_migration_004_column_rename_preserves_data() {
+        // Create database with old schema
+        let (tmp, pool) = create_old_schema_db().await;
+
+        // Insert data using OLD column names
+        sqlx::query(r#"
+            INSERT INTO room_config (room_name, vowel_cost, final_seconds, final_jackpot)
+            VALUES ('test-room', 300, 45, 25000)
+        "#).execute(&pool).await.unwrap();
+
+        // Verify data was inserted with old column names
+        let row = sqlx::query("SELECT final_seconds, final_jackpot FROM room_config WHERE room_name = 'test-room'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(row.get::<i32, _>("final_seconds"), 45);
+        assert_eq!(row.get::<i32, _>("final_jackpot"), 25000);
+
+        // Now manually run migration 004 (column rename)
+        sqlx::query("ALTER TABLE room_config RENAME COLUMN final_seconds TO bonus_seconds")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("ALTER TABLE room_config RENAME COLUMN final_jackpot TO bonus_jackpot")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Verify data is preserved with new column names
+        let row = sqlx::query("SELECT bonus_seconds, bonus_jackpot FROM room_config WHERE room_name = 'test-room'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(row.get::<i32, _>("bonus_seconds"), 45);
+        assert_eq!(row.get::<i32, _>("bonus_jackpot"), 25000);
+
+        // Clean up
+        pool.close().await;
+        drop(tmp);
+    }
+
+    #[tokio::test]
+    async fn test_migration_column_rename_multiple_rows() {
+        // Create database with old schema
+        let (tmp, pool) = create_old_schema_db().await;
+
+        // Insert multiple rows with different values
+        sqlx::query(r#"
+            INSERT INTO room_config (room_name, vowel_cost, final_seconds, final_jackpot)
+            VALUES
+                ('room-1', 250, 30, 10000),
+                ('room-2', 500, 60, 50000),
+                ('room-3', 100, 15, 5000)
+        "#).execute(&pool).await.unwrap();
+
+        // Run migration
+        sqlx::query("ALTER TABLE room_config RENAME COLUMN final_seconds TO bonus_seconds")
+            .execute(&pool).await.unwrap();
+        sqlx::query("ALTER TABLE room_config RENAME COLUMN final_jackpot TO bonus_jackpot")
+            .execute(&pool).await.unwrap();
+
+        // Verify all rows preserved
+        let rows: Vec<(String, i32, i32)> = sqlx::query_as(
+            "SELECT room_name, bonus_seconds, bonus_jackpot FROM room_config ORDER BY room_name"
+        ).fetch_all(&pool).await.unwrap();
+
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0], ("room-1".to_string(), 30, 10000));
+        assert_eq!(rows[1], ("room-2".to_string(), 60, 50000));
+        assert_eq!(rows[2], ("room-3".to_string(), 15, 5000));
+
+        pool.close().await;
+        drop(tmp);
+    }
+
+    #[tokio::test]
+    async fn test_migration_column_rename_with_null_values() {
+        // Create database with old schema
+        let (tmp, pool) = create_old_schema_db().await;
+
+        // Insert row with NULL values in old columns
+        sqlx::query(r#"
+            INSERT INTO room_config (room_name, vowel_cost)
+            VALUES ('null-room', 250)
+        "#).execute(&pool).await.unwrap();
+
+        // Run migration
+        sqlx::query("ALTER TABLE room_config RENAME COLUMN final_seconds TO bonus_seconds")
+            .execute(&pool).await.unwrap();
+        sqlx::query("ALTER TABLE room_config RENAME COLUMN final_jackpot TO bonus_jackpot")
+            .execute(&pool).await.unwrap();
+
+        // Verify NULL values are preserved
+        let row = sqlx::query("SELECT bonus_seconds, bonus_jackpot FROM room_config WHERE room_name = 'null-room'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert!(row.get::<Option<i32>, _>("bonus_seconds").is_none());
+        assert!(row.get::<Option<i32>, _>("bonus_jackpot").is_none());
+
+        pool.close().await;
+        drop(tmp);
+    }
+
+    #[tokio::test]
+    async fn test_migration_column_add_with_existing_data() {
+        // Create a database with an older schema (no avatar_id column)
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap();
+        let db_url = format!("sqlite:{}?mode=rwc", path);
+        let pool = SqlitePool::connect(&db_url).await.unwrap();
+
+        // Create users table WITHOUT avatar_id (pre-migration 003)
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                password_hash TEXT,
+                display_name TEXT NOT NULL,
+                verified INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL
+            )
+        "#).execute(&pool).await.unwrap();
+
+        // Insert user before migration
+        sqlx::query(r#"
+            INSERT INTO users (email, display_name, created_at)
+            VALUES ('old@user.com', 'Old User', 1234567890)
+        "#).execute(&pool).await.unwrap();
+
+        // Run migration: add avatar_id column with default value
+        sqlx::query("ALTER TABLE users ADD COLUMN avatar_id INTEGER NOT NULL DEFAULT 1")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Verify existing user got default avatar_id
+        let row = sqlx::query("SELECT avatar_id FROM users WHERE email = 'old@user.com'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(row.get::<i32, _>("avatar_id"), 1);
+
+        // Verify new users can be inserted with avatar_id
+        sqlx::query(r#"
+            INSERT INTO users (email, display_name, created_at, avatar_id)
+            VALUES ('new@user.com', 'New User', 1234567891, 5)
+        "#).execute(&pool).await.unwrap();
+
+        let row = sqlx::query("SELECT avatar_id FROM users WHERE email = 'new@user.com'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(row.get::<i32, _>("avatar_id"), 5);
+
+        pool.close().await;
+        drop(tmp);
+    }
+
+    #[tokio::test]
+    async fn test_old_column_names_fail_after_migration() {
+        // Create database with old schema
+        let (tmp, pool) = create_old_schema_db().await;
+
+        // Run migration
+        sqlx::query("ALTER TABLE room_config RENAME COLUMN final_seconds TO bonus_seconds")
+            .execute(&pool).await.unwrap();
+        sqlx::query("ALTER TABLE room_config RENAME COLUMN final_jackpot TO bonus_jackpot")
+            .execute(&pool).await.unwrap();
+
+        // Verify old column names no longer work
+        let result = sqlx::query("SELECT final_seconds FROM room_config")
+            .fetch_optional(&pool)
+            .await;
+        assert!(result.is_err() || result.unwrap().is_none());
+
+        // Verify new column names work
+        let result = sqlx::query("SELECT bonus_seconds FROM room_config")
+            .fetch_optional(&pool)
+            .await;
+        assert!(result.is_ok());
+
+        pool.close().await;
+        drop(tmp);
+    }
+
+    #[tokio::test]
+    async fn test_full_database_new_runs_all_migrations() {
+        // This test verifies that Database::new() successfully runs all migrations
+        // on a fresh database and the schema is correct
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap().to_string();
+        std::mem::forget(tmp);
+
+        // Create database (runs all migrations)
+        let db = Database::new(&path).await.unwrap();
+
+        // Verify room_config has the new column names (bonus_seconds, bonus_jackpot)
+        let config = RoomConfig {
+            vowel_cost: 400,
+            bonus_seconds: 90,
+            bonus_jackpot: 75000,
+            prize_replace_cash_values: vec![500],
+            puzzle_display_seconds: 30,
+            prize_wedge_names: vec!["TEST".to_string()],
+            pack_id: None,
+            disconnect_timeout_secs: 300,
+            turn_timer_seconds: 10,
+            buzz_timer_seconds: 5,
+        };
+
+        db.set_room_config("migration-test", &config, None).await.unwrap();
+
+        let loaded = db.get_room_config("migration-test").await.unwrap();
+        assert_eq!(loaded.bonus_seconds, 90);
+        assert_eq!(loaded.bonus_jackpot, 75000);
+
+        // Verify users table has avatar_id column
+        let user_id = db.create_oauth_user("migration@test.com", "Migration Test", true)
+            .await.unwrap();
+        let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
+        assert_eq!(user.avatar_id, 1); // Default avatar
     }
 }

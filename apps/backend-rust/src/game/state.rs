@@ -9,10 +9,10 @@ use super::wheel::{create_standard_wheel, shuffle_wheel_with_spacing, WedgeValue
 
 /// Default configuration values
 pub const DEFAULT_VOWEL_COST: i32 = 250;
-pub const DEFAULT_FINAL_SECONDS: i32 = 30;
-pub const DEFAULT_FINAL_JACKPOT: i32 = 10000;
+pub const DEFAULT_BONUS_SECONDS: i32 = 30;
+pub const DEFAULT_BONUS_JACKPOT: i32 = 10000;
 pub const TOSSUP_AWARD: i32 = 1000;
-pub const FINAL_RSTLNE: &[char] = &['R', 'S', 'T', 'L', 'N', 'E'];
+pub const BONUS_RSTLNE: &[char] = &['R', 'S', 'T', 'L', 'N', 'E'];
 
 /// Game phase
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,13 +20,14 @@ pub const FINAL_RSTLNE: &[char] = &['R', 'S', 'T', 'L', 'N', 'E'];
 pub enum GamePhase {
     Normal,
     Tossup,
-    Final,
+    Final,  // Final Spin round - host spins once, players take turns calling letters
+    Bonus,  // Bonus round - RSTLNE revealed, pick 3 consonants + 1 vowel, solve
 }
 
-/// Final round stage
+/// Bonus round stage (formerly FinalStage)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum FinalStage {
+pub enum BonusStage {
     Off,
     Pick,
     Running,
@@ -114,8 +115,10 @@ impl Default for Puzzle {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoomConfig {
     pub vowel_cost: i32,
-    pub final_seconds: i32,
-    pub final_jackpot: i32,
+    #[serde(alias = "final_seconds")]
+    pub bonus_seconds: i32,
+    #[serde(alias = "final_jackpot")]
+    pub bonus_jackpot: i32,
     pub prize_replace_cash_values: Vec<i32>,
     pub puzzle_display_seconds: i32,
     pub prize_wedge_names: Vec<String>,
@@ -148,8 +151,8 @@ impl Default for RoomConfig {
     fn default() -> Self {
         Self {
             vowel_cost: DEFAULT_VOWEL_COST,
-            final_seconds: DEFAULT_FINAL_SECONDS,
-            final_jackpot: DEFAULT_FINAL_JACKPOT,
+            bonus_seconds: DEFAULT_BONUS_SECONDS,
+            bonus_jackpot: DEFAULT_BONUS_JACKPOT,
             prize_replace_cash_values: vec![500, 1000, 1500, 2000, 2500, 3000, 3500],
             puzzle_display_seconds: 30,
             prize_wedge_names: vec!["GIFT CARD".to_string()],
@@ -173,19 +176,19 @@ pub struct TossupState {
     pub buzz_timer_end_ts: Option<f64>,
 }
 
-/// Final round state
+/// Bonus round state (formerly FinalState)
 #[derive(Debug, Clone)]
-pub struct FinalState {
-    pub stage: FinalStage,
+pub struct BonusState {
+    pub stage: BonusStage,
     pub picks_consonants: Vec<char>,
     pub pick_vowel: Option<char>,
     pub end_ts: Option<f64>,
 }
 
-impl Default for FinalState {
+impl Default for BonusState {
     fn default() -> Self {
         Self {
-            stage: FinalStage::Off,
+            stage: BonusStage::Off,
             picks_consonants: Vec::new(),
             pick_vowel: None,
             end_ts: None,
@@ -193,11 +196,22 @@ impl Default for FinalState {
     }
 }
 
+/// Final Spin round state
+#[derive(Debug, Clone, Default)]
+pub struct FinalSpinState {
+    /// The fixed spin value for all consonants in this round
+    pub spin_value: i32,
+    /// Whether the final spin has been performed
+    pub spin_done: bool,
+}
+
 /// Game state for a room
 #[derive(Debug)]
 pub struct Game {
     pub room_name: String,
     pub phase: GamePhase,
+    /// Current round number (1-4, where 4 is typically Final Spin round)
+    pub round: u8,
     pub players: Vec<Player>,
     pub active_idx: usize,
     pub puzzle: Puzzle,
@@ -222,8 +236,11 @@ pub struct Game {
     // Toss-up state
     pub tossup: TossupState,
 
-    // Final round state
-    pub final_state: FinalState,
+    // Bonus round state
+    pub bonus_state: BonusState,
+
+    // Final Spin round state
+    pub final_spin: FinalSpinState,
 
     // Turn timer - timestamp when turn expires (started after spin animation completes)
     pub turn_timer_end_ts: Option<f64>,
@@ -239,6 +256,7 @@ impl Game {
         Self {
             room_name: room_name.to_string(),
             phase: GamePhase::Normal,
+            round: 1, // Start at round 1
             players: Vec::new(),
             active_idx: 0,
             puzzle: Puzzle::default(),
@@ -254,7 +272,8 @@ impl Game {
             active_pack_id: None,
             active_pack_name: None,
             tossup: TossupState::default(),
-            final_state: FinalState::default(),
+            bonus_state: BonusState::default(),
+            final_spin: FinalSpinState::default(),
             turn_timer_end_ts: None,
             spin_history: VecDeque::with_capacity(8),
         }
@@ -675,6 +694,35 @@ impl Game {
         }
     }
 
+    // ========== ROUND MANAGEMENT ==========
+
+    /// Get current round number (1-4)
+    pub fn current_round(&self) -> u8 {
+        self.round
+    }
+
+    /// Advance to the next round (caps at round 4)
+    pub fn advance_round(&mut self) {
+        if self.round < 4 {
+            self.round += 1;
+        }
+    }
+
+    /// Set the round number (1-4)
+    pub fn set_round(&mut self, round: u8) {
+        self.round = round.clamp(1, 4);
+    }
+
+    /// Reset round to 1
+    pub fn reset_round(&mut self) {
+        self.round = 1;
+    }
+
+    /// Check if this is the final spin round (round 4)
+    pub fn is_final_spin_round(&self) -> bool {
+        self.round == 4
+    }
+
     /// Start a new puzzle
     pub fn new_puzzle(&mut self, puzzle: Puzzle) {
         self.puzzle = puzzle;
@@ -723,6 +771,7 @@ impl Game {
         }
 
         self.active_idx = 0;
+        self.round = 1; // Reset to round 1
         self.wheel_slots = shuffle_wheel_with_spacing(create_standard_wheel());
         self.revealed.clear();
         self.used_letters.clear();
@@ -732,7 +781,8 @@ impl Game {
 
         self.phase = GamePhase::Normal;
         self.tossup = TossupState::default();
-        self.final_state = FinalState::default();
+        self.bonus_state = BonusState::default();
+        self.final_spin = FinalSpinState::default();
     }
 
     // ========== TOSS-UP METHODS ==========
@@ -903,13 +953,107 @@ impl Game {
         self.tossup = TossupState::default();
     }
 
-    // ========== FINAL ROUND METHODS ==========
+    // ========== FINAL SPIN ROUND METHODS ==========
 
-    /// Start final round (pick phase)
-    pub fn start_final(&mut self) {
+    /// Start Final Spin round - host spins once to set the value for all letters
+    pub fn start_final_spin(&mut self) {
         self.phase = GamePhase::Final;
-        self.final_state = FinalState {
-            stage: FinalStage::Pick,
+        self.final_spin = FinalSpinState {
+            spin_value: 0,
+            spin_done: false,
+        };
+        self.clear_turn_state();
+    }
+
+    /// Set the Final Spin value after host spins
+    pub fn set_final_spin_value(&mut self, value: i32) {
+        self.final_spin.spin_value = value;
+        self.final_spin.spin_done = true;
+    }
+
+    /// Guess a consonant during Final Spin (uses fixed spin value)
+    pub fn final_spin_guess_consonant(&mut self, letter: char) -> GuessResult {
+        let letter = letter.to_ascii_uppercase();
+
+        if !self.final_spin.spin_done {
+            return GuessResult::NeedToSpin;
+        }
+
+        if Self::is_vowel(letter) {
+            return GuessResult::InvalidLetter;
+        }
+
+        if self.used_letters.contains(&letter) {
+            return GuessResult::AlreadyUsed;
+        }
+
+        self.used_letters.insert(letter);
+
+        let answer_upper = self.puzzle.answer.to_uppercase();
+        let count = answer_upper.chars().filter(|&c| c == letter).count();
+
+        if count > 0 {
+            self.revealed.insert(letter);
+
+            // Award the fixed spin value per letter
+            if let Some(player) = self.players.get_mut(self.active_idx) {
+                player.round_bank += self.final_spin.spin_value * count as i32;
+            }
+
+            GuessResult::Correct(count)
+        } else {
+            // Wrong consonant - advance to next player
+            self.advance_turn();
+            GuessResult::Incorrect
+        }
+    }
+
+    /// Buy a vowel during Final Spin (FREE - no cost)
+    pub fn final_spin_buy_vowel(&mut self, letter: char) -> GuessResult {
+        let letter = letter.to_ascii_uppercase();
+
+        if !self.final_spin.spin_done {
+            return GuessResult::NeedToSpin;
+        }
+
+        if !Self::is_vowel(letter) {
+            return GuessResult::InvalidLetter;
+        }
+
+        if self.used_letters.contains(&letter) {
+            return GuessResult::AlreadyUsed;
+        }
+
+        // No cost check - vowels are FREE during Final Spin
+        self.used_letters.insert(letter);
+
+        let answer_upper = self.puzzle.answer.to_uppercase();
+        let count = answer_upper.chars().filter(|&c| c == letter).count();
+
+        if count > 0 {
+            self.revealed.insert(letter);
+            // No cash awarded for vowels, but player keeps turn
+            GuessResult::Correct(count)
+        } else {
+            // Wrong vowel - advance to next player
+            self.advance_turn();
+            GuessResult::Incorrect
+        }
+    }
+
+    /// End Final Spin round
+    pub fn end_final_spin(&mut self) {
+        self.phase = GamePhase::Normal;
+        self.final_spin = FinalSpinState::default();
+    }
+
+    // ========== BONUS ROUND METHODS ==========
+
+    /// Start bonus round (pick phase)
+    pub fn start_bonus(&mut self) {
+        self.phase = GamePhase::Bonus;
+        self.bonus_state = BonusState {
+            stage: BonusStage::Pick,
             picks_consonants: Vec::new(),
             pick_vowel: None,
             end_ts: None,
@@ -917,18 +1061,18 @@ impl Game {
         self.clear_turn_state();
 
         // Auto-reveal RSTLNE
-        for &ch in FINAL_RSTLNE {
+        for &ch in BONUS_RSTLNE {
             self.revealed.insert(ch);
             self.used_letters.insert(ch);
         }
     }
 
-    /// Pick a consonant for final round
-    pub fn final_pick_consonant(&mut self, letter: char) -> Result<(), &'static str> {
+    /// Pick a consonant for bonus round
+    pub fn bonus_pick_consonant(&mut self, letter: char) -> Result<(), &'static str> {
         let letter = letter.to_ascii_uppercase();
 
-        if self.phase != GamePhase::Final || self.final_state.stage != FinalStage::Pick {
-            return Err("Not in final pick phase");
+        if self.phase != GamePhase::Bonus || self.bonus_state.stage != BonusStage::Pick {
+            return Err("Not in bonus pick phase");
         }
 
         if Self::is_vowel(letter) {
@@ -939,27 +1083,27 @@ impl Game {
             return Err("Letter already used");
         }
 
-        if self.final_state.picks_consonants.len() >= 3 {
+        if self.bonus_state.picks_consonants.len() >= 3 {
             return Err("Already picked 3 consonants");
         }
 
-        self.final_state.picks_consonants.push(letter);
+        self.bonus_state.picks_consonants.push(letter);
         self.used_letters.insert(letter);
 
         // Check if all picks complete
-        if self.final_all_picks_complete() {
-            self.final_start_running();
+        if self.bonus_all_picks_complete() {
+            self.bonus_start_running();
         }
 
         Ok(())
     }
 
-    /// Pick a vowel for final round
-    pub fn final_pick_vowel(&mut self, letter: char) -> Result<(), &'static str> {
+    /// Pick a vowel for bonus round
+    pub fn bonus_pick_vowel(&mut self, letter: char) -> Result<(), &'static str> {
         let letter = letter.to_ascii_uppercase();
 
-        if self.phase != GamePhase::Final || self.final_state.stage != FinalStage::Pick {
-            return Err("Not in final pick phase");
+        if self.phase != GamePhase::Bonus || self.bonus_state.stage != BonusStage::Pick {
+            return Err("Not in bonus pick phase");
         }
 
         if !Self::is_vowel(letter) {
@@ -970,41 +1114,41 @@ impl Game {
             return Err("Letter already used");
         }
 
-        if self.final_state.pick_vowel.is_some() {
+        if self.bonus_state.pick_vowel.is_some() {
             return Err("Already picked a vowel");
         }
 
-        self.final_state.pick_vowel = Some(letter);
+        self.bonus_state.pick_vowel = Some(letter);
         self.used_letters.insert(letter);
 
         // Check if all picks complete
-        if self.final_all_picks_complete() {
-            self.final_start_running();
+        if self.bonus_all_picks_complete() {
+            self.bonus_start_running();
         }
 
         Ok(())
     }
 
     /// Check if all final picks are complete
-    pub fn final_all_picks_complete(&self) -> bool {
-        self.final_state.picks_consonants.len() >= 3 && self.final_state.pick_vowel.is_some()
+    pub fn bonus_all_picks_complete(&self) -> bool {
+        self.bonus_state.picks_consonants.len() >= 3 && self.bonus_state.pick_vowel.is_some()
     }
 
     /// Start the running phase of final round (called automatically when picks complete,
-    /// or can be called manually via final_start_solve)
-    pub fn final_start_solve(&mut self) {
-        if self.final_state.stage == FinalStage::Pick && self.final_all_picks_complete() {
-            self.final_start_running();
+    /// or can be called manually via bonus_start_solve)
+    pub fn bonus_start_solve(&mut self) {
+        if self.bonus_state.stage == BonusStage::Pick && self.bonus_all_picks_complete() {
+            self.bonus_start_running();
         }
     }
 
     /// Start the running phase of final round
-    fn final_start_running(&mut self) {
+    fn bonus_start_running(&mut self) {
         // Reveal picked letters
-        for &ch in &self.final_state.picks_consonants {
+        for &ch in &self.bonus_state.picks_consonants {
             self.revealed.insert(ch);
         }
-        if let Some(ch) = self.final_state.pick_vowel {
+        if let Some(ch) = self.bonus_state.pick_vowel {
             self.revealed.insert(ch);
         }
 
@@ -1013,13 +1157,13 @@ impl Game {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs_f64();
-        self.final_state.end_ts = Some(now + self.config.final_seconds as f64);
-        self.final_state.stage = FinalStage::Running;
+        self.bonus_state.end_ts = Some(now + self.config.bonus_seconds as f64);
+        self.bonus_state.stage = BonusStage::Running;
     }
 
     /// Get remaining seconds in final round
-    pub fn final_remaining_seconds(&self) -> Option<i32> {
-        self.final_state.end_ts.map(|end_ts| {
+    pub fn bonus_remaining_seconds(&self) -> Option<i32> {
+        self.bonus_state.end_ts.map(|end_ts| {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -1029,8 +1173,8 @@ impl Game {
     }
 
     /// Check if final timer expired
-    pub fn final_timer_expired(&self) -> bool {
-        if let Some(remaining) = self.final_remaining_seconds() {
+    pub fn bonus_timer_expired(&self) -> bool {
+        if let Some(remaining) = self.bonus_remaining_seconds() {
             remaining <= 0
         } else {
             false
@@ -1074,19 +1218,19 @@ impl Game {
     }
 
     /// End final round
-    pub fn end_final(&mut self) {
+    pub fn end_bonus(&mut self) {
         self.phase = GamePhase::Normal;
-        self.final_state = FinalState::default();
+        self.bonus_state = BonusState::default();
     }
 
     /// Solve in final round
-    pub fn final_solve(&mut self, attempt: &str) -> bool {
+    pub fn bonus_solve(&mut self, attempt: &str) -> bool {
         if self.solve(attempt) {
             // Award jackpot
             if let Some(player) = self.players.get_mut(self.active_idx) {
-                player.total += self.config.final_jackpot;
+                player.total += self.config.bonus_jackpot;
             }
-            self.final_state.stage = FinalStage::Done;
+            self.bonus_state.stage = BonusStage::Done;
             true
         } else {
             false
@@ -1117,6 +1261,7 @@ impl Game {
         GameState {
             room: self.room_name.clone(),
             phase: self.phase,
+            round: self.round,
             players: self
                 .players
                 .iter()
@@ -1159,14 +1304,18 @@ impl Game {
                 is_tiebreaker: self.tossup.is_tiebreaker,
                 remaining_seconds: self.buzz_timer_remaining().map(|r| r.ceil() as i32),
             },
-            final_round: FinalStateClient {
-                stage: self.final_state.stage,
-                picks: FinalPicks {
-                    consonants: self.final_state.picks_consonants.clone(),
-                    vowel: self.final_state.pick_vowel,
+            bonus_round: BonusStateClient {
+                stage: self.bonus_state.stage,
+                picks: BonusPicks {
+                    consonants: self.bonus_state.picks_consonants.clone(),
+                    vowel: self.bonus_state.pick_vowel,
                 },
-                remaining_seconds: self.final_remaining_seconds(),
-                jackpot: self.config.final_jackpot,
+                remaining_seconds: self.bonus_remaining_seconds(),
+                jackpot: self.config.bonus_jackpot,
+            },
+            final_spin: FinalSpinStateClient {
+                spin_value: self.final_spin.spin_value,
+                spin_done: self.final_spin.spin_done,
             },
             turn_timer_remaining: self.turn_timer_remaining_seconds(),
         }
@@ -1225,18 +1374,25 @@ pub struct TossupStateClient {
 
 /// Final picks for client
 #[derive(Debug, Clone, Serialize)]
-pub struct FinalPicks {
+pub struct BonusPicks {
     pub consonants: Vec<char>,
     pub vowel: Option<char>,
 }
 
-/// Final state for client
+/// Bonus state for client
 #[derive(Debug, Clone, Serialize)]
-pub struct FinalStateClient {
-    pub stage: FinalStage,
-    pub picks: FinalPicks,
+pub struct BonusStateClient {
+    pub stage: BonusStage,
+    pub picks: BonusPicks,
     pub remaining_seconds: Option<i32>,
     pub jackpot: i32,
+}
+
+/// Final Spin state for client
+#[derive(Debug, Clone, Serialize)]
+pub struct FinalSpinStateClient {
+    pub spin_value: i32,
+    pub spin_done: bool,
 }
 
 /// Game state for sending to clients
@@ -1244,6 +1400,8 @@ pub struct FinalStateClient {
 pub struct GameState {
     pub room: String,
     pub phase: GamePhase,
+    /// Current round number (1-4)
+    pub round: u8,
     pub players: Vec<PlayerState>,
     pub active_idx: usize,
     pub puzzle: PuzzleState,
@@ -1259,8 +1417,10 @@ pub struct GameState {
     pub active_pack_id: Option<i64>,
     pub active_pack_name: Option<String>,
     pub tossup: TossupStateClient,
-    #[serde(rename = "final")]
-    pub final_round: FinalStateClient,
+    #[serde(rename = "bonus")]
+    pub bonus_round: BonusStateClient,
+    /// Final Spin round state
+    pub final_spin: FinalSpinStateClient,
     /// Remaining seconds in turn timer (None if not active)
     pub turn_timer_remaining: Option<i32>,
 }
@@ -1879,16 +2039,16 @@ mod tests {
         assert!(game.is_solved()); // reveal_all called
     }
 
-    // ========== final round tests ==========
+    // ========== bonus round tests ==========
 
     #[test]
-    fn test_start_final() {
+    fn test_start_bonus() {
         let mut game = create_test_game_with_players();
 
-        game.start_final();
+        game.start_bonus();
 
-        assert_eq!(game.phase, GamePhase::Final);
-        assert_eq!(game.final_state.stage, FinalStage::Pick);
+        assert_eq!(game.phase, GamePhase::Bonus);
+        assert_eq!(game.bonus_state.stage, BonusStage::Pick);
         // RSTLNE should be revealed
         for c in ['R', 'S', 'T', 'L', 'N', 'E'] {
             assert!(game.revealed.contains(&c));
@@ -1897,71 +2057,71 @@ mod tests {
     }
 
     #[test]
-    fn test_final_pick_consonant() {
+    fn test_bonus_pick_consonant() {
         let mut game = create_test_game_with_players();
-        game.start_final();
+        game.start_bonus();
 
-        let result = game.final_pick_consonant('B');
+        let result = game.bonus_pick_consonant('B');
         assert!(result.is_ok());
-        assert!(game.final_state.picks_consonants.contains(&'B'));
+        assert!(game.bonus_state.picks_consonants.contains(&'B'));
     }
 
     #[test]
-    fn test_final_pick_consonant_vowel_rejected() {
+    fn test_bonus_pick_consonant_vowel_rejected() {
         let mut game = create_test_game_with_players();
-        game.start_final();
+        game.start_bonus();
 
-        let result = game.final_pick_consonant('A');
+        let result = game.bonus_pick_consonant('A');
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "That's a vowel");
     }
 
     #[test]
-    fn test_final_pick_consonant_already_used() {
+    fn test_bonus_pick_consonant_already_used() {
         let mut game = create_test_game_with_players();
-        game.start_final();
+        game.start_bonus();
         // R is already used (RSTLNE)
 
-        let result = game.final_pick_consonant('R');
+        let result = game.bonus_pick_consonant('R');
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Letter already used");
     }
 
     #[test]
-    fn test_final_pick_vowel() {
+    fn test_bonus_pick_vowel() {
         let mut game = create_test_game_with_players();
-        game.start_final();
+        game.start_bonus();
 
-        let result = game.final_pick_vowel('I');
+        let result = game.bonus_pick_vowel('I');
         assert!(result.is_ok());
-        assert_eq!(game.final_state.pick_vowel, Some('I'));
+        assert_eq!(game.bonus_state.pick_vowel, Some('I'));
     }
 
     #[test]
-    fn test_final_all_picks_starts_running() {
+    fn test_bonus_all_picks_starts_running() {
         let mut game = create_test_game_with_players();
-        game.start_final();
+        game.start_bonus();
 
-        game.final_pick_consonant('B').unwrap();
-        game.final_pick_consonant('C').unwrap();
-        game.final_pick_consonant('D').unwrap();
-        game.final_pick_vowel('I').unwrap();
+        game.bonus_pick_consonant('B').unwrap();
+        game.bonus_pick_consonant('C').unwrap();
+        game.bonus_pick_consonant('D').unwrap();
+        game.bonus_pick_vowel('I').unwrap();
 
-        assert_eq!(game.final_state.stage, FinalStage::Running);
-        assert!(game.final_state.end_ts.is_some());
+        assert_eq!(game.bonus_state.stage, BonusStage::Running);
+        assert!(game.bonus_state.end_ts.is_some());
     }
 
     #[test]
-    fn test_final_solve_awards_jackpot() {
+    fn test_bonus_solve_awards_jackpot() {
         let mut game = create_test_game_with_players();
-        game.start_final();
-        game.final_state.stage = FinalStage::Running;
+        game.start_bonus();
+        game.bonus_state.stage = BonusStage::Running;
         game.active_idx = 0;
 
-        assert!(game.final_solve("HELLO WORLD"));
+        assert!(game.bonus_solve("HELLO WORLD"));
 
-        assert_eq!(game.players[0].total, game.config.final_jackpot);
-        assert_eq!(game.final_state.stage, FinalStage::Done);
+        assert_eq!(game.players[0].total, game.config.bonus_jackpot);
+        assert_eq!(game.bonus_state.stage, BonusStage::Done);
     }
 
     // ========== reset_game tests ==========
@@ -1972,7 +2132,7 @@ mod tests {
         game.players[0].total = 5000;
         game.players[0].round_bank = 1000;
         game.active_idx = 2;
-        game.phase = GamePhase::Final;
+        game.phase = GamePhase::Bonus;
         game.revealed.insert('H');
 
         game.reset_game();

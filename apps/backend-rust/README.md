@@ -149,7 +149,8 @@ docker run -p 5000:5000 \
   "user": {
     "id": 1,
     "email": "user@example.com",
-    "display_name": "Player Name"
+    "display_name": "Player Name",
+    "avatar_id": 1
   }
 }
 ```
@@ -248,7 +249,8 @@ docker run -p 5000:5000 \
   "user": {
     "id": 1,
     "email": "user@example.com",
-    "display_name": "John Doe"
+    "display_name": "John Doe",
+    "avatar_id": 1
   }
 }
 ```
@@ -274,6 +276,39 @@ docker run -p 5000:5000 \
   ]
 }
 ```
+
+---
+
+### Profile
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| GET | `/auth/api/profile` | Get current user's profile | Bearer |
+| PUT | `/auth/api/profile` | Update profile (display name, avatar) | Bearer |
+
+**Get Profile Response:**
+```json
+{
+  "ok": true,
+  "profile": {
+    "id": 1,
+    "email": "user@example.com",
+    "display_name": "Player Name",
+    "avatar_id": 1,
+    "is_admin": false
+  }
+}
+```
+
+**Update Profile Request:**
+```json
+{
+  "display_name": "New Name",  // Optional, 2-24 chars
+  "avatar_id": 5               // Optional, 1-12
+}
+```
+
+> **Note:** Avatar IDs range from 1-12. Values outside this range are clamped.
 
 ---
 
@@ -341,6 +376,22 @@ All admin endpoints require Bearer token with admin privileges.
 | GET | `/auth/api/admin/settings/{room}` | Get room settings |
 | POST | `/auth/api/admin/settings/{room}` | Save room settings |
 
+**Room Settings:**
+```json
+{
+  "vowel_cost": 250,                    // Cost to buy a vowel
+  "bonus_seconds": 30,                  // Seconds for bonus round timer
+  "bonus_jackpot": 10000,               // Jackpot amount for bonus round
+  "prize_replace_cash_values": [500, 1000, 1500, 2000],  // Wheel values
+  "puzzle_display_seconds": 30,         // Puzzle reveal animation time
+  "prize_wedge_names": ["GIFT CARD"],   // Prize wedge labels
+  "pack_id": 1,                         // Active puzzle pack
+  "disconnect_timeout_secs": 300,       // Player disconnect timeout
+  "turn_timer_seconds": 10,             // Per-turn timer
+  "buzz_timer_seconds": 5               // Toss-up buzz-in timer
+}
+```
+
 ---
 
 ## Socket.IO Events
@@ -354,14 +405,22 @@ Connect to the server with Socket.IO at the root path `/`.
 | `join` | `{ room: string, token: string }` | Join a game room |
 | `claim_host` | `{ code: string }` | Claim host mode |
 | `claim_player` | `{ player_idx: number }` | Claim a player slot |
-| `spin` | `{}` | Spin the wheel (host) |
+| `spin` | `{}` | Spin the wheel (host/active player) |
 | `guess_letter` | `{ letter: string }` | Guess a consonant |
 | `buy_vowel` | `{ letter: string }` | Buy a vowel ($250) |
 | `solve` | `{ answer: string }` | Attempt to solve puzzle |
 | `buzz` | `{}` | Buzz in during toss-up |
-| `new_round` | `{}` | Start new round (host) |
-| `new_game` | `{}` | Start new game (host) |
-| `final_pick` | `{ consonants: string[], vowel: string }` | Final round picks |
+| `new_round` | `{}` | Start new puzzle (host) |
+| `new_game` | `{}` | Reset entire game (host) |
+| `advance_round` | `{}` | Advance to next round 1→2→3→4 (host) |
+| `set_round` | `{ round: number }` | Set specific round 1-4 (host) |
+| `start_tossup` | `{}` | Start toss-up phase (host) |
+| `end_tossup` | `{}` | End toss-up phase (host) |
+| `start_final_spin` | `{}` | Start Final Spin mode (host) |
+| `end_final_spin` | `{}` | End Final Spin mode (host) |
+| `start_bonus` | `{}` | Start Bonus round (host) |
+| `end_bonus` | `{}` | End Bonus round (host) |
+| `bonus_pick` | `{ consonants: string[], vowel: string }` | Bonus round letter picks |
 
 ### Server → Client
 
@@ -385,11 +444,12 @@ interface GameState {
   };
   players: Player[];
   active_idx: number;
-  phase: "normal" | "tossup" | "final";
+  phase: "normal" | "tossup" | "final" | "bonus";
   wheel_value: number | "BANKRUPT" | "LOSE A TURN" | "FREE PLAY" | Prize;
-  round: number;
+  round: number;       // Current round (1-4)
   tossup?: TossupState;
-  final?: FinalState;
+  final_spin?: FinalSpinState;
+  bonus?: BonusState;
 }
 
 interface Player {
@@ -400,6 +460,20 @@ interface Player {
   prizes: Prize[];
   round_prizes: Prize[];
   claimed_user_id: number | null;
+  avatar_id: number;   // Avatar ID (1-12)
+}
+
+interface FinalSpinState {
+  spin_value: number;      // Fixed spin value for all turns
+  turns_remaining: number; // Turns left in Final Spin
+  free_vowels: boolean;    // Vowels are free during Final Spin
+}
+
+interface BonusState {
+  consonants_picked: string[];  // 3 consonants chosen
+  vowel_picked: string | null;  // 1 vowel chosen
+  time_remaining: number;       // Seconds left to solve
+  running: boolean;             // Timer is active
 }
 ```
 
@@ -452,10 +526,66 @@ The server includes a built-in web client accessible at the root URL.
   - Large letter display notifications for guess results (green for correct, red for miss)
   - Inline notifications between puzzle board and controls
   - Letter stays visible in input box briefly after guessing
-- **Host controls** (New Game, Reveal All) when host mode is claimed
-- **Game phases**: Normal rounds, Toss-up, and Final round with letter picking
+- **Host controls** (New Game, Reveal All, Round management) when host mode is claimed
 - **Sound effects** for wheel spin, correct/incorrect guesses, bankrupt, and solve
-- **Player sidebar** with scores, room name, and current phase
+- **Player sidebar** with scores, room name, current round, and phase
+
+### Game Flow
+
+A typical game follows this structure:
+
+```
+Game Start: Toss-up (determines who goes first)
+Round 1:    Normal gameplay → Solve (winner goes first in Round 2)
+Round 2:    Normal gameplay → Solve (winner goes first in Round 3)
+Round 3:    Normal gameplay → Solve (winner goes first in Round 4)
+Round 4:    Normal gameplay → Final Spin → Solve
+Bonus:      Winner's bonus round
+```
+
+### Game Phases
+
+1. **Toss-up** (`phase: "tossup"`): Determines starting player
+   - Used once at game start to determine who plays first in Round 1
+   - Letters reveal automatically one at a time
+   - Any player can buzz in to solve
+   - First correct answer wins and becomes active player
+   - Wrong answer locks player out for remainder
+
+2. **Normal** (`phase: "normal"`): Standard gameplay
+   - Players take turns spinning the wheel
+   - Spin → Guess consonant → Earn money per letter
+   - Buy vowels for $250
+   - Solve puzzle to win round bank
+   - Round winner goes first in the next round
+
+3. **Final Spin** (`phase: "final"`): End-game accelerated play
+   - Typically used in Round 4 when time is limited
+   - Host spins once to set a fixed value for all turns
+   - Each consonant is worth: spin value + $1,000
+   - Vowels are FREE (no $250 cost)
+   - Limited turns rotate through all players
+
+4. **Bonus** (`phase: "bonus"`): Winner's bonus round
+   - R, S, T, L, N, E are automatically revealed
+   - Winner picks 3 additional consonants + 1 vowel
+   - 10-second timer to solve the puzzle
+   - Correct solve wins the bonus jackpot (default: $10,000)
+
+### Rounds
+
+Games are divided into 4 rounds:
+
+- **Toss-up**: Played once at game start to determine first player
+- **Round 1-4**: Normal gameplay; round winner goes first in next round
+- **Round 4**: Often uses Final Spin mode to finish quickly
+
+Host controls:
+- `start_tossup` / `end_tossup` - Begin/end toss-up phase (game start)
+- `advance_round` - Move to next round (1→2→3→4)
+- `set_round` - Set specific round (1-4)
+- `start_final_spin` / `end_final_spin` - Enable Final Spin mode
+- Round resets to 1 on new game
 
 ---
 
@@ -508,12 +638,55 @@ cargo watch -x run
 # Run tests
 cargo test
 
+# Run specific test
+cargo test migration  # Run migration tests
+
 # Format code
 cargo fmt
 
 # Lint
 cargo clippy
 ```
+
+### Database Migrations
+
+The backend uses SQLx migrations stored in `migrations/`. Migrations run automatically on startup.
+
+```bash
+# Check migration status
+sqlx migrate info --database-url sqlite:puzzles.db
+
+# Create new migration
+sqlx migrate add <migration_name>
+```
+
+**Current migrations:**
+- `001_initial_schema.sql` - Core tables (users, puzzles, rooms, etc.)
+- `002_additional_indexes.sql` - Performance indexes
+- `003_add_avatar.sql` - User avatar support
+- `004_rename_final_to_bonus.sql` - Rename final_* columns to bonus_*
+
+**Migration best practices:**
+- Always test migrations against existing databases with data
+- Use `ALTER TABLE RENAME COLUMN` for column renames (SQLite 3.25+)
+- Add new columns with `DEFAULT` values for backwards compatibility
+- Migration tests are in `src/db/mod.rs` (search for "MIGRATION TESTS")
+
+### Docker / Podman
+
+The Dockerfile is compatible with both Docker and Podman:
+
+```bash
+# Docker
+docker build -t holiday-wheel-backend .
+docker run -p 5000:5000 -v ./data:/app/data holiday-wheel-backend
+
+# Podman (same commands work)
+podman build -t holiday-wheel-backend .
+podman run -p 5000:5000 -v ./data:/app/data holiday-wheel-backend
+```
+
+> **Note:** The Dockerfile uses fully-qualified image names (`docker.io/library/...`) for Podman compatibility.
 
 ---
 
