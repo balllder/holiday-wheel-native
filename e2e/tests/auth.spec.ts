@@ -23,7 +23,7 @@ test.describe('Authentication', () => {
     await page.goto('/');
 
     await page.fill('#email', 'invalid@example.com');
-    await page.fill('#password', 'wrongpassword123');
+    await page.fill('#password', 'WrongPassword123!');
     await page.click('button[type="submit"]');
 
     // Wait for error message
@@ -61,8 +61,8 @@ test.describe('Authentication', () => {
 
     await page.fill('#displayName', 'Test User');
     await page.fill('#email', 'test@example.com');
-    await page.fill('#password', 'password123');
-    await page.fill('#confirmPassword', 'different123');
+    await page.fill('#password', 'Password123!');
+    await page.fill('#confirmPassword', 'Different123!');
     await page.click('button[type="submit"]');
 
     // Should show password mismatch error
@@ -79,8 +79,8 @@ test.describe('Authentication', () => {
 
     await page.fill('#displayName', 'E2E Test User');
     await page.fill('#email', uniqueEmail);
-    await page.fill('#password', 'testpassword123');
-    await page.fill('#confirmPassword', 'testpassword123');
+    await page.fill('#password', 'TestPassword123!');
+    await page.fill('#confirmPassword', 'TestPassword123!');
 
     // Wait for button to be ready and click
     const submitBtn = page.locator('button[type="submit"]');

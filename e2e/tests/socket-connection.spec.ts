@@ -8,8 +8,8 @@ async function setupAuthenticatedUser(page: Page): Promise<string> {
 
   await page.fill('#displayName', 'Socket Tester');
   await page.fill('#email', uniqueEmail);
-  await page.fill('#password', 'testpassword123');
-  await page.fill('#confirmPassword', 'testpassword123');
+  await page.fill('#password', 'TestPassword123!');
+  await page.fill('#confirmPassword', 'TestPassword123!');
   await page.locator('button[type="submit"]').click();
 
   await page.waitForURL(/\/(lobby|$)/, { timeout: 15000 });
@@ -63,8 +63,8 @@ test.describe('Socket.IO Connection', () => {
     await page1.waitForLoadState('networkidle');
     await page1.fill('#displayName', 'Player 1');
     await page1.fill('#email', email1);
-    await page1.fill('#password', 'testpassword123');
-    await page1.fill('#confirmPassword', 'testpassword123');
+    await page1.fill('#password', 'TestPassword123!');
+    await page1.fill('#confirmPassword', 'TestPassword123!');
     await page1.locator('button[type="submit"]').click();
     await page1.waitForURL(/\/(lobby|$)/, { timeout: 15000 });
 
@@ -81,8 +81,8 @@ test.describe('Socket.IO Connection', () => {
     await page2.waitForLoadState('networkidle');
     await page2.fill('#displayName', 'Player 2');
     await page2.fill('#email', email2);
-    await page2.fill('#password', 'testpassword123');
-    await page2.fill('#confirmPassword', 'testpassword123');
+    await page2.fill('#password', 'TestPassword123!');
+    await page2.fill('#confirmPassword', 'TestPassword123!');
     await page2.locator('button[type="submit"]').click();
     await page2.waitForURL(/\/(lobby|$)/, { timeout: 15000 });
 
@@ -113,8 +113,8 @@ test.describe('Socket.IO Connection', () => {
     await page1.waitForLoadState('networkidle');
     await page1.fill('#displayName', 'Host Player');
     await page1.fill('#email', email1);
-    await page1.fill('#password', 'testpassword123');
-    await page1.fill('#confirmPassword', 'testpassword123');
+    await page1.fill('#password', 'TestPassword123!');
+    await page1.fill('#confirmPassword', 'TestPassword123!');
     await page1.locator('button[type="submit"]').click();
     await page1.waitForURL(/\/(lobby|$)/, { timeout: 15000 });
 
@@ -131,8 +131,8 @@ test.describe('Socket.IO Connection', () => {
     await page2.waitForLoadState('networkidle');
     await page2.fill('#displayName', 'Guest Player');
     await page2.fill('#email', email2);
-    await page2.fill('#password', 'testpassword123');
-    await page2.fill('#confirmPassword', 'testpassword123');
+    await page2.fill('#password', 'TestPassword123!');
+    await page2.fill('#confirmPassword', 'TestPassword123!');
     await page2.locator('button[type="submit"]').click();
     await page2.waitForURL(/\/(lobby|$)/, { timeout: 15000 });
 

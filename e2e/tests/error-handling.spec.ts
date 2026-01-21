@@ -17,8 +17,8 @@ test.describe('Error Handling', () => {
 
     await page.fill('#displayName', 'Test User');
     await page.fill('#email', 'invalid-email'); // Invalid format
-    await page.fill('#password', 'password123');
-    await page.fill('#confirmPassword', 'password123');
+    await page.fill('#password', 'Password123!');
+    await page.fill('#confirmPassword', 'Password123!');
     await page.locator('button[type="submit"]').click();
 
     // Should show error message
@@ -54,8 +54,8 @@ test.describe('Error Handling', () => {
     await page.waitForLoadState('networkidle');
     await page.fill('#displayName', 'First User');
     await page.fill('#email', email);
-    await page.fill('#password', 'testpassword123');
-    await page.fill('#confirmPassword', 'testpassword123');
+    await page.fill('#password', 'TestPassword123!');
+    await page.fill('#confirmPassword', 'TestPassword123!');
     await page.locator('button[type="submit"]').click();
     await page.waitForURL(/\/(lobby|$)/, { timeout: 15000 });
 
@@ -67,8 +67,8 @@ test.describe('Error Handling', () => {
     await page.waitForLoadState('networkidle');
     await page.fill('#displayName', 'Second User');
     await page.fill('#email', email);
-    await page.fill('#password', 'testpassword456');
-    await page.fill('#confirmPassword', 'testpassword456');
+    await page.fill('#password', 'TestPassword456!');
+    await page.fill('#confirmPassword', 'TestPassword456!');
     await page.locator('button[type="submit"]').click();
 
     // Should show error (accept either specific or generic error message)
@@ -85,7 +85,7 @@ test.describe('Error Handling', () => {
     await page.context().setOffline(true);
 
     await page.fill('#email', 'test@example.com');
-    await page.fill('#password', 'password123');
+    await page.fill('#password', 'Password123!');
     await page.locator('button[type="submit"]').click();
 
     // Should show network error or timeout
@@ -109,8 +109,8 @@ test.describe('Error Handling', () => {
     await page.waitForLoadState('networkidle');
     await page.fill('#displayName', 'Test User');
     await page.fill('#email', uniqueEmail);
-    await page.fill('#password', 'testpassword123');
-    await page.fill('#confirmPassword', 'testpassword123');
+    await page.fill('#password', 'TestPassword123!');
+    await page.fill('#confirmPassword', 'TestPassword123!');
     await page.locator('button[type="submit"]').click();
     await page.waitForURL(/\/(lobby|$)/, { timeout: 15000 });
 
@@ -134,8 +134,8 @@ test.describe('Error Handling', () => {
 
     await page.fill('#displayName', xssPayload);
     await page.fill('#email', `xss-${Date.now()}@example.com`);
-    await page.fill('#password', 'testpassword123');
-    await page.fill('#confirmPassword', 'testpassword123');
+    await page.fill('#password', 'TestPassword123!');
+    await page.fill('#confirmPassword', 'TestPassword123!');
     await page.locator('button[type="submit"]').click();
 
     // Wait for processing
@@ -177,8 +177,8 @@ test.describe('Error Handling', () => {
 
     await page.fill('#displayName', longString);
     await page.fill('#email', `long-${Date.now()}@example.com`);
-    await page.fill('#password', 'testpassword123');
-    await page.fill('#confirmPassword', 'testpassword123');
+    await page.fill('#password', 'TestPassword123!');
+    await page.fill('#confirmPassword', 'TestPassword123!');
     await page.locator('button[type="submit"]').click();
 
     // Should handle gracefully (reject or truncate)

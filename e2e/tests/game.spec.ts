@@ -8,8 +8,8 @@ async function setupAuthenticatedUser(page: Page): Promise<string> {
 
   await page.fill('#displayName', 'Game Tester');
   await page.fill('#email', uniqueEmail);
-  await page.fill('#password', 'testpassword123');
-  await page.fill('#confirmPassword', 'testpassword123');
+  await page.fill('#password', 'TestPassword123!');
+  await page.fill('#confirmPassword', 'TestPassword123!');
   await page.locator('button[type="submit"]').click();
 
   // Wait for redirect to lobby (auto-verified in test mode when email disabled)

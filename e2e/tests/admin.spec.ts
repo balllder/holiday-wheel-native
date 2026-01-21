@@ -5,8 +5,8 @@ async function registerUser(page: Page, email: string, displayName: string): Pro
   await page.waitForLoadState('networkidle');
   await page.fill('#displayName', displayName);
   await page.fill('#email', email);
-  await page.fill('#password', 'testpassword123');
-  await page.fill('#confirmPassword', 'testpassword123');
+  await page.fill('#password', 'TestPassword123!');
+  await page.fill('#confirmPassword', 'TestPassword123!');
   await page.locator('button[type="submit"]').click();
   await page.waitForURL(/\/(lobby|$)/, { timeout: 15000 });
 }

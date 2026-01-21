@@ -8,8 +8,8 @@ async function registerUser(page: Page): Promise<void> {
 
   await page.fill('#displayName', 'Nav Tester');
   await page.fill('#email', uniqueEmail);
-  await page.fill('#password', 'testpassword123');
-  await page.fill('#confirmPassword', 'testpassword123');
+  await page.fill('#password', 'TestPassword123!');
+  await page.fill('#confirmPassword', 'TestPassword123!');
   await page.locator('button[type="submit"]').click();
 
   await page.waitForURL(/\/(lobby|$)/, { timeout: 15000 });
@@ -24,8 +24,8 @@ test.describe('Navigation Flow', () => {
 
     await page.fill('#displayName', 'Journey Tester');
     await page.fill('#email', uniqueEmail);
-    await page.fill('#password', 'testpassword123');
-    await page.fill('#confirmPassword', 'testpassword123');
+    await page.fill('#password', 'TestPassword123!');
+    await page.fill('#confirmPassword', 'TestPassword123!');
     await page.locator('button[type="submit"]').click();
 
     // Step 2: Should land on lobby
