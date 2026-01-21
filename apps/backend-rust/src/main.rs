@@ -9,7 +9,7 @@ use rustls::crypto::ring::default_provider;
 use socketioxide::SocketIo;
 use tokio::sync::{OnceCell, RwLock};
 use tokio::signal;
-use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::cors::{AllowHeaders, AllowOrigin, Any, CorsLayer};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -216,22 +216,33 @@ async fn main() -> anyhow::Result<()> {
         .layer(socket_layer)
         .layer({
             // Build CORS layer based on configuration
-            let cors = CorsLayer::new()
-                .allow_methods(Any)
-                .allow_headers(Any);
-
             if config.cors.permissive {
                 // Permissive mode: allow any origin (development/testing only)
-                cors.allow_origin(Any).allow_credentials(false)
+                CorsLayer::new()
+                    .allow_methods(Any)
+                    .allow_headers(Any)
+                    .allow_origin(Any)
+                    .allow_credentials(false)
             } else {
                 // Strict mode: only allow configured origins
+                // When credentials are enabled, headers must be explicit (not Any)
                 let origins: Vec<_> = config
                     .cors
                     .allowed_origins
                     .iter()
                     .filter_map(|s| s.parse().ok())
                     .collect();
-                cors.allow_origin(AllowOrigin::list(origins))
+                CorsLayer::new()
+                    .allow_methods(Any)
+                    .allow_headers(AllowHeaders::list([
+                        axum::http::header::CONTENT_TYPE,
+                        axum::http::header::AUTHORIZATION,
+                        axum::http::header::ACCEPT,
+                        axum::http::header::ORIGIN,
+                        axum::http::header::COOKIE,
+                        axum::http::header::HeaderName::from_static("x-requested-with"),
+                    ]))
+                    .allow_origin(AllowOrigin::list(origins))
                     .allow_credentials(true)
             }
         })
