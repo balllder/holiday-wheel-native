@@ -2649,6 +2649,42 @@ pub async fn game() -> Html<String> {
             text-shadow: 0 2px 4px rgba(0,0,0,0.5), 0 0 20px rgba(212, 175, 55, 0.3);
             text-align: center;
             letter-spacing: 2px;
+            transition: all 0.3s ease;
+        }}
+        .wheel-result.big-win {{
+            font-size: clamp(36px, 4vw, 56px);
+            color: #ffd700;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.8), 0 0 40px rgba(255, 215, 0, 0.5), 0 4px 0 #b8860b;
+            animation: bigWinPulse 0.8s ease-out;
+        }}
+        @keyframes bigWinPulse {{
+            0% {{ transform: scale(0.5); opacity: 0; }}
+            50% {{ transform: scale(1.3); }}
+            70% {{ transform: scale(0.9); }}
+            100% {{ transform: scale(1); opacity: 1; }}
+        }}
+        .wheel-result.bankrupt {{
+            color: #ef4444;
+            text-shadow: 0 0 20px rgba(239, 68, 68, 0.5), 0 4px 0 #b91c1c;
+            animation: bankruptShake 0.5s ease-out;
+        }}
+        @keyframes bankruptShake {{
+            0%, 100% {{ transform: translateX(0) rotate(0deg); }}
+            20% {{ transform: translateX(-10px) rotate(-2deg); }}
+            40% {{ transform: translateX(10px) rotate(2deg); }}
+            60% {{ transform: translateX(-5px) rotate(-1deg); }}
+            80% {{ transform: translateX(5px) rotate(1deg); }}
+        }}
+        .wheel-result.free-play {{
+            color: #22c55e;
+            text-shadow: 0 0 20px rgba(34, 197, 94, 0.5), 0 4px 0 #15803d;
+            animation: freePlayBounce 0.6s ease-out;
+        }}
+        @keyframes freePlayBounce {{
+            0% {{ transform: scale(0) rotate(-10deg); }}
+            50% {{ transform: scale(1.2) rotate(5deg); }}
+            70% {{ transform: scale(0.9) rotate(-2deg); }}
+            100% {{ transform: scale(1) rotate(0deg); }}
         }}
         .puzzle-section {{
             flex: 1;
@@ -3181,46 +3217,247 @@ pub async fn game() -> Html<String> {
             0% {{ transform: translateY(-10px) rotate(0deg); opacity: 1; }}
             100% {{ transform: translateY(100vh) rotate(720deg); opacity: 0; }}
         }}
+        /* Enhanced gold confetti for winners */
+        .confetti.gold {{
+            width: 12px;
+            height: 12px;
+            background: linear-gradient(135deg, #ffd700 0%, #ffec8b 50%, #d4af37 100%) !important;
+            box-shadow: 0 0 6px rgba(255, 215, 0, 0.8);
+        }}
+        /* Sparkle particles */
+        .sparkle {{
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: radial-gradient(circle, #fff 0%, #ffd700 40%, transparent 70%);
+            border-radius: 50%;
+            animation: sparkleFloat 2s ease-out forwards;
+            pointer-events: none;
+        }}
+        @keyframes sparkleFloat {{
+            0% {{ transform: scale(0) rotate(0deg); opacity: 1; }}
+            50% {{ transform: scale(1.5) rotate(180deg); opacity: 0.8; }}
+            100% {{ transform: scale(0) rotate(360deg) translateY(-100px); opacity: 0; }}
+        }}
+        /* Firework burst effect */
+        .firework {{
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            animation: fireworkBurst 1.5s ease-out forwards;
+        }}
+        @keyframes fireworkBurst {{
+            0% {{ transform: scale(0); opacity: 1; }}
+            20% {{ transform: scale(1); opacity: 1; }}
+            100% {{ transform: scale(0); opacity: 0; }}
+        }}
 
-        /* ========== PHASE TRANSITION OVERLAY ========== */
+        /* ========== PHASE TRANSITION OVERLAY (Wheel of Fortune Style) ========== */
         .phase-overlay {{
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.9);
+            background:
+                radial-gradient(ellipse at center, rgba(75, 0, 130, 0.95) 0%, rgba(26, 10, 62, 0.98) 50%, rgba(0, 0, 0, 0.99) 100%);
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             z-index: 5000;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.5s ease;
+            transition: opacity 0.6s ease;
+            overflow: hidden;
+        }}
+        .phase-overlay::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 300%;
+            height: 100%;
+            background: linear-gradient(90deg,
+                transparent 0%,
+                rgba(255, 215, 0, 0.03) 25%,
+                rgba(255, 215, 0, 0.08) 50%,
+                rgba(255, 215, 0, 0.03) 75%,
+                transparent 100%);
+            animation: overlayShine 3s linear infinite;
+        }}
+        @keyframes overlayShine {{
+            0% {{ transform: translateX(-33%); }}
+            100% {{ transform: translateX(33%); }}
         }}
         .phase-overlay.active {{
             opacity: 1;
             pointer-events: auto;
         }}
+        /* Animated border frame */
+        .phase-frame {{
+            position: absolute;
+            top: 10%;
+            left: 10%;
+            right: 10%;
+            bottom: 10%;
+            border: 4px solid transparent;
+            border-image: linear-gradient(45deg, #d4af37, #ffd700, #d4af37, #b8860b, #d4af37) 1;
+            animation: framePulse 2s ease-in-out infinite;
+            pointer-events: none;
+        }}
+        @keyframes framePulse {{
+            0%, 100% {{ opacity: 0.4; }}
+            50% {{ opacity: 0.8; }}
+        }}
+        /* Corner decorations */
+        .phase-corner {{
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            border: 3px solid #ffd700;
+            opacity: 0.6;
+        }}
+        .phase-corner.tl {{ top: 8%; left: 8%; border-right: none; border-bottom: none; }}
+        .phase-corner.tr {{ top: 8%; right: 8%; border-left: none; border-bottom: none; }}
+        .phase-corner.bl {{ bottom: 8%; left: 8%; border-right: none; border-top: none; }}
+        .phase-corner.br {{ bottom: 8%; right: 8%; border-left: none; border-top: none; }}
+        /* Floating sparkles container */
+        .phase-sparkles {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+        }}
+        .phase-sparkle {{
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: #ffd700;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #ffd700, 0 0 20px #ffd700;
+            animation: phaseSparkleFloat 3s ease-in-out infinite;
+        }}
+        @keyframes phaseSparkleFloat {{
+            0%, 100% {{ opacity: 0.3; transform: translateY(0) scale(1); }}
+            50% {{ opacity: 1; transform: translateY(-20px) scale(1.5); }}
+        }}
         .phase-content {{
             text-align: center;
-            animation: phaseZoom 0.5s ease-out;
+            animation: phaseZoom 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            z-index: 1;
         }}
         .phase-title {{
-            font-size: 48px;
-            font-weight: bold;
-            color: var(--color-primary);
-            text-shadow: 0 0 30px var(--color-primary-glow);
-            margin-bottom: 16px;
+            font-family: 'Mountains of Christmas', cursive;
+            font-size: 84px;
+            font-weight: 700;
+            color: #ffd700;
+            text-shadow:
+                0 0 20px rgba(255, 215, 0, 0.8),
+                0 0 40px rgba(255, 215, 0, 0.6),
+                0 0 80px rgba(255, 215, 0, 0.4),
+                0 4px 0 #b8860b,
+                0 6px 0 #a67c00,
+                0 8px 20px rgba(0, 0, 0, 0.5);
+            margin-bottom: 20px;
+            letter-spacing: 6px;
+            animation: phasePulse 1.5s ease-in-out infinite, phaseShimmer 3s linear infinite;
+            background: linear-gradient(90deg, #ffd700 0%, #ffec8b 25%, #ffd700 50%, #d4af37 75%, #ffd700 100%);
+            background-size: 200% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 4px 0 #b8860b) drop-shadow(0 8px 15px rgba(0,0,0,0.5));
+        }}
+        @keyframes phaseShimmer {{
+            0% {{ background-position: 200% center; }}
+            100% {{ background-position: -200% center; }}
         }}
         .phase-subtitle {{
-            font-size: 24px;
+            font-size: 32px;
             color: #fff;
-            opacity: 0.8;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5), 0 2px 4px rgba(0, 0, 0, 0.5);
+            animation: subtitleFadeIn 0.8s ease-out 0.3s backwards;
+        }}
+        @keyframes subtitleFadeIn {{
+            0% {{ opacity: 0; transform: translateY(20px); }}
+            100% {{ opacity: 1; transform: translateY(0); }}
+        }}
+        .phase-countdown {{
+            font-size: 22px;
+            color: #d4af37;
+            margin-top: 50px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 15px rgba(212, 175, 55, 0.5);
+            animation: countdownPulse 1s ease-in-out infinite;
+        }}
+        @keyframes countdownPulse {{
+            0%, 100% {{ opacity: 0.7; transform: scale(1); }}
+            50% {{ opacity: 1; transform: scale(1.05); }}
         }}
         @keyframes phaseZoom {{
+            0% {{ transform: scale(0.1) rotate(-10deg); opacity: 0; }}
+            50% {{ transform: scale(1.15) rotate(3deg); }}
+            70% {{ transform: scale(0.95) rotate(-1deg); }}
+            100% {{ transform: scale(1) rotate(0deg); opacity: 1; }}
+        }}
+        @keyframes phasePulse {{
+            0%, 100% {{ transform: scale(1); }}
+            50% {{ transform: scale(1.03); }}
+        }}
+        /* Special phase-specific styles */
+        .phase-overlay.winner-mode {{
+            background:
+                radial-gradient(ellipse at center, rgba(34, 197, 94, 0.3) 0%, transparent 50%),
+                radial-gradient(ellipse at center, rgba(75, 0, 130, 0.95) 0%, rgba(26, 10, 62, 0.98) 50%, rgba(0, 0, 0, 0.99) 100%);
+        }}
+        .phase-overlay.winner-mode .phase-title {{
+            font-size: 100px;
+            animation: winnerBounce 0.6s ease-out, phasePulse 1.5s ease-in-out infinite 0.6s, phaseShimmer 3s linear infinite;
+        }}
+        @keyframes winnerBounce {{
+            0% {{ transform: scale(0) rotate(-15deg); }}
+            50% {{ transform: scale(1.3) rotate(5deg); }}
+            70% {{ transform: scale(0.9) rotate(-2deg); }}
+            85% {{ transform: scale(1.1) rotate(1deg); }}
+            100% {{ transform: scale(1) rotate(0deg); }}
+        }}
+        /* Prize amount display */
+        .phase-prize {{
+            font-family: 'Mountains of Christmas', cursive;
+            font-size: 64px;
+            font-weight: 700;
+            color: #ffd700;
+            margin-top: 20px;
+            text-shadow:
+                0 0 30px rgba(255, 215, 0, 0.8),
+                0 4px 0 #b8860b;
+            animation: prizeCountUp 0.5s ease-out;
+        }}
+        @keyframes prizeCountUp {{
             0% {{ transform: scale(0.5); opacity: 0; }}
+            60% {{ transform: scale(1.2); }}
             100% {{ transform: scale(1); opacity: 1; }}
+        }}
+        /* Mini wheel animation in background */
+        .phase-wheel-bg {{
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            opacity: 0.1;
+            animation: wheelBgSpin 20s linear infinite;
+            pointer-events: none;
+        }}
+        @keyframes wheelBgSpin {{
+            0% {{ transform: rotate(0deg); }}
+            100% {{ transform: rotate(360deg); }}
         }}
 
         /* ========== MYSTERY WEDGE MODAL ========== */
@@ -3385,16 +3622,40 @@ pub async fn game() -> Html<String> {
         .tossup-display {{
             display: none;
             background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
-            border: 3px solid var(--color-primary);
+            border: 4px solid var(--color-primary);
             border-radius: 16px;
-            padding: 16px 24px;
+            padding: 20px 28px;
             text-align: center;
             margin-bottom: 16px;
-            box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+            box-shadow:
+                0 0 30px rgba(239, 68, 68, 0.5),
+                0 0 60px rgba(239, 68, 68, 0.2),
+                inset 0 2px 4px rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+        }}
+        .tossup-display::before {{
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent 40%, rgba(255, 255, 255, 0.1) 50%, transparent 60%);
+            animation: tossupShine 3s linear infinite;
+            pointer-events: none;
+        }}
+        @keyframes tossupShine {{
+            0% {{ transform: translateX(-100%) rotate(45deg); }}
+            100% {{ transform: translateX(100%) rotate(45deg); }}
         }}
         .tossup-display.active {{
             display: block;
-            animation: tossupPulse 0.5s ease-out;
+            animation: tossupPulse 0.5s ease-out, tossupGlow 2s ease-in-out infinite;
+        }}
+        @keyframes tossupGlow {{
+            0%, 100% {{ box-shadow: 0 0 30px rgba(239, 68, 68, 0.5), 0 0 60px rgba(239, 68, 68, 0.2); }}
+            50% {{ box-shadow: 0 0 40px rgba(239, 68, 68, 0.7), 0 0 80px rgba(239, 68, 68, 0.3); }}
         }}
         .triple-header {{
             margin-bottom: 12px;
@@ -3585,14 +3846,25 @@ pub async fn game() -> Html<String> {
         .bonus-timer-seconds.danger {{ color: #ef4444; animation: timerTextPulse 0.5s ease-in-out infinite; }}
         @keyframes timerTextPulse {{ 0%, 100% {{ transform: scale(1); }} 50% {{ transform: scale(1.1); }} }}
         .bonus-timer-label {{ font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 2px; }}
-        .bonus-result {{ text-align: center; padding: 20px; }}
-        .bonus-result-icon {{ font-size: 72px; margin-bottom: 12px; animation: resultIconBounce 0.6s ease-out; }}
-        @keyframes resultIconBounce {{ 0% {{ transform: scale(0) rotate(-15deg); }} 50% {{ transform: scale(1.2) rotate(5deg); }} 100% {{ transform: scale(1) rotate(0); }} }}
-        .bonus-result-title {{ font-family: 'Mountains of Christmas', cursive; font-size: 36px; font-weight: 700; margin-bottom: 10px; }}
-        .bonus-result-title.win {{ color: #22c55e; text-shadow: 0 0 30px rgba(34, 197, 94, 0.5); }}
-        .bonus-result-title.lose {{ color: #ef4444; text-shadow: 0 0 30px rgba(239, 68, 68, 0.5); }}
-        .bonus-result-amount {{ font-family: 'Mountains of Christmas', cursive; font-size: 48px; font-weight: 700; color: #ffd700; text-shadow: 0 0 40px rgba(255, 215, 0, 0.5); margin-bottom: 6px; }}
-        .bonus-result-answer {{ font-size: 20px; color: #fff; margin-top: 12px; padding: 10px 20px; background: rgba(0, 0, 0, 0.3); border-radius: 10px; display: inline-block; }}
+        .bonus-result {{ text-align: center; padding: 30px; position: relative; }}
+        .bonus-result::before {{ content: ''; position: absolute; top: 50%; left: 50%; width: 300px; height: 300px; background: radial-gradient(circle, rgba(255, 215, 0, 0.15) 0%, transparent 70%); transform: translate(-50%, -50%); animation: resultGlow 2s ease-in-out infinite; pointer-events: none; }}
+        @keyframes resultGlow {{ 0%, 100% {{ opacity: 0.5; transform: translate(-50%, -50%) scale(1); }} 50% {{ opacity: 1; transform: translate(-50%, -50%) scale(1.2); }} }}
+        .bonus-result-icon {{ font-size: 100px; margin-bottom: 16px; animation: resultIconBounce 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275); filter: drop-shadow(0 0 30px rgba(255, 215, 0, 0.5)); }}
+        @keyframes resultIconBounce {{ 0% {{ transform: scale(0) rotate(-30deg); opacity: 0; }} 40% {{ transform: scale(1.4) rotate(10deg); }} 60% {{ transform: scale(0.8) rotate(-5deg); }} 80% {{ transform: scale(1.1) rotate(2deg); }} 100% {{ transform: scale(1) rotate(0); opacity: 1; }} }}
+        .bonus-result-title {{ font-family: 'Mountains of Christmas', cursive; font-size: 56px; font-weight: 700; margin-bottom: 16px; letter-spacing: 4px; }}
+        .bonus-result-title.win {{ color: #ffd700; text-shadow: 0 0 20px rgba(255, 215, 0, 0.8), 0 0 40px rgba(255, 215, 0, 0.6), 0 0 60px rgba(255, 215, 0, 0.4), 0 4px 0 #b8860b; animation: winnerTitlePulse 1s ease-in-out infinite, winnerTitleShimmer 2s linear infinite; background: linear-gradient(90deg, #ffd700 0%, #fff 25%, #ffd700 50%, #ffec8b 75%, #ffd700 100%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 4px 0 #b8860b) drop-shadow(0 0 30px rgba(255, 215, 0, 0.5)); }}
+        @keyframes winnerTitlePulse {{ 0%, 100% {{ transform: scale(1); }} 50% {{ transform: scale(1.05); }} }}
+        @keyframes winnerTitleShimmer {{ 0% {{ background-position: 200% center; }} 100% {{ background-position: -200% center; }} }}
+        .bonus-result-title.lose {{ color: #ef4444; text-shadow: 0 0 30px rgba(239, 68, 68, 0.5), 0 4px 0 #b91c1c; animation: loseTitleShake 0.5s ease-out; }}
+        @keyframes loseTitleShake {{ 0%, 100% {{ transform: translateX(0); }} 20% {{ transform: translateX(-10px); }} 40% {{ transform: translateX(10px); }} 60% {{ transform: translateX(-5px); }} 80% {{ transform: translateX(5px); }} }}
+        .bonus-result-amount {{ font-family: 'Mountains of Christmas', cursive; font-size: 72px; font-weight: 700; color: #ffd700; text-shadow: 0 0 30px rgba(255, 215, 0, 0.8), 0 0 60px rgba(255, 215, 0, 0.5), 0 6px 0 #b8860b; margin-bottom: 12px; animation: amountPop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.3s backwards; }}
+        @keyframes amountPop {{ 0% {{ transform: scale(0) rotate(-10deg); opacity: 0; }} 60% {{ transform: scale(1.2) rotate(3deg); }} 100% {{ transform: scale(1) rotate(0); opacity: 1; }} }}
+        .bonus-result-answer {{ font-size: 22px; color: #fff; margin-top: 20px; padding: 14px 28px; background: linear-gradient(180deg, rgba(75, 0, 130, 0.6) 0%, rgba(45, 0, 80, 0.8) 100%); border: 2px solid rgba(255, 215, 0, 0.3); border-radius: 12px; display: inline-block; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); animation: answerSlideUp 0.5s ease-out 0.5s backwards; }}
+        @keyframes answerSlideUp {{ 0% {{ transform: translateY(30px); opacity: 0; }} 100% {{ transform: translateY(0); opacity: 1; }} }}
+        /* Winner celebration stars */
+        .winner-stars {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; }}
+        .winner-star {{ position: absolute; font-size: 24px; animation: starBurst 1.5s ease-out forwards; opacity: 0; }}
+        @keyframes starBurst {{ 0% {{ opacity: 0; transform: scale(0) rotate(0deg); }} 20% {{ opacity: 1; transform: scale(1.2) rotate(90deg); }} 100% {{ opacity: 0; transform: scale(0.5) rotate(180deg) translateY(-100px); }} }}
         .bonus-stage-indicator {{ display: flex; justify-content: center; align-items: center; gap: 8px; margin: 8px 0; }}
         .bonus-stage {{ display: flex; flex-direction: column; align-items: center; gap: 3px; opacity: 0.4; transition: all 0.3s ease; }}
         .bonus-stage.active {{ opacity: 1; }}
@@ -3613,6 +3885,169 @@ pub async fn game() -> Html<String> {
         .bonus-solve-section {{ background: rgba(26, 10, 62, 0.9); border: 2px solid #d4af37; border-radius: 14px; padding: 14px; text-align: center; max-width: 420px; width: 100%; }}
         .bonus-solve-input {{ width: 100%; padding: 10px; font-size: 18px; text-transform: uppercase; background: #0d0628; border: 2px solid #333; border-radius: 6px; color: #fff; margin-bottom: 10px; }}
         .bonus-solve-input:focus {{ outline: none; border-color: #d4af37; box-shadow: 0 0 16px rgba(212, 175, 55, 0.3); }}
+
+        /* ========== GAME OVER OVERLAY ========== */
+        .game-over-overlay {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, rgba(13, 6, 40, 0.98) 0%, rgba(75, 0, 130, 0.95) 50%, rgba(13, 6, 40, 0.98) 100%);
+            z-index: 2000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            padding: 20px;
+            overflow: hidden;
+        }}
+        .game-over-overlay.active {{
+            display: flex;
+            animation: fadeInOverlay 0.5s ease-out;
+        }}
+        @keyframes fadeInOverlay {{
+            from {{ opacity: 0; }}
+            to {{ opacity: 1; }}
+        }}
+        .game-over-stars {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+        }}
+        .game-over-content {{
+            text-align: center;
+            z-index: 1;
+            max-width: 600px;
+            width: 100%;
+        }}
+        .game-over-title {{
+            font-family: 'Mountains of Christmas', cursive;
+            font-size: 72px;
+            font-weight: 700;
+            color: #ffd700;
+            text-shadow: 0 0 30px rgba(255, 215, 0, 0.8), 0 0 60px rgba(255, 215, 0, 0.5), 0 6px 0 #b8860b;
+            margin-bottom: 10px;
+            animation: titleBounce 0.8s ease-out;
+        }}
+        @keyframes titleBounce {{
+            0% {{ transform: scale(0.3); opacity: 0; }}
+            50% {{ transform: scale(1.1); }}
+            100% {{ transform: scale(1); opacity: 1; }}
+        }}
+        .game-over-winner {{
+            font-size: 24px;
+            color: #fff;
+            margin-bottom: 5px;
+            animation: slideUp 0.5s ease-out 0.3s backwards;
+        }}
+        .game-over-winner-name {{
+            font-family: 'Mountains of Christmas', cursive;
+            font-size: 48px;
+            font-weight: 700;
+            color: #22c55e;
+            text-shadow: 0 0 20px rgba(34, 197, 94, 0.5), 0 4px 0 #16a34a;
+            margin-bottom: 10px;
+            animation: slideUp 0.5s ease-out 0.4s backwards;
+        }}
+        .game-over-score {{
+            font-family: 'Mountains of Christmas', cursive;
+            font-size: 64px;
+            font-weight: 700;
+            color: #ffd700;
+            text-shadow: 0 0 30px rgba(255, 215, 0, 0.8), 0 4px 0 #b8860b;
+            margin-bottom: 30px;
+            animation: scorePopIn 0.6s ease-out 0.5s backwards;
+        }}
+        @keyframes scorePopIn {{
+            0% {{ transform: scale(0); opacity: 0; }}
+            60% {{ transform: scale(1.2); }}
+            100% {{ transform: scale(1); opacity: 1; }}
+        }}
+        @keyframes slideUp {{
+            from {{ transform: translateY(30px); opacity: 0; }}
+            to {{ transform: translateY(0); opacity: 1; }}
+        }}
+        .game-over-final-standings {{
+            background: rgba(26, 10, 62, 0.9);
+            border: 2px solid #d4af37;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 30px;
+            animation: fadeIn 0.5s ease-out 0.6s backwards;
+        }}
+        @keyframes fadeIn {{
+            from {{ opacity: 0; }}
+            to {{ opacity: 1; }}
+        }}
+        .game-over-standings-title {{
+            font-size: 20px;
+            color: #d4af37;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }}
+        .game-over-standing {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            margin: 5px 0;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }}
+        .game-over-standing.winner {{
+            background: linear-gradient(90deg, rgba(34, 197, 94, 0.3) 0%, rgba(34, 197, 94, 0.1) 100%);
+            border: 1px solid rgba(34, 197, 94, 0.5);
+        }}
+        .game-over-standing-rank {{
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: linear-gradient(180deg, #d4af37 0%, #b8860b 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #1a1a2e;
+            font-size: 14px;
+        }}
+        .game-over-standing-rank.gold {{ background: linear-gradient(180deg, #ffd700 0%, #d4af37 100%); }}
+        .game-over-standing-rank.silver {{ background: linear-gradient(180deg, #c0c0c0 0%, #a0a0a0 100%); }}
+        .game-over-standing-rank.bronze {{ background: linear-gradient(180deg, #cd7f32 0%, #a05a2c 100%); }}
+        .game-over-standing-name {{
+            flex: 1;
+            text-align: left;
+            margin-left: 15px;
+            font-size: 18px;
+            color: #fff;
+        }}
+        .game-over-standing-score {{
+            font-size: 20px;
+            font-weight: bold;
+            color: #ffd700;
+        }}
+        .game-over-timer {{
+            font-size: 16px;
+            color: #888;
+            margin-bottom: 20px;
+            animation: fadeIn 0.5s ease-out 0.7s backwards;
+        }}
+        .game-over-countdown {{
+            font-size: 24px;
+            font-weight: bold;
+            color: #d4af37;
+        }}
+        .game-over-btn {{
+            font-size: 20px;
+            padding: 15px 40px;
+            animation: fadeIn 0.5s ease-out 0.8s backwards;
+        }}
     </style>
 </head>
 <body>
@@ -3639,10 +4074,31 @@ pub async fn game() -> Html<String> {
 
     <!-- Phase Transition Overlay -->
     <div class="phase-overlay" id="phaseOverlay">
+        <!-- Decorative frame corners -->
+        <div class="phase-corner tl"></div>
+        <div class="phase-corner tr"></div>
+        <div class="phase-corner bl"></div>
+        <div class="phase-corner br"></div>
+        <!-- Floating sparkles -->
+        <div class="phase-sparkles" id="phaseSparkles"></div>
+        <!-- Background wheel silhouette -->
+        <svg class="phase-wheel-bg" id="phaseWheelBg" viewBox="0 0 200 200">
+            <circle cx="100" cy="100" r="90" fill="none" stroke="#ffd700" stroke-width="4" opacity="0.3"/>
+            <circle cx="100" cy="100" r="70" fill="none" stroke="#ffd700" stroke-width="2" opacity="0.2"/>
+            <circle cx="100" cy="100" r="50" fill="none" stroke="#ffd700" stroke-width="1" opacity="0.1"/>
+            <g id="wheelSpokes">
+                <line x1="100" y1="10" x2="100" y2="190" stroke="#ffd700" stroke-width="1" opacity="0.2"/>
+                <line x1="10" y1="100" x2="190" y2="100" stroke="#ffd700" stroke-width="1" opacity="0.2"/>
+                <line x1="27" y1="27" x2="173" y2="173" stroke="#ffd700" stroke-width="1" opacity="0.2"/>
+                <line x1="173" y1="27" x2="27" y2="173" stroke="#ffd700" stroke-width="1" opacity="0.2"/>
+            </g>
+        </svg>
         <div class="phase-content">
             <div class="phase-title" id="phaseTitle">TOSS-UP!</div>
             <div class="phase-subtitle" id="phaseSubtitle">Buzz in to answer!</div>
+            <div class="phase-prize" id="phasePrize" style="display: none;"></div>
         </div>
+        <div class="phase-countdown" id="phaseCountdown"></div>
     </div>
 
     <!-- Bonus Round Overlay -->
@@ -3751,6 +4207,26 @@ pub async fn game() -> Html<String> {
         </div>
     </div>
 
+    <!-- Game Over Overlay -->
+    <div class="game-over-overlay" id="gameOverOverlay">
+        <div class="game-over-stars" id="gameOverStars"></div>
+        <div class="game-over-content">
+            <div class="game-over-title" id="gameOverTitle">GAME OVER</div>
+            <div class="game-over-winner" id="gameOverWinner">Congratulations!</div>
+            <div class="game-over-winner-name" id="gameOverWinnerName">Player Name</div>
+            <div class="game-over-score" id="gameOverScore">$0</div>
+            <div class="game-over-final-standings" id="gameOverStandings">
+                <!-- Final standings will be populated by JS -->
+            </div>
+            <div class="game-over-timer">
+                <span>New game starting in </span>
+                <span class="game-over-countdown" id="gameOverCountdown">15</span>
+                <span> seconds...</span>
+            </div>
+            <button class="btn btn-primary game-over-btn" onclick="startNewGameNow()">Play Again Now</button>
+        </div>
+    </div>
+
     <!-- Express Mode Indicator -->
     <div class="express-indicator" id="expressIndicator">
         <span class="express-label">⚡ EXPRESS MODE</span>
@@ -3818,13 +4294,21 @@ pub async fn game() -> Html<String> {
             <div class="notification" id="notification"></div>
 
             <div class="controls" id="controls">
+                <button class="btn btn-success" id="startGameBtn" onclick="startGame()" style="display: none; font-size: 24px; padding: 16px 32px;">Start Game</button>
                 <button class="btn" id="spinBtn" onclick="spin()">Spin</button>
+                <button class="btn" id="finalSpinSpinBtn" onclick="doFinalSpin()" style="display: none;">Spin (Final)</button>
                 <button class="btn btn-secondary" id="buyVowelBtn" onclick="buyVowel()">Buy Vowel ($250)</button>
                 <button class="btn btn-secondary" id="solveBtn" onclick="promptSolve()">Solve</button>
                 <button class="btn wildcard-btn" id="wildcardBtn" onclick="useWildCard()">
                     <span class="icon">🃏</span> Wild Card
                 </button>
                 <button class="btn btn-danger" id="buzzBtn" onclick="buzz()" style="display: none;">🔔 BUZZ IN!</button>
+            </div>
+
+            <div class="final-spin-value" id="finalSpinValue" style="display: none; text-align: center; margin: 16px 0; padding: 12px; background: linear-gradient(135deg, #d4af37 0%, #f0d060 50%, #d4af37 100%); border-radius: 12px; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.4);">
+                <span style="color: #1a1a2e; font-size: 14px; font-weight: bold; display: block;">FINAL SPIN VALUE</span>
+                <span id="finalSpinAmount" style="color: #1a1a2e; font-size: 32px; font-weight: bold;">$0</span>
+                <span style="color: #1a1a2e; font-size: 12px; display: block;">+ $1,000 per letter</span>
             </div>
 
             <div class="input-timer-row">
@@ -4007,6 +4491,7 @@ pub async fn game() -> Html<String> {
         let prevPuzzleSolvedBy = null;
         let prevRevealed = new Set();
         let prevPhase = null;
+        let prevRound = null;
         let prevScores = {{}};
 
         // ========== SOUND EFFECTS ==========
@@ -4273,6 +4758,8 @@ pub async fn game() -> Html<String> {
 
             switch (stage) {{
                 case 'prize':
+                    // Prize wheel stage is now skipped - go directly to pick
+                    // But keep for backwards compatibility
                     document.getElementById('bonusPrizeSection').style.display = 'block';
                     renderPrizeWheel();
                     break;
@@ -4280,6 +4767,8 @@ pub async fn game() -> Html<String> {
                     document.getElementById('letterPickSection').style.display = 'block';
                     document.getElementById('givenLettersSection').style.display = 'flex';
                     document.getElementById('pickedLettersSection').style.display = 'flex';
+                    // Also show puzzle board during pick so player can see what they're solving
+                    document.getElementById('bonusPuzzleSection').style.display = 'block';
                     initLetterPick();
                     break;
                 case 'solve':
@@ -4300,28 +4789,62 @@ pub async fn game() -> Html<String> {
             }}
         }}
 
-        // Initialize letter pick UI
+        // Initialize letter pick UI - syncs with server state
         function initLetterPick() {{
-            bonusState.pickedConsonants = [];
-            bonusState.pickedVowel = null;
-            updatePickedLettersDisplay();
+            // Sync from server state if available
+            const bonusData = gameState?.bonus;
+            if (bonusData?.picks) {{
+                bonusState.pickedConsonants = bonusData.picks.consonants || [];
+                bonusState.pickedVowel = bonusData.picks.vowel || null;
+            }} else {{
+                bonusState.pickedConsonants = [];
+                bonusState.pickedVowel = null;
+            }}
+
+            // Already used letters (from server state)
+            const usedLetters = new Set(gameState?.used || []);
 
             const consonantGrid = document.getElementById('consonantGrid');
             consonantGrid.innerHTML = CONSONANTS.map(c => {{
-                const disabled = RSTLNE.includes(c) ? 'disabled' : '';
-                return `<button class="letter-pick-btn" ${{disabled}} onclick="pickConsonant('${{c}}')">${{c}}</button>`;
+                // Disable if in RSTLNE, already used, or already picked
+                const isRstlne = RSTLNE.includes(c);
+                const isUsed = usedLetters.has(c);
+                const isPicked = bonusState.pickedConsonants.includes(c);
+                const disabled = isRstlne || isUsed ? 'disabled' : '';
+                const selected = isPicked ? 'selected' : '';
+                return `<button class="letter-pick-btn ${{selected}}" ${{disabled}} onclick="pickConsonant('${{c}}')">${{c}}</button>`;
             }}).join('');
 
             const vowelGrid = document.getElementById('vowelGrid');
             vowelGrid.innerHTML = VOWELS.map(v => {{
-                const disabled = RSTLNE.includes(v) ? 'disabled' : '';
-                return `<button class="letter-pick-btn" ${{disabled}} onclick="pickVowel('${{v}}')">${{v}}</button>`;
+                const isRstlne = RSTLNE.includes(v);
+                const isUsed = usedLetters.has(v);
+                const isPicked = v === bonusState.pickedVowel;
+                const disabled = isRstlne || isUsed ? 'disabled' : '';
+                const selected = isPicked ? 'selected' : '';
+                return `<button class="letter-pick-btn ${{selected}}" ${{disabled}} onclick="pickVowel('${{v}}')">${{v}}</button>`;
             }}).join('');
-            vowelGrid.style.display = 'none';
 
-            document.getElementById('letterPickTitle').textContent = 'Pick 3 Consonants';
-            document.getElementById('letterPickInstruction').textContent = 'Choose letters not in R S T L N E';
-            document.getElementById('confirmPicksBtn').disabled = true;
+            // Show vowel grid if 3 consonants picked, hide otherwise
+            vowelGrid.style.display = bonusState.pickedConsonants.length >= 3 ? 'flex' : 'none';
+
+            // Update title based on current state
+            if (bonusState.pickedConsonants.length < 3) {{
+                const remaining = 3 - bonusState.pickedConsonants.length;
+                document.getElementById('letterPickTitle').textContent = `Pick ${{remaining}} Consonant${{remaining > 1 ? 's' : ''}}`;
+                document.getElementById('letterPickInstruction').textContent = 'Choose letters not in R S T L N E';
+            }} else if (!bonusState.pickedVowel) {{
+                document.getElementById('letterPickTitle').textContent = 'Pick 1 Vowel';
+                document.getElementById('letterPickInstruction').textContent = 'Choose A, I, O, or U';
+            }} else {{
+                document.getElementById('letterPickTitle').textContent = 'All letters picked!';
+                document.getElementById('letterPickInstruction').textContent = 'Revealing letters...';
+            }}
+
+            updatePickedLettersDisplay();
+
+            // Hide confirm button - server auto-starts when all picks complete
+            document.getElementById('confirmPicksBtn').style.display = 'none';
         }}
 
         function pickConsonant(c) {{
@@ -4338,6 +4861,9 @@ pub async fn game() -> Html<String> {
             }});
 
             updatePickedLettersDisplay();
+
+            // Send to server immediately
+            socket.emit('bonus_pick', {{ room, kind: 'consonant', letter: c }});
 
             if (bonusState.pickedConsonants.length === 3) {{
                 document.getElementById('letterPickTitle').textContent = 'Pick 1 Vowel';
@@ -4359,7 +4885,13 @@ pub async fn game() -> Html<String> {
             }});
 
             updatePickedLettersDisplay();
-            document.getElementById('confirmPicksBtn').disabled = false;
+
+            // Send to server immediately - this completes the picks
+            // Server auto-starts timer when all picks are complete
+            socket.emit('bonus_pick', {{ room, kind: 'vowel', letter: v }});
+
+            // Hide confirm button since server auto-advances
+            document.getElementById('confirmPicksBtn').style.display = 'none';
         }}
 
         function updatePickedLettersDisplay() {{
@@ -4380,12 +4912,18 @@ pub async fn game() -> Html<String> {
         }}
 
         function confirmBonusPicks() {{
+            // This function is now deprecated - picks are sent immediately
+            // Server auto-starts timer when all picks are complete
+            // Kept for backwards compatibility
             if (bonusState.pickedConsonants.length < 3 || !bonusState.pickedVowel) return;
 
-            // Emit to server
-            socket.emit('final_pick_consonant', {{ room, letters: bonusState.pickedConsonants }});
-            socket.emit('final_pick_vowel', {{ room, letter: bonusState.pickedVowel }});
-            socket.emit('final_start_timer', {{ room }});
+            // If for some reason the picks weren't sent, send them now
+            bonusState.pickedConsonants.forEach(c => {{
+                socket.emit('bonus_pick', {{ room, kind: 'consonant', letter: c }});
+            }});
+            if (bonusState.pickedVowel) {{
+                socket.emit('bonus_pick', {{ room, kind: 'vowel', letter: bonusState.pickedVowel }});
+            }}
         }}
 
         function startBonusTimer() {{
@@ -4480,16 +5018,51 @@ pub async fn game() -> Html<String> {
             const titleEl = document.getElementById('bonusResultTitle');
             const amountEl = document.getElementById('bonusResultAmount');
             const answerEl = document.getElementById('bonusResultAnswer');
+            const resultSection = document.getElementById('bonusResultSection');
 
             const prize = prizeAmount || bonusState.prizeAmount || 0;
+
+            // Add winner stars container for celebration
+            let starsContainer = resultSection.querySelector('.winner-stars');
+            if (!starsContainer) {{
+                starsContainer = document.createElement('div');
+                starsContainer.className = 'winner-stars';
+                resultSection.insertBefore(starsContainer, resultSection.firstChild);
+            }}
+            starsContainer.innerHTML = '';
 
             if (won) {{
                 iconEl.textContent = '🎉';
                 titleEl.textContent = 'WINNER!';
                 titleEl.className = 'bonus-result-title win';
-                amountEl.textContent = '$' + prize.toLocaleString();
-                SoundService.bonusWin();
-                launchConfetti(200);
+
+                // Animate prize amount counting up
+                amountEl.textContent = '$0';
+                setTimeout(() => {{
+                    animateCountUp(amountEl, 0, prize, 2500);
+                }}, 400);
+
+                // Full celebration effects
+                celebrateWinner(null, prize);
+
+                // Add floating stars around the result
+                const starEmojis = ['⭐', '✨', '🌟', '💫'];
+                for (let i = 0; i < 12; i++) {{
+                    setTimeout(() => {{
+                        const star = document.createElement('div');
+                        star.className = 'winner-star';
+                        star.textContent = starEmojis[Math.floor(Math.random() * starEmojis.length)];
+                        star.style.left = (10 + Math.random() * 80) + '%';
+                        star.style.top = (10 + Math.random() * 80) + '%';
+                        star.style.animationDelay = (Math.random() * 0.5) + 's';
+                        starsContainer.appendChild(star);
+                        setTimeout(() => star.remove(), 1800);
+                    }}, i * 200);
+                }}
+
+                // Additional confetti waves
+                setTimeout(() => launchConfetti(100, {{ gold: true }}), 1500);
+                setTimeout(() => launchSparkles(20), 2000);
             }} else {{
                 iconEl.textContent = '😢';
                 titleEl.textContent = 'TIME\'S UP!';
@@ -4512,10 +5085,107 @@ pub async fn game() -> Html<String> {
             socket.emit('new_game', {{ room }});
         }}
 
+        // ========== GAME OVER FUNCTIONS ==========
+        let gameOverCountdownInterval = null;
+
+        function showGameOver(gameOverData, players) {{
+            // Close bonus overlay if open
+            closeBonusRound();
+
+            const overlay = document.getElementById('gameOverOverlay');
+            const winnerNameEl = document.getElementById('gameOverWinnerName');
+            const scoreEl = document.getElementById('gameOverScore');
+            const standingsEl = document.getElementById('gameOverStandings');
+            const countdownEl = document.getElementById('gameOverCountdown');
+
+            // Set winner info
+            if (gameOverData.winner_name) {{
+                winnerNameEl.textContent = gameOverData.winner_name;
+            }} else {{
+                winnerNameEl.textContent = 'No Winner';
+            }}
+
+            // Set winning score
+            scoreEl.textContent = '$' + (gameOverData.winner_score || 0).toLocaleString();
+
+            // Build final standings
+            let standingsHtml = '<div class="game-over-standings-title">Final Standings</div>';
+            const sortedPlayers = [...players].sort((a, b) => b.total - a.total);
+
+            sortedPlayers.forEach((player, index) => {{
+                const rank = index + 1;
+                const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+                const winnerClass = index === 0 ? 'winner' : '';
+                standingsHtml += `
+                    <div class="game-over-standing ${{winnerClass}}">
+                        <div class="game-over-standing-rank ${{rankClass}}">${{rank}}</div>
+                        <div class="game-over-standing-name">${{player.name}}</div>
+                        <div class="game-over-standing-score">$${{player.total.toLocaleString()}}</div>
+                    </div>
+                `;
+            }});
+            standingsEl.innerHTML = standingsHtml;
+
+            // Show overlay
+            overlay.classList.add('active');
+            initGameOverStars();
+
+            // Play celebration sound and confetti
+            SoundService.bonusWin();
+            launchConfetti(300);
+
+            // Start countdown timer
+            let remaining = gameOverData.remaining_seconds || 15;
+            countdownEl.textContent = remaining;
+
+            if (gameOverCountdownInterval) {{
+                clearInterval(gameOverCountdownInterval);
+            }}
+
+            gameOverCountdownInterval = setInterval(() => {{
+                remaining--;
+                if (remaining >= 0) {{
+                    countdownEl.textContent = remaining;
+                }}
+                if (remaining <= 0) {{
+                    clearInterval(gameOverCountdownInterval);
+                    gameOverCountdownInterval = null;
+                }}
+            }}, 1000);
+        }}
+
+        function closeGameOver() {{
+            document.getElementById('gameOverOverlay').classList.remove('active');
+            if (gameOverCountdownInterval) {{
+                clearInterval(gameOverCountdownInterval);
+                gameOverCountdownInterval = null;
+            }}
+        }}
+
+        function startNewGameNow() {{
+            closeGameOver();
+            socket.emit('new_game', {{ room }});
+        }}
+
+        function initGameOverStars() {{
+            const container = document.getElementById('gameOverStars');
+            container.innerHTML = '';
+            for (let i = 0; i < 50; i++) {{
+                const star = document.createElement('div');
+                star.className = 'winner-star';
+                star.textContent = ['⭐', '✨', '🌟'][Math.floor(Math.random() * 3)];
+                star.style.left = Math.random() * 100 + '%';
+                star.style.top = Math.random() * 100 + '%';
+                star.style.animationDelay = Math.random() * 3 + 's';
+                star.style.animationDuration = (2 + Math.random() * 2) + 's';
+                container.appendChild(star);
+            }}
+        }}
+
         function openBonusRound(playerName, avatarId) {{
             bonusState.active = true;
-            bonusState.stage = 'prize';
-            bonusState.prizeAmount = 0;
+            bonusState.stage = 'pick';  // Skip prize wheel, go directly to pick
+            bonusState.prizeAmount = gameState?.config?.bonus_jackpot || gameState?.bonus?.jackpot || 10000;
             bonusState.pickedConsonants = [];
             bonusState.pickedVowel = null;
             bonusState.totalSeconds = gameState?.config?.bonus_seconds || gameState?.config?.final_seconds || 10;
@@ -4525,7 +5195,21 @@ pub async fn game() -> Html<String> {
             document.getElementById('bonusPlayerName').innerHTML = `<span class="bonus-player-avatar">${{avatar}}</span> ${{playerName}}`;
             document.getElementById('bonusRoundOverlay').classList.add('active');
             initBonusStars();
-            showBonusStage('prize');
+
+            // Update jackpot display in result area
+            document.getElementById('bonusResultAmount').textContent = '$' + bonusState.prizeAmount.toLocaleString();
+
+            // Show puzzle board during pick phase so player can see what they're solving
+            const bonusPuzzleSection = document.getElementById('bonusPuzzleSection');
+            bonusPuzzleSection.style.display = 'block';
+            document.getElementById('bonusCategory').textContent = 'Category: ' + (gameState?.puzzle?.category || '-');
+
+            // Render puzzle with RSTLNE revealed
+            const answer = gameState?.puzzle?.answer || '';
+            const givenLetters = new Set(['R', 'S', 'T', 'L', 'N', 'E']);
+            renderBonusPuzzleBoard(answer, givenLetters);
+
+            showBonusStage('pick');  // Go directly to letter picking
         }}
 
         // Render bonus puzzle board
@@ -4584,45 +5268,287 @@ pub async fn game() -> Html<String> {
             board.innerHTML = html;
         }}
 
-        // ========== CONFETTI SYSTEM ==========
-        function launchConfetti(count = 100) {{
+        // ========== CONFETTI & CELEBRATION SYSTEM ==========
+        function launchConfetti(count = 100, options = {{}}) {{
             const container = document.getElementById('confetti-container');
-            const colors = ['#d4af37', '#ffd700', '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ff8c00'];
+            const isGold = options.gold || false;
+            const colors = isGold
+                ? ['#ffd700', '#ffec8b', '#d4af37', '#f0e68c', '#fff8dc', '#daa520']
+                : ['#d4af37', '#ffd700', '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ff8c00', '#9b59b6', '#3498db'];
+            const shapes = ['square', 'circle', 'triangle'];
 
             for (let i = 0; i < count; i++) {{
                 setTimeout(() => {{
                     const confetti = document.createElement('div');
-                    confetti.className = 'confetti';
+                    confetti.className = 'confetti' + (isGold ? ' gold' : '');
                     confetti.style.left = Math.random() * 100 + 'vw';
                     confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
                     confetti.style.animationDuration = (2 + Math.random() * 2) + 's';
                     confetti.style.animationDelay = Math.random() * 0.5 + 's';
+                    // Random shapes
+                    const shape = shapes[Math.floor(Math.random() * shapes.length)];
+                    if (shape === 'circle') confetti.style.borderRadius = '50%';
+                    if (shape === 'triangle') {{
+                        confetti.style.width = '0';
+                        confetti.style.height = '0';
+                        confetti.style.borderLeft = '6px solid transparent';
+                        confetti.style.borderRight = '6px solid transparent';
+                        confetti.style.borderBottom = '12px solid ' + colors[Math.floor(Math.random() * colors.length)];
+                        confetti.style.background = 'transparent';
+                    }}
+                    // Random size variation
+                    const size = 8 + Math.random() * 8;
+                    if (shape !== 'triangle') {{
+                        confetti.style.width = size + 'px';
+                        confetti.style.height = size + 'px';
+                    }}
                     container.appendChild(confetti);
-
-                    setTimeout(() => confetti.remove(), 4000);
-                }}, i * 20);
+                    setTimeout(() => confetti.remove(), 4500);
+                }}, i * 15);
             }}
         }}
 
+        // Launch sparkles for winner celebrations
+        function launchSparkles(count = 30) {{
+            const container = document.getElementById('confetti-container');
+            for (let i = 0; i < count; i++) {{
+                setTimeout(() => {{
+                    const sparkle = document.createElement('div');
+                    sparkle.className = 'sparkle';
+                    sparkle.style.left = (20 + Math.random() * 60) + 'vw';
+                    sparkle.style.top = (30 + Math.random() * 40) + 'vh';
+                    sparkle.style.animationDuration = (1.5 + Math.random()) + 's';
+                    container.appendChild(sparkle);
+                    setTimeout(() => sparkle.remove(), 2500);
+                }}, i * 100);
+            }}
+        }}
+
+        // Launch firework bursts
+        function launchFireworks(count = 5) {{
+            const container = document.getElementById('confetti-container');
+            const colors = ['#ffd700', '#ff6b6b', '#4ecdc4', '#9b59b6', '#3498db', '#22c55e'];
+
+            for (let i = 0; i < count; i++) {{
+                setTimeout(() => {{
+                    const x = 15 + Math.random() * 70;
+                    const y = 20 + Math.random() * 40;
+                    const color = colors[Math.floor(Math.random() * colors.length)];
+                    // Create burst of particles
+                    for (let j = 0; j < 20; j++) {{
+                        const particle = document.createElement('div');
+                        particle.className = 'firework';
+                        particle.style.background = color;
+                        particle.style.boxShadow = `0 0 6px ${{color}}, 0 0 12px ${{color}}`;
+                        particle.style.left = x + 'vw';
+                        particle.style.top = y + 'vh';
+                        const angle = (j / 20) * Math.PI * 2;
+                        const distance = 50 + Math.random() * 50;
+                        particle.style.setProperty('--dx', Math.cos(angle) * distance + 'px');
+                        particle.style.setProperty('--dy', Math.sin(angle) * distance + 'px');
+                        particle.style.animation = `fireworkParticle 1.2s ease-out forwards`;
+                        container.appendChild(particle);
+                        setTimeout(() => particle.remove(), 1500);
+                    }}
+                }}, i * 400);
+            }}
+        }}
+
+        // Add dynamic keyframes for firework particles
+        if (!document.getElementById('dynamicFireworkStyles')) {{
+            const style = document.createElement('style');
+            style.id = 'dynamicFireworkStyles';
+            style.textContent = `
+                @keyframes fireworkParticle {{
+                    0% {{ transform: translate(0, 0) scale(1); opacity: 1; }}
+                    100% {{ transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }}
+                }}
+            `;
+            document.head.appendChild(style);
+        }}
+
+        // Generate phase sparkles
+        function initPhaseSparkles() {{
+            const container = document.getElementById('phaseSparkles');
+            if (!container) return;
+            container.innerHTML = '';
+            for (let i = 0; i < 20; i++) {{
+                const sparkle = document.createElement('div');
+                sparkle.className = 'phase-sparkle';
+                sparkle.style.left = Math.random() * 100 + '%';
+                sparkle.style.top = Math.random() * 100 + '%';
+                sparkle.style.animationDelay = Math.random() * 3 + 's';
+                sparkle.style.animationDuration = (2 + Math.random() * 2) + 's';
+                container.appendChild(sparkle);
+            }}
+        }}
+
+        // Winner celebration - full effect
+        function celebrateWinner(playerName, amount) {{
+            launchConfetti(200, {{ gold: true }});
+            setTimeout(() => launchSparkles(40), 300);
+            setTimeout(() => launchFireworks(6), 500);
+            setTimeout(() => launchConfetti(100, {{ gold: true }}), 1500);
+            SoundService.bonusWin();
+        }}
+
         // ========== PHASE TRANSITIONS ==========
-        function showPhaseTransition(phase) {{
+        // Display duration for transition overlays (5 seconds)
+        const TRANSITION_DISPLAY_MS = 5000;
+        let transitionCountdownInterval = null;
+
+        function startTransitionCountdown(durationMs) {{
+            const countdownEl = document.getElementById('phaseCountdown');
+            if (!countdownEl) return;
+
+            // Clear any existing countdown
+            if (transitionCountdownInterval) {{
+                clearInterval(transitionCountdownInterval);
+            }}
+
+            let remaining = Math.ceil(durationMs / 1000);
+            countdownEl.textContent = `Starting in ${{remaining}}...`;
+
+            transitionCountdownInterval = setInterval(() => {{
+                remaining--;
+                if (remaining > 0) {{
+                    countdownEl.textContent = `Starting in ${{remaining}}...`;
+                }} else {{
+                    countdownEl.textContent = '';
+                    clearInterval(transitionCountdownInterval);
+                    transitionCountdownInterval = null;
+                }}
+            }}, 1000);
+        }}
+
+        function showPhaseTransition(phase, round) {{
             const overlay = document.getElementById('phaseOverlay');
             const title = document.getElementById('phaseTitle');
             const subtitle = document.getElementById('phaseSubtitle');
+            const prizeEl = document.getElementById('phasePrize');
+
+            // Initialize sparkles for visual effect
+            initPhaseSparkles();
 
             const phases = {{
-                'tossup': {{ title: 'TOSS-UP!', subtitle: 'Buzz in to answer!' }},
-                'final': {{ title: 'FINAL SPIN!', subtitle: 'Call letters - vowels are FREE!' }},
-                'bonus': {{ title: 'BONUS ROUND!', subtitle: 'Pick your letters wisely...' }},
-                'normal': {{ title: 'SPIN THE WHEEL!', subtitle: 'Good luck!' }},
+                'tossup': {{ title: 'TOSS-UP!', subtitle: 'Buzz in to answer!', icon: null }},
+                'final': {{ title: 'FINAL SPIN!', subtitle: 'Call letters - vowels are FREE!', icon: null }},
+                'bonus': {{ title: 'BONUS ROUND!', subtitle: 'Pick your letters wisely...', icon: null }},
+                'normal': {{ title: 'SPIN THE WHEEL!', subtitle: 'Good luck!', icon: null }},
             }};
 
-            const config = phases[phase] || {{ title: phase.toUpperCase(), subtitle: '' }};
+            const config = phases[phase] || {{ title: phase.toUpperCase(), subtitle: '', icon: null }};
             title.textContent = config.title;
             subtitle.textContent = config.subtitle;
+            if (prizeEl) prizeEl.style.display = 'none';
+
+            // Remove any special modes
+            overlay.classList.remove('winner-mode');
+
+            // Play appropriate sound
+            if (phase === 'bonus') {{
+                SoundService.bonusStart();
+            }} else if (phase === 'final') {{
+                SoundService.finalSpin();
+            }}
 
             overlay.classList.add('active');
-            setTimeout(() => overlay.classList.remove('active'), 2000);
+            startTransitionCountdown(TRANSITION_DISPLAY_MS);
+
+            // Add some sparkles for excitement
+            if (phase === 'bonus' || phase === 'final') {{
+                setTimeout(() => launchSparkles(15), 500);
+            }}
+
+            setTimeout(() => {{
+                overlay.classList.remove('active');
+            }}, TRANSITION_DISPLAY_MS);
+        }}
+
+        function showRoundTransition(round, fromTossup) {{
+            const overlay = document.getElementById('phaseOverlay');
+            const title = document.getElementById('phaseTitle');
+            const subtitle = document.getElementById('phaseSubtitle');
+            const prizeEl = document.getElementById('phasePrize');
+
+            // Initialize sparkles
+            initPhaseSparkles();
+
+            // Round-specific titles and subtitles with more flair
+            const roundConfigs = {{
+                1: {{ title: 'ROUND 1', subtitle: fromTossup ? 'Toss-up winner plays first!' : 'Let the game begin!' }},
+                2: {{ title: 'ROUND 2', subtitle: 'The stakes are rising!' }},
+                3: {{ title: 'ROUND 3', subtitle: 'Keep that momentum!' }},
+                4: {{ title: 'FINAL ROUND', subtitle: 'This is it - give it your all!' }},
+            }};
+
+            const config = roundConfigs[round] || {{ title: 'ROUND ' + round, subtitle: '' }};
+            title.textContent = config.title;
+            subtitle.textContent = config.subtitle;
+            if (prizeEl) prizeEl.style.display = 'none';
+
+            // Remove special modes
+            overlay.classList.remove('winner-mode');
+
+            overlay.classList.add('active');
+            startTransitionCountdown(TRANSITION_DISPLAY_MS);
+
+            // Light confetti for round transitions
+            setTimeout(() => launchConfetti(30), 300);
+
+            setTimeout(() => {{
+                overlay.classList.remove('active');
+            }}, TRANSITION_DISPLAY_MS);
+        }}
+
+        // Winner transition - extra special celebration
+        function showWinnerTransition(playerName, totalWinnings) {{
+            const overlay = document.getElementById('phaseOverlay');
+            const title = document.getElementById('phaseTitle');
+            const subtitle = document.getElementById('phaseSubtitle');
+            const prizeEl = document.getElementById('phasePrize');
+
+            initPhaseSparkles();
+
+            title.textContent = 'CONGRATULATIONS!';
+            subtitle.textContent = playerName + ' WINS!';
+
+            // Show prize amount with counting animation
+            if (prizeEl) {{
+                prizeEl.style.display = 'block';
+                animateCountUp(prizeEl, 0, totalWinnings, 2000);
+            }}
+
+            overlay.classList.add('active', 'winner-mode');
+
+            // Full celebration
+            celebrateWinner(playerName, totalWinnings);
+
+            // Extended display for winner
+            const winnerDisplayMs = 8000;
+            setTimeout(() => {{
+                overlay.classList.remove('active', 'winner-mode');
+            }}, winnerDisplayMs);
+        }}
+
+        // Animate counting up for prize amounts
+        function animateCountUp(element, start, end, duration) {{
+            const startTime = performance.now();
+            const diff = end - start;
+
+            function update(currentTime) {{
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                // Ease out cubic
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+                const current = Math.round(start + diff * easeProgress);
+                element.textContent = '$' + current.toLocaleString();
+
+                if (progress < 1) {{
+                    requestAnimationFrame(update);
+                }}
+            }}
+            requestAnimationFrame(update);
         }}
 
         // ========== AVATAR HELPER ==========
@@ -4801,7 +5727,7 @@ pub async fn game() -> Html<String> {
 
             wheelContainer.classList.add('spinning');
             wheelResult.textContent = 'Spinning...';
-            wheelResult.classList.remove('winner');
+            wheelResult.classList.remove('winner', 'big-win', 'bankrupt', 'free-play');
 
             const numSlots = slots.length;
             const anglePerSlot = 360 / numSlots;
@@ -4915,15 +5841,32 @@ pub async fn game() -> Html<String> {
             // Play wheel stop sound
             SoundService.wheelStop();
 
-            // Show the wheel result
+            // Show the wheel result with appropriate styling
             if (pendingWheelResult !== null) {{
-                document.getElementById('wheelResult').textContent = pendingWheelResult;
-                // Play sounds for special wedges
+                const wheelResult = document.getElementById('wheelResult');
+                wheelResult.textContent = pendingWheelResult;
+
+                // Apply special styling based on result
+                wheelResult.classList.remove('big-win', 'bankrupt', 'free-play');
+
                 if (pendingWheelResult === 'BANKRUPT') {{
                     SoundService.bankrupt();
+                    wheelResult.classList.add('bankrupt');
                 }} else if (pendingWheelResult === 'LOSE A TURN') {{
                     SoundService.loseTurn();
+                    wheelResult.classList.add('bankrupt');
+                }} else if (pendingWheelResult === 'FREE PLAY') {{
+                    wheelResult.classList.add('free-play');
+                    launchSparkles(10);
+                }} else if (pendingWheelResult.includes('$')) {{
+                    // Check for big wins ($1000+)
+                    const amount = parseInt(pendingWheelResult.replace(/[^0-9]/g, ''));
+                    if (amount >= 1000) {{
+                        wheelResult.classList.add('big-win');
+                        launchSparkles(15);
+                    }}
                 }}
+
                 pendingWheelResult = null;
             }}
             // Show any pending toasts
@@ -5032,11 +5975,33 @@ pub async fn game() -> Html<String> {
 
             const phase = gameState.phase || 'normal';
 
-            // ========== PHASE TRANSITION ==========
+            // ========== PHASE & ROUND TRANSITIONS ==========
+            const currentRound = gameState.round || 1;
+            const fromTossup = prevPhase === 'tossup' && phase === 'normal';
+            const fromFinalToBonus = prevPhase === 'final' && phase === 'bonus';
+
+            // Detect phase transitions (tossup, final, bonus)
             if (prevPhase && prevPhase !== phase) {{
-                showPhaseTransition(phase);
+                // Special case: tossup -> normal triggers Round 1 transition
+                if (fromTossup) {{
+                    showRoundTransition(1, true);
+                }}
+                // Special case: final -> bonus triggers Bonus Round transition
+                else if (fromFinalToBonus) {{
+                    showPhaseTransition('bonus', currentRound);
+                }}
+                // Other phase transitions (e.g., normal -> tossup, normal -> final, normal -> bonus)
+                else {{
+                    showPhaseTransition(phase, currentRound);
+                }}
             }}
+            // Detect round transitions (when phase stays normal but round changes)
+            else if (phase === 'normal' && prevRound !== null && prevRound !== currentRound && currentRound > prevRound) {{
+                showRoundTransition(currentRound, false);
+            }}
+
             prevPhase = phase;
+            prevRound = currentRound;
 
             // Check for puzzle solved
             const solvedBy = gameState.puzzle_solved_by;
@@ -5051,7 +6016,23 @@ pub async fn game() -> Html<String> {
             }}
 
             // Phase display
-            document.getElementById('phase').textContent = phase;
+            const isPregame = phase === 'pregame';
+            const isGameOver = phase === 'gameover';
+            let phaseText = phase;
+            if (isPregame) {{
+                phaseText = 'Waiting to start...';
+            }} else if (phase === 'final') {{
+                phaseText = 'Final Spin';
+            }} else if (phase === 'tossup') {{
+                phaseText = 'Toss-up';
+            }} else if (phase === 'bonus') {{
+                phaseText = 'Bonus Round';
+            }} else if (phase === 'normal') {{
+                phaseText = 'Normal';
+            }} else if (isGameOver) {{
+                phaseText = 'Game Over';
+            }}
+            document.getElementById('phase').textContent = phaseText;
 
             // Theme (pack name) and Category
             const packName = gameState.active_pack_name;
@@ -5065,8 +6046,7 @@ pub async fn game() -> Html<String> {
             document.getElementById('category').textContent = gameState.puzzle?.category || '-';
 
             // ========== ROUND PROGRESS ==========
-            // gameState.round is a simple number (1-4)
-            const currentRound = gameState.round || 1;
+            // currentRound already declared above for transition detection
             const totalRounds = 4;
             const roundIndicator = document.getElementById('roundIndicator');
 
@@ -5097,15 +6077,20 @@ pub async fn game() -> Html<String> {
                 // Round badges based on current phase
                 let badgesHtml = '';
                 const phaseLower = phase.toLowerCase();
-                if (phaseLower === 'tossup') {{
+                if (isPregame) {{
+                    badgesHtml += `<span class="round-badge type">PREGAME</span>`;
+                }} else if (isGameOver) {{
+                    badgesHtml += `<span class="round-badge type" style="background: linear-gradient(180deg, #ffd700 0%, #d4af37 100%); color: #1a1a2e;">GAME OVER</span>`;
+                }} else if (phaseLower === 'tossup') {{
                     badgesHtml += `<span class="round-badge type">TOSS-UP</span>`;
                 }} else if (phaseLower === 'final') {{
                     badgesHtml += `<span class="round-badge type">FINAL SPIN</span>`;
                 }} else if (phaseLower === 'bonus') {{
                     badgesHtml += `<span class="round-badge type">BONUS</span>`;
                 }}
-                if (currentRound === 4) {{
+                if (currentRound === 4 && phaseLower === 'normal') {{
                     badgesHtml += `<span class="round-badge multiplier">SPEED</span>`;
+                    badgesHtml += `<span class="round-badge warning" style="background: #f59e0b; color: #1a1a2e;">Final Spin may trigger!</span>`;
                 }}
                 document.getElementById('roundBadges').innerHTML = badgesHtml;
             }}
@@ -5403,32 +6388,60 @@ pub async fn game() -> Html<String> {
 
                 // Map server stages to client stages
                 // Server: Off, Pick, Running, Done
-                // Client: prize, pick, solve, result
+                // Client: pick, solve, result (prize stage removed)
 
                 if (!bonusState.active) {{
-                    // First entry into bonus round - show prize wheel
+                    // First entry into bonus round - open bonus overlay
                     const activePlayer = gameState.players?.[gameState.active_idx];
                     const playerName = activePlayer?.name || 'Player';
                     const avatarId = activePlayer?.avatar_id || 1;
                     openBonusRound(playerName, avatarId);
 
-                    // If server already past pick phase, skip to appropriate stage
-                    if (serverStage === 'running') {{
-                        bonusState.prizeAmount = bonusStateData.jackpot || 50000;
+                    // Sync to server stage
+                    if (serverStage === 'pick') {{
+                        // Sync any picks already made
+                        bonusState.prizeAmount = bonusStateData.jackpot || 10000;
+                        bonusState.pickedConsonants = bonusStateData.picks?.consonants || [];
+                        bonusState.pickedVowel = bonusStateData.picks?.vowel || null;
+                        initLetterPick();  // Re-init to sync UI with server state
+                        showBonusStage('pick');
+                    }} else if (serverStage === 'running') {{
+                        bonusState.prizeAmount = bonusStateData.jackpot || 10000;
                         bonusState.pickedConsonants = bonusStateData.picks?.consonants || [];
                         bonusState.pickedVowel = bonusStateData.picks?.vowel || null;
                         updatePickedLettersDisplay();
                         showBonusStage('solve');
                     }} else if (serverStage === 'done') {{
-                        bonusState.prizeAmount = bonusStateData.jackpot || 50000;
+                        bonusState.prizeAmount = bonusStateData.jackpot || 10000;
                         bonusState.pickedConsonants = bonusStateData.picks?.consonants || [];
                         bonusState.pickedVowel = bonusStateData.picks?.vowel || null;
                         updatePickedLettersDisplay();
                         showBonusStage('result');
                     }}
                 }} else {{
-                    // Already active - sync timer and stage
-                    if (serverStage === 'running') {{
+                    // Already active - sync timer, picks, and stage
+                    if (serverStage === 'pick') {{
+                        // Sync picks from server - may have changed from another client
+                        const serverConsonants = bonusStateData.picks?.consonants || [];
+                        const serverVowel = bonusStateData.picks?.vowel || null;
+
+                        // Only update if server state differs
+                        if (JSON.stringify(serverConsonants) !== JSON.stringify(bonusState.pickedConsonants) ||
+                            serverVowel !== bonusState.pickedVowel) {{
+                            bonusState.pickedConsonants = serverConsonants;
+                            bonusState.pickedVowel = serverVowel;
+                            initLetterPick();  // Re-init to sync UI
+                        }}
+
+                        // Update puzzle board with RSTLNE revealed
+                        const answer = gameState.puzzle?.answer || '';
+                        const givenLetters = new Set(['R', 'S', 'T', 'L', 'N', 'E']);
+                        renderBonusPuzzleBoard(answer, givenLetters);
+
+                        if (bonusState.stage !== 'pick') {{
+                            showBonusStage('pick');
+                        }}
+                    }} else if (serverStage === 'running') {{
                         bonusState.remainingSeconds = bonusStateData.remaining_seconds || 0;
                         updateBonusTimer(bonusState.remainingSeconds);
 
@@ -5463,6 +6476,28 @@ pub async fn game() -> Html<String> {
                 closeBonusRound();
             }}
 
+            // ========== GAME OVER HANDLING ==========
+            const gameOverData = gameState.game_over;
+            const gameOverOverlay = document.getElementById('gameOverOverlay');
+            const isGameOverActive = gameOverOverlay.classList.contains('active');
+
+            if (isGameOver && gameOverData) {{
+                // Game is in game over phase
+                if (!isGameOverActive) {{
+                    // Show game over overlay
+                    showGameOver(gameOverData, gameState.players);
+                }} else {{
+                    // Update countdown if already showing
+                    const countdownEl = document.getElementById('gameOverCountdown');
+                    if (gameOverData.remaining_seconds !== null && gameOverData.remaining_seconds !== undefined) {{
+                        countdownEl.textContent = gameOverData.remaining_seconds;
+                    }}
+                }}
+            }} else if (isGameOverActive) {{
+                // Game phase changed from game over to something else - close overlay
+                closeGameOver();
+            }}
+
             // ========== CONTROLS VISIBILITY ==========
             const isMyTurn = !isSpectating && gameState.active_idx === myPlayerIdx;
             const isTossup = phase === 'tossup';
@@ -5472,25 +6507,104 @@ pub async fn game() -> Html<String> {
             const canBuzz = !isSpectating && isTossup && myPlayerIdx !== null &&
                 !(gameState.tossup?.locked_player_idxs || []).includes(myPlayerIdx);
 
-            // Hide all controls when spectating or in final round
+            // Final Spin state
+            const finalSpinState = gameState.final_spin || {{}};
+            const finalSpinDone = finalSpinState.spin_done === true;
+            const finalSpinValue = finalSpinState.spin_value || 0;
+
+            // Show final spin value display during Final Spin phase after spin is done
+            const finalSpinValueEl = document.getElementById('finalSpinValue');
+            if (isFinalSpin && finalSpinDone) {{
+                finalSpinValueEl.style.display = 'block';
+                document.getElementById('finalSpinAmount').textContent = '$' + finalSpinValue.toLocaleString();
+            }} else {{
+                finalSpinValueEl.style.display = 'none';
+            }}
+
+            // Hide all controls when spectating, in bonus round, or game over
             document.getElementById('controls').style.opacity = isSpectating ? '0.5' : '1';
-            document.getElementById('controls').style.display = isFinalRound ? 'none' : 'flex';
+            document.getElementById('controls').style.display = (isFinalRound || isGameOver) ? 'none' : 'flex';
 
-            // Normal controls (hide during toss-up and final round)
-            document.getElementById('spinBtn').disabled = isSpectating || !isMyTurn || isTossup || isFinalRound;
-            document.getElementById('spinBtn').style.display = (isTossup || isFinalRound) ? 'none' : 'inline-block';
+            // ===== PREGAME PHASE =====
+            // Show Start Game button during pregame, hide everything else
+            const startGameBtn = document.getElementById('startGameBtn');
+            if (isPregame || isGameOver) {{
+                startGameBtn.style.display = 'inline-block';
+                startGameBtn.disabled = isSpectating;
+                document.getElementById('spinBtn').style.display = 'none';
+                document.getElementById('finalSpinSpinBtn').style.display = 'none';
+                document.getElementById('buyVowelBtn').style.display = 'none';
+                document.getElementById('solveBtn').style.display = 'none';
+                document.getElementById('wildcardBtn').style.display = 'none';
+                document.getElementById('guessArea').style.display = 'none';
+            }} else {{
+                startGameBtn.style.display = 'none';
 
-            // Flash spin button when waiting for player to spin
-            const needsToSpin = isMyTurn && (gameState.current_wedge === null || gameState.current_wedge === undefined) && !isTossup && !isFinalRound;
+                // ===== FINAL SPIN PHASE =====
+                if (isFinalSpin) {{
+                    // Hide normal spin button during final spin
+                    document.getElementById('spinBtn').style.display = 'none';
+
+                    // Final Spin spin button - show to ACTIVE PLAYER (not just host) if spin not done
+                    // The active player when Final Spin triggers does the spin
+                    // The resulting spin value then applies to ALL players taking turns
+                    const finalSpinSpinBtn = document.getElementById('finalSpinSpinBtn');
+                    if (!finalSpinDone && (isMyTurn || isHost)) {{
+                        finalSpinSpinBtn.style.display = 'inline-block';
+                        finalSpinSpinBtn.disabled = isSpectating || (!isMyTurn && !isHost);
+                        finalSpinSpinBtn.classList.add('waiting');
+                    }} else {{
+                        finalSpinSpinBtn.style.display = 'none';
+                        finalSpinSpinBtn.classList.remove('waiting');
+                    }}
+
+                    // During Final Spin: hide Buy Vowel button (vowels are free via single letter input)
+                    document.getElementById('buyVowelBtn').style.display = 'none';
+
+                    // Show solve button during final spin (after spin done)
+                    document.getElementById('solveBtn').style.display = finalSpinDone ? 'inline-block' : 'none';
+                    document.getElementById('solveBtn').disabled = isSpectating || !isMyTurn;
+
+                    // Show guess area during final spin (after spin done) - accepts ANY letter
+                    document.getElementById('guessArea').style.display = finalSpinDone ? 'flex' : 'none';
+                    document.getElementById('letterInput').disabled = isSpectating || !isMyTurn;
+                    // Update label to indicate any letter is allowed (single input for consonants and vowels)
+                    const guessLabel = document.querySelector('.guess-label');
+                    if (guessLabel && finalSpinDone) {{
+                        guessLabel.textContent = 'Pick any letter (vowels free!)';
+                    }}
+
+                    // Hide wildcard during final spin
+                    document.getElementById('wildcardBtn').style.display = 'none';
+                }} else {{
+                    // ===== NORMAL/TOSSUP PHASE =====
+                    document.getElementById('finalSpinSpinBtn').style.display = 'none';
+
+                    // Normal controls (hide during toss-up and bonus round)
+                    document.getElementById('spinBtn').disabled = isSpectating || !isMyTurn || isTossup || isFinalRound;
+                    document.getElementById('spinBtn').style.display = (isTossup || isFinalRound) ? 'none' : 'inline-block';
+
+                    document.getElementById('buyVowelBtn').disabled = isSpectating || !isMyTurn || isTossup || isFinalRound;
+                    document.getElementById('buyVowelBtn').style.display = (isTossup || isFinalRound) ? 'none' : 'inline-block';
+                    document.getElementById('solveBtn').disabled = isSpectating || (!isMyTurn && !canBuzz) || isFinalRound;
+                    document.getElementById('solveBtn').style.display = isFinalRound ? 'none' : 'inline-block';
+
+                    // Show guess area during toss-up for the controller (active player who buzzed in)
+                    const isTossupController = isTossup && isMyTurn && gameState.tossup?.remaining_seconds > 0;
+                    document.getElementById('guessArea').style.display = (isTossup && !isTossupController) || isFinalRound ? 'none' : 'flex';
+                    document.getElementById('letterInput').disabled = isSpectating || isFinalRound || (!isMyTurn && !isTossupController);
+
+                    // Reset label for normal play
+                    const guessLabel = document.querySelector('.guess-label');
+                    if (guessLabel) {{
+                        guessLabel.textContent = 'Select a Consonant';
+                    }}
+                }}
+            }}
+
+            // Flash spin button when waiting for player to spin (normal phase only)
+            const needsToSpin = isMyTurn && (gameState.current_wedge === null || gameState.current_wedge === undefined) && !isTossup && !isFinalRound && !isFinalSpin && !isPregame;
             document.getElementById('spinBtn').classList.toggle('waiting', needsToSpin);
-
-            document.getElementById('buyVowelBtn').disabled = isSpectating || !isMyTurn || isTossup || isFinalRound;
-            document.getElementById('buyVowelBtn').style.display = (isTossup || isFinalRound) ? 'none' : 'inline-block';
-            document.getElementById('solveBtn').disabled = isSpectating || (!isMyTurn && !canBuzz) || isFinalRound;
-            // Show guess area during toss-up for the controller (active player who buzzed in)
-            const isTossupController = isTossup && isMyTurn && gameState.tossup?.remaining_seconds > 0;
-            document.getElementById('guessArea').style.display = (isTossup && !isTossupController) || isFinalRound ? 'none' : 'flex';
-            document.getElementById('letterInput').disabled = isSpectating || isFinalRound || (!isMyTurn && !isTossupController);
 
             // Flash the input when it's player's turn and they need to guess a letter
             const currentWedge = gameState.current_wedge;
@@ -5784,6 +6898,28 @@ pub async fn game() -> Html<String> {
 
         function closeModal(modalId) {{
             document.getElementById(modalId).classList.remove('active');
+        }}
+
+        // Start game (transitions from pregame to normal)
+        function startGame() {{
+            socket.emit('start_game', {{ room }});
+        }}
+
+        // Final Spin - host does the one and only spin
+        function doFinalSpin() {{
+            hideNotification();
+            isWheelSpinning = true;
+            document.getElementById('wheelResult').textContent = 'Final Spin...';
+            socket.emit('final_spin_spin', {{ room }});
+
+            // Fallback: if no animation started within 2 seconds, reset
+            setTimeout(() => {{
+                if (isWheelSpinning && !wheelAnimationId) {{
+                    isWheelSpinning = false;
+                    document.getElementById('wheelResult').textContent = '-';
+                    onWheelStopped();
+                }}
+            }}, 2000);
         }}
 
         // Host functions

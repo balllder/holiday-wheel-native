@@ -14,15 +14,33 @@ use crate::AppState;
 use super::state::{GamePhase, GuessResult};
 use super::GameManager;
 
+/// Default delay between puzzle solve and auto-advance (in seconds)
+const AUTO_ADVANCE_DELAY_SECONDS: u64 = 10;
+
+/// Context for auto-advance - captures state at solve time
+#[derive(Debug, Clone)]
+pub(crate) struct AutoAdvanceContext {
+    /// Phase when puzzle was solved
+    phase: GamePhase,
+    /// Round when puzzle was solved
+    round: u8,
+    /// Index of player who solved (round winner)
+    solver_idx: usize,
+}
+
 /// Spawn a background task to load a new puzzle after a delay
+/// This handles all auto-advancement logic:
+/// - Toss-up win -> 10 sec delay -> new puzzle -> Normal Round 1 starts (winner goes first)
+/// - Normal round win -> 10 sec delay -> new puzzle -> next round starts (winner goes first)
+/// - Final Spin solve -> 10 sec delay -> auto-start Bonus round (highest total scorer plays)
 fn spawn_auto_advance_puzzle(
     state: Arc<AppState>,
     room: String,
-    delay_seconds: u64,
+    context: AutoAdvanceContext,
 ) {
     tokio::spawn(async move {
-        // Wait for the display time
-        tokio::time::sleep(Duration::from_secs(delay_seconds)).await;
+        // Wait for the display time (fixed 10 seconds as per requirements)
+        tokio::time::sleep(Duration::from_secs(AUTO_ADVANCE_DELAY_SECONDS)).await;
 
         // Get the pack_id from room config
         let pack_id = {
@@ -42,18 +60,76 @@ fn spawn_auto_advance_puzzle(
         };
 
         // Update game state and broadcast
-        let game_state = {
+        let (game_state, toast_msg) = {
             let mut manager = state.game_manager.write().await;
             if let Some(game) = manager.get_room_mut(&room) {
                 // Only advance if puzzle is still solved (hasn't been manually changed)
-                if game.puzzle_solved_by.is_some() {
-                    game.new_puzzle(puzzle);
-                    Some(game.get_state())
+                if game.puzzle_solved_by.is_none() {
+                    (None, None)
                 } else {
-                    None
+                    // Determine what happens next based on context
+                    let (next_phase, next_round, next_active_idx, msg) = match context.phase {
+                        GamePhase::Tossup => {
+                            // After toss-up win: Normal Round 1, winner goes first
+                            // Note: tossup_correct_answer() already sets phase=Normal, round=1
+                            // and keeps active_idx as the winner
+                            (GamePhase::Normal, 1, context.solver_idx, "Round 1 begins!")
+                        }
+                        GamePhase::Normal => {
+                            // After normal round solve: advance to next round, winner goes first
+                            let next_round = (context.round + 1).min(4);
+                            if next_round > context.round {
+                                (GamePhase::Normal, next_round, context.solver_idx,
+                                 if next_round == 2 { "Round 2 begins!" }
+                                 else if next_round == 3 { "Round 3 begins!" }
+                                 else { "Round 4 begins!" })
+                            } else {
+                                // Already at round 4, stay in normal mode
+                                (GamePhase::Normal, 4, context.solver_idx, "New puzzle!")
+                            }
+                        }
+                        GamePhase::Final => {
+                            // After Final Spin solve: auto-start Bonus round
+                            // Find player with highest total score
+                            let highest_scorer_idx = game.players.iter()
+                                .enumerate()
+                                .max_by_key(|(_, p)| p.total)
+                                .map(|(i, _)| i)
+                                .unwrap_or(0);
+
+                            (GamePhase::Bonus, context.round, highest_scorer_idx,
+                             "Bonus Round! Pick your letters!")
+                        }
+                        GamePhase::Bonus | GamePhase::Pregame | GamePhase::GameOver => {
+                            // No auto-advance for Bonus, Pregame, or GameOver
+                            (game.phase, game.round, game.active_idx, "New puzzle!")
+                        }
+                    };
+
+                    // Apply the new puzzle
+                    game.new_puzzle(puzzle);
+
+                    // Set the determined phase, round, and active player
+                    game.phase = next_phase;
+                    game.round = next_round;
+                    game.active_idx = next_active_idx;
+
+                    // If transitioning to Bonus, start the bonus round properly
+                    if next_phase == GamePhase::Bonus && context.phase == GamePhase::Final {
+                        game.start_bonus();
+                        // start_bonus sets active_idx implicitly, but we want the highest scorer
+                        game.active_idx = next_active_idx;
+                    }
+
+                    // Reset Final Spin state if we're not in Final phase anymore
+                    if next_phase != GamePhase::Final {
+                        game.final_spin = super::state::FinalSpinState::default();
+                    }
+
+                    (Some(game.get_state()), Some(msg))
                 }
             } else {
-                None
+                (None, None)
             }
         };
 
@@ -66,7 +142,59 @@ fn spawn_auto_advance_puzzle(
                 }
                 // Send toast notification
                 if let Some(ns) = io.of("/") {
-                    let _ = ns.to(room).emit("toast", &serde_json::json!({ "msg": "New puzzle!" }));
+                    let msg = toast_msg.unwrap_or("New puzzle!");
+                    let _ = ns.to(room).emit("toast", &serde_json::json!({ "msg": msg }));
+                }
+            }
+        }
+    });
+}
+
+/// Default delay for game over display before auto-reset (in seconds)
+const GAME_OVER_DISPLAY_SECONDS: u64 = 15;
+
+/// Spawn a background task to auto-reset the game after game over display
+fn spawn_game_over_reset(
+    state: Arc<AppState>,
+    room: String,
+) {
+    tokio::spawn(async move {
+        // Wait for the game over display time
+        tokio::time::sleep(Duration::from_secs(GAME_OVER_DISPLAY_SECONDS + 1)).await;
+
+        // Get the pack_id from room config
+        let pack_id = {
+            let manager = state.game_manager.read().await;
+            manager.get_room(&room)
+                .map(|game| game.config.pack_id)
+                .unwrap_or(None)
+        };
+
+        // Get a new puzzle from database for the new game
+        let puzzle = match state.db.get_random_puzzle(&room, pack_id).await {
+            Ok(p) => p,
+            Err(e) => {
+                info!("Failed to get puzzle for game reset in room {}: {}", room, e);
+                return;
+            }
+        };
+
+        // Check if still in game over phase and should reset
+        let mut manager = state.game_manager.write().await;
+        if let Some(game) = manager.get_room_mut(&room) {
+            if game.game_over_should_reset() {
+                info!("Auto-resetting game in room {} after game over", room);
+                game.reset_game();
+                game.new_puzzle(puzzle);
+
+                // Broadcast update
+                if let Some(io) = state.io.get() {
+                    if let Some(ns) = io.of("/") {
+                        let _ = ns.to(room.clone()).emit("state", &game.get_state());
+                    }
+                    if let Some(ns) = io.of("/") {
+                        let _ = ns.to(room).emit("toast", &serde_json::json!({ "msg": "New game ready! Press Start Game to begin." }));
+                    }
                 }
             }
         }
@@ -379,12 +507,13 @@ pub fn handle_guess(
             Ok(msg)
         }
         super::state::GamePhase::Final => {
-            // Final Spin round - active player guesses consonants using fixed spin value
+            // Final Spin round - active player guesses ANY letter (consonants earn money, vowels free)
             if !game.is_active_player(socket_id, false) {
                 return Err("Only the active player can guess.");
             }
 
-            let result = game.final_spin_guess_consonant(letter);
+            // Use unified letter guessing - accepts both consonants and vowels
+            let result = game.final_spin_guess_letter(letter);
             let msg = match result {
                 super::state::GuessResult::Correct(count) => {
                     format!("{} {}(s)!", count, letter.to_uppercase())
@@ -392,10 +521,10 @@ pub fn handle_guess(
                 super::state::GuessResult::Incorrect => format!("No {}s", letter.to_uppercase()),
                 super::state::GuessResult::AlreadyUsed => "Letter already used".to_string(),
                 super::state::GuessResult::InvalidLetter => {
-                    "Invalid letter (must be a consonant)".to_string()
+                    "Invalid letter".to_string()
                 }
                 super::state::GuessResult::NotEnoughMoney => "Not enough money".to_string(),
-                super::state::GuessResult::NeedToSpin => "Host must spin first".to_string(),
+                super::state::GuessResult::NeedToSpin => "Active player must spin first".to_string(),
             };
             Ok(msg)
         }
@@ -404,24 +533,36 @@ pub fn handle_guess(
 }
 
 /// Process solve attempt
-/// Returns (solved, message, auto_advance_delay)
+/// Returns (solved, message, auto_advance_context)
 pub fn handle_solve(
     manager: &mut super::GameManager,
     room: &str,
     socket_id: &str,
     attempt: &str,
-) -> Result<(bool, String, Option<u64>), &'static str> {
+) -> Result<(bool, String, Option<AutoAdvanceContext>), &'static str> {
     let game = manager.get_room_mut(room).ok_or("Room not found")?;
 
+    // Capture phase and round BEFORE solving
+    let phase_at_solve = game.phase;
+    let round_at_solve = game.round;
+
     match game.phase {
+        super::state::GamePhase::Pregame => {
+            Err("Game has not started yet.")
+        }
         super::state::GamePhase::Normal => {
             if !game.is_active_player(socket_id, false) {
                 return Err("Only the active player can solve.");
             }
+            let solver_idx = game.active_idx;
             let solved = game.solve(attempt);
             if solved {
-                let delay = Some(game.config.puzzle_display_seconds as u64);
-                Ok((true, "Correct! Puzzle solved!".to_string(), delay))
+                let context = Some(AutoAdvanceContext {
+                    phase: phase_at_solve,
+                    round: round_at_solve,
+                    solver_idx,
+                });
+                Ok((true, "Correct! Puzzle solved!".to_string(), context))
             } else {
                 Ok((false, "Incorrect, sorry!".to_string(), None))
             }
@@ -430,11 +571,16 @@ pub fn handle_solve(
             if game.tossup.controller_sid.as_deref() != Some(socket_id) {
                 return Err("Only the player who buzzed in can solve.");
             }
+            let solver_idx = game.active_idx;
             let solved = game.solve(attempt);
             if solved {
                 game.tossup_correct_answer();
-                let delay = Some(game.config.puzzle_display_seconds as u64);
-                Ok((true, "Correct! You win the toss-up!".to_string(), delay))
+                let context = Some(AutoAdvanceContext {
+                    phase: phase_at_solve,
+                    round: round_at_solve,
+                    solver_idx,
+                });
+                Ok((true, "Correct! You win the toss-up!".to_string(), context))
             } else {
                 game.tossup_wrong_answer();
                 Ok((false, "Incorrect! You're locked out.".to_string(), None))
@@ -450,6 +596,7 @@ pub fn handle_solve(
             } else {
                 "Incorrect!".to_string()
             };
+            // No auto-advance for bonus round
             Ok((solved, msg, None))
         }
         super::state::GamePhase::Final => {
@@ -457,13 +604,21 @@ pub fn handle_solve(
             if !game.is_active_player(socket_id, false) {
                 return Err("Only the active player can solve.");
             }
+            let solver_idx = game.active_idx;
             let solved = game.solve(attempt);
             if solved {
-                let delay = Some(game.config.puzzle_display_seconds as u64);
-                Ok((true, "Correct! Puzzle solved!".to_string(), delay))
+                let context = Some(AutoAdvanceContext {
+                    phase: phase_at_solve,
+                    round: round_at_solve,
+                    solver_idx,
+                });
+                Ok((true, "Correct! Puzzle solved!".to_string(), context))
             } else {
                 Ok((false, "Incorrect!".to_string(), None))
             }
+        }
+        super::state::GamePhase::GameOver => {
+            Err("Game has ended.")
         }
     }
 }
@@ -772,12 +927,16 @@ pub fn register_handlers(io: &SocketIo) {
         socket.on(
             "new_game",
             |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
-                // Get the pack_id from room config first (needs read lock)
-                let pack_id = {
+                // Get the pack_id and check if in game over phase (needs read lock)
+                let (pack_id, is_game_over) = {
                     let manager = state.game_manager.read().await;
-                    manager.get_room(&req.room)
+                    let pack_id = manager.get_room(&req.room)
                         .map(|game| game.config.pack_id)
-                        .unwrap_or(None)
+                        .unwrap_or(None);
+                    let is_game_over = manager.get_room(&req.room)
+                        .map(|game| game.phase == GamePhase::GameOver)
+                        .unwrap_or(false);
+                    (pack_id, is_game_over)
                 };
 
                 // Get a new puzzle from database
@@ -791,14 +950,34 @@ pub fn register_handlers(io: &SocketIo) {
 
                 let mut manager = state.game_manager.write().await;
                 if let Some(game) = manager.get_room_mut(&req.room) {
-                    if !game.is_host(socket.id.as_str()) {
+                    // Allow anyone to reset during GameOver, otherwise host only
+                    if !is_game_over && !game.is_host(socket.id.as_str()) {
                         toast!(socket, "Host only.");
                         return;
                     }
                     game.reset_game();
                     game.new_puzzle(puzzle);
-                    toast!(socket, "New game started.");
+                    toast!(socket, "New game ready! Press Start Game to begin.");
                     broadcast_state!(socket, req.room, game.get_state());
+                }
+            },
+        );
+
+        // Start game (transition from pregame to tossup)
+        socket.on(
+            "start_game",
+            |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    match game.start_game() {
+                        Ok(_) => {
+                            toast!(socket, "Game started! Toss-up round begins!");
+                            broadcast_state!(socket, req.room, game.get_state());
+                        }
+                        Err(msg) => {
+                            toast!(socket, msg);
+                        }
+                    }
                 }
             },
         );
@@ -1132,23 +1311,36 @@ pub fn register_handlers(io: &SocketIo) {
             |socket: SocketRef, Data(req): Data<SolveRequest>, State(state): State<Arc<AppState>>| async move {
                 info!("Solve attempt '{}' in room {}", req.attempt, req.room);
 
-                // Track if we should auto-advance after solving
-                let mut auto_advance_delay: Option<u64> = None;
+                // Track auto-advance context if puzzle is solved
+                let mut auto_advance_context: Option<AutoAdvanceContext> = None;
 
                 {
                     let mut manager = state.game_manager.write().await;
                     if let Some(game) = manager.get_room_mut(&req.room) {
+                        // Capture phase and round BEFORE solving (for auto-advance logic)
+                        let phase_at_solve = game.phase;
+                        let round_at_solve = game.round;
+
                         // Handle solve based on phase
                         match game.phase {
+                            GamePhase::Pregame => {
+                                toast!(socket, "Game has not started yet.");
+                                return;
+                            }
                             GamePhase::Normal => {
                                 if !game.is_active_player(socket.id.as_str(), false) {
                                     toast!(socket, "Only the active player can solve.");
                                     return;
                                 }
+                                let solver_idx = game.active_idx;
                                 let solved = game.solve(&req.attempt);
                                 let msg = if solved {
-                                    // Schedule auto-advance after puzzle display time
-                                    auto_advance_delay = Some(game.config.puzzle_display_seconds as u64);
+                                    // Schedule auto-advance with context
+                                    auto_advance_context = Some(AutoAdvanceContext {
+                                        phase: phase_at_solve,
+                                        round: round_at_solve,
+                                        solver_idx,
+                                    });
                                     "Correct! Puzzle solved!"
                                 } else {
                                     "Incorrect, sorry!"
@@ -1163,11 +1355,18 @@ pub fn register_handlers(io: &SocketIo) {
                                     toast!(socket, "Only the player who buzzed in can solve.");
                                     return;
                                 }
+                                let solver_idx = game.active_idx;
                                 let solved = game.solve(&req.attempt);
                                 if solved {
                                     game.tossup_correct_answer();
-                                    // Schedule auto-advance after puzzle display time
-                                    auto_advance_delay = Some(game.config.puzzle_display_seconds as u64);
+                                    // Schedule auto-advance with context
+                                    // Note: tossup_correct_answer() already transitions to Normal Round 1
+                                    // but auto-advance will load a new puzzle for Round 1
+                                    auto_advance_context = Some(AutoAdvanceContext {
+                                        phase: phase_at_solve,
+                                        round: round_at_solve,
+                                        solver_idx,
+                                    });
                                     let msg = "Correct! You win the toss-up!";
                                     toast!(socket, msg);
                                     let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
@@ -1184,15 +1383,47 @@ pub fn register_handlers(io: &SocketIo) {
                                     return;
                                 }
                                 let solved = game.bonus_solve(&req.attempt);
+                                let jackpot = game.config.bonus_jackpot;
                                 let msg = if solved {
-                                    format!("Correct! You win the ${} jackpot!", game.config.bonus_jackpot)
+                                    format!("Correct! You win the ${} jackpot!", jackpot)
                                 } else {
                                     "Incorrect!".to_string()
                                 };
                                 toast!(socket, &msg);
                                 // Broadcast to entire room (including spectators)
                                 let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": &msg }));
-                                // No auto-advance for bonus round
+
+                                // If solved, transition to GameOver after a short delay to show result
+                                if solved {
+                                    // Show result for 5 seconds then transition to GameOver
+                                    let state_clone = state.clone();
+                                    let room_clone = req.room.clone();
+                                    tokio::spawn(async move {
+                                        // Brief delay to show bonus result before game over
+                                        tokio::time::sleep(Duration::from_secs(5)).await;
+
+                                        let mut manager = state_clone.game_manager.write().await;
+                                        if let Some(game) = manager.get_room_mut(&room_clone) {
+                                            // Only end if still in Bonus phase with Done stage
+                                            if game.phase == GamePhase::Bonus
+                                                && game.bonus_state.stage == super::state::BonusStage::Done
+                                            {
+                                                game.end_bonus();
+
+                                                // Broadcast game over state
+                                                if let Some(io) = state_clone.io.get() {
+                                                    if let Some(ns) = io.of("/") {
+                                                        let _ = ns.to(room_clone.clone()).emit("state", &game.get_state());
+                                                    }
+                                                }
+
+                                                // Spawn game over auto-reset timer
+                                                drop(manager);
+                                                spawn_game_over_reset(state_clone.clone(), room_clone);
+                                            }
+                                        }
+                                    });
+                                }
                             }
                             GamePhase::Final => {
                                 // Final Spin round - active player can solve
@@ -1200,9 +1431,15 @@ pub fn register_handlers(io: &SocketIo) {
                                     toast!(socket, "Only the active player can solve.");
                                     return;
                                 }
+                                let solver_idx = game.active_idx;
                                 let solved = game.solve(&req.attempt);
                                 let msg = if solved {
-                                    auto_advance_delay = Some(game.config.puzzle_display_seconds as u64);
+                                    // Schedule auto-advance - will transition to Bonus round
+                                    auto_advance_context = Some(AutoAdvanceContext {
+                                        phase: phase_at_solve,
+                                        round: round_at_solve,
+                                        solver_idx,
+                                    });
                                     "Correct! Puzzle solved!"
                                 } else {
                                     "Incorrect!"
@@ -1210,14 +1447,74 @@ pub fn register_handlers(io: &SocketIo) {
                                 toast!(socket, msg);
                                 let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
                             }
+                            GamePhase::GameOver => {
+                                toast!(socket, "Game has ended.");
+                                return;
+                            }
                         }
                         broadcast_state!(socket, req.room, game.get_state());
                     }
                 } // Lock dropped here
 
                 // Spawn auto-advance task if puzzle was solved
-                if let Some(delay) = auto_advance_delay {
-                    spawn_auto_advance_puzzle(state.clone(), req.room, delay);
+                if let Some(context) = auto_advance_context {
+                    spawn_auto_advance_puzzle(state.clone(), req.room, context);
+                }
+            },
+        );
+
+        // ========== PREGAME / START GAME ==========
+
+        // Start game - transitions from Pregame to Tossup
+        // Anyone can call this (not just host)
+        socket.on(
+            "start_game",
+            |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    match game.start_game() {
+                        Ok(()) => {
+                            toast!(socket, "Game started! Toss-up time!");
+                            broadcast_state!(socket, req.room.clone(), game.get_state());
+
+                            // Spawn background task to reveal letters progressively
+                            let state_clone = state.clone();
+                            let room_clone = req.room.clone();
+                            tokio::spawn(async move {
+                                // Reveal letters every 1.5 seconds until solved or ended
+                                loop {
+                                    tokio::time::sleep(Duration::from_millis(1500)).await;
+
+                                    let mut manager = state_clone.game_manager.write().await;
+                                    if let Some(game) = manager.get_room_mut(&room_clone) {
+                                        // Stop if no longer in toss-up
+                                        if game.phase != GamePhase::Tossup {
+                                            break;
+                                        }
+
+                                        // Reveal one letter
+                                        let revealed = game.tossup_reveal_step(1);
+                                        if revealed > 0 {
+                                            // Broadcast updated state
+                                            if let Some(io) = state_clone.io.get() {
+                                                if let Some(ns) = io.of("/") {
+                                                    let _ = ns.to(room_clone.clone()).emit("state", &game.get_state());
+                                                }
+                                            }
+                                        } else {
+                                            // No more letters to reveal
+                                            break;
+                                        }
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            toast!(socket, e);
+                        }
+                    }
                 }
             },
         );
@@ -1393,7 +1690,7 @@ pub fn register_handlers(io: &SocketIo) {
 
         // ========== FINAL SPIN ROUND ==========
 
-        // Start Final Spin round (host spins once, players take turns, free vowels)
+        // Start Final Spin round (active player spins once, value applies to ALL players, free vowels)
         socket.on(
             "start_final_spin",
             |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
@@ -1404,20 +1701,26 @@ pub fn register_handlers(io: &SocketIo) {
                         return;
                     }
                     game.start_final_spin();
-                    toast!(socket, "Final Spin round started! Host, spin the wheel!");
+                    let active_name = game.players.get(game.active_idx)
+                        .map(|p| p.name.clone())
+                        .unwrap_or_else(|| "Active player".to_string());
+                    toast!(socket, &format!("Final Spin round started! {}, spin the wheel!", active_name));
                     broadcast_state!(socket, req.room, game.get_state());
                 }
             },
         );
 
-        // Host performs the final spin (sets the value for all letters)
+        // Active player performs the final spin (sets the value for ALL players)
+        // NOTE: The active player does the spin, NOT the host
+        // The spin value applies to ALL players for the rest of the Final Spin round
         socket.on(
             "final_spin_spin",
             |socket: SocketRef, Data(req): Data<RoomRequest>, State(state): State<Arc<AppState>>| async move {
                 let mut manager = state.game_manager.write().await;
                 if let Some(game) = manager.get_room_mut(&req.room) {
-                    if !game.is_host(socket.id.as_str()) {
-                        toast!(socket, "Host only.");
+                    // Allow active player OR host to spin
+                    if !game.is_active_player(socket.id.as_str(), true) {
+                        toast!(socket, "Only the active player can spin.");
                         return;
                     }
                     if game.phase != GamePhase::Final {
@@ -1429,24 +1732,19 @@ pub fn register_handlers(io: &SocketIo) {
                         return;
                     }
 
-                    // Spin the wheel
-                    if let Some(wedge) = game.spin() {
-                        // Extract the cash value from the wedge
+                    // Use final_spin_do_spin which auto-respins on special wedges
+                    // until a normal cash value is obtained
+                    if let Some(wedge) = game.final_spin_do_spin() {
+                        // The wedge is guaranteed to be Cash at this point
+                        // (final_spin_do_spin auto-respins on non-cash wedges)
                         let spin_value = match &wedge {
                             super::WedgeValue::Cash(amount) => *amount,
-                            super::WedgeValue::Prize { .. } => 500, // Default value for prize wedges
-                            super::WedgeValue::FreePlay => 500, // Free play treated as $500
-                            super::WedgeValue::Bankrupt | super::WedgeValue::LoseTurn => {
-                                // Re-spin if bankrupt or lose turn
-                                let wedge_name = if matches!(wedge, super::WedgeValue::Bankrupt) { "BANKRUPT" } else { "LOSE A TURN" };
-                                toast!(socket, &format!("Landed on {}! Spinning again...", wedge_name));
-                                broadcast_state!(socket, req.room, game.get_state());
-                                return;
-                            }
+                            _ => 500, // Should not happen, but fallback
                         };
 
-                        // Add $1000 bonus (TV rules: final spin adds $1000)
-                        let final_value = spin_value + 1000;
+                        // Note: final_spin_do_spin already sets spin_value, but we add $1000 bonus here
+                        // (TV rules: final spin adds $1000 to whatever is spun)
+                        let final_value = spin_value + super::state::FINAL_SPIN_LETTER_BONUS;
                         game.set_final_spin_value(final_value);
 
                         let msg = format!("Final Spin value: ${}! Players, start calling letters!", final_value);
@@ -1523,8 +1821,13 @@ pub fn register_handlers(io: &SocketIo) {
                         return;
                     }
                     game.end_bonus();
-                    toast!(socket, "Bonus round ended.");
                     broadcast_state!(socket, req.room, game.get_state());
+
+                    // Spawn game over auto-reset timer
+                    let state_clone = state.clone();
+                    let room_clone = req.room.clone();
+                    drop(manager); // Release lock before spawning
+                    spawn_game_over_reset(state_clone, room_clone);
                 }
             },
         );
@@ -1540,8 +1843,13 @@ pub fn register_handlers(io: &SocketIo) {
                         return;
                     }
                     game.end_bonus();
-                    toast!(socket, "Bonus round ended.");
                     broadcast_state!(socket, req.room, game.get_state());
+
+                    // Spawn game over auto-reset timer
+                    let state_clone = state.clone();
+                    let room_clone = req.room.clone();
+                    drop(manager); // Release lock before spawning
+                    spawn_game_over_reset(state_clone, room_clone);
                 }
             },
         );
@@ -1602,9 +1910,94 @@ pub fn register_handlers(io: &SocketIo) {
                                                         let _ = ns.to(room_clone.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
                                                     }
                                                     if let Some(ns) = io.of("/") {
-                                                        let _ = ns.to(room_clone).emit("state", &game.get_state());
+                                                        let _ = ns.to(room_clone.clone()).emit("state", &game.get_state());
                                                     }
                                                 }
+
+                                                // Spawn game over auto-reset timer
+                                                drop(manager); // Release lock before spawning
+                                                spawn_game_over_reset(state_clone.clone(), room_clone);
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                            Err(msg) => {
+                                toast!(socket, msg);
+                            }
+                        }
+                        broadcast_state!(socket, req.room, game.get_state());
+                    }
+                }
+            },
+        );
+
+        // Also register as "bonus_pick" for new clients
+        socket.on(
+            "bonus_pick",
+            |socket: SocketRef, Data(req): Data<FinalPickRequest>, State(state): State<Arc<AppState>>| async move {
+                let mut manager = state.game_manager.write().await;
+                if let Some(game) = manager.get_room_mut(&req.room) {
+                    if !game.is_active_player(socket.id.as_str(), false) {
+                        toast!(socket, "Only the active player can pick.");
+                        return;
+                    }
+
+                    if let Some(letter) = req.letter.chars().next() {
+                        let result = if req.kind == "consonant" {
+                            game.bonus_pick_consonant(letter)
+                        } else if req.kind == "vowel" {
+                            game.bonus_pick_vowel(letter)
+                        } else {
+                            Err("Invalid pick kind")
+                        };
+
+                        match result {
+                            Ok(()) => {
+                                toast!(socket, &format!("Picked {}: {}", req.kind, letter.to_uppercase()));
+                                if game.bonus_all_picks_complete() {
+                                    // Auto-start the solve phase
+                                    game.bonus_start_solve();
+
+                                    let _ = socket.to(req.room.clone()).emit("toast", &serde_json::json!({ "msg": "All picks complete! Time to solve!" }));
+                                    toast!(socket, "All picks complete! Time to solve!");
+
+                                    // Spawn background task to auto-end bonus round when timer expires
+                                    let state_clone = state.clone();
+                                    let room_clone = req.room.clone();
+                                    let bonus_seconds = game.config.bonus_seconds as u64;
+                                    tokio::spawn(async move {
+                                        // Wait for timer to expire (plus small buffer)
+                                        tokio::time::sleep(Duration::from_secs(bonus_seconds + 1)).await;
+
+                                        // Check if timer expired and auto-end bonus round
+                                        let mut manager = state_clone.game_manager.write().await;
+                                        if let Some(game) = manager.get_room_mut(&room_clone) {
+                                            if game.phase == GamePhase::Bonus && game.bonus_timer_expired() {
+                                                // Timer expired - end bonus round
+                                                let player_name = game.players.get(game.active_idx)
+                                                    .map(|p| p.name.clone())
+                                                    .unwrap_or_else(|| "Player".to_string());
+                                                info!(
+                                                    "Bonus round timer expired for {} in room {}, auto-ending",
+                                                    player_name, room_clone
+                                                );
+                                                game.end_bonus();
+
+                                                // Broadcast update
+                                                if let Some(io) = state_clone.io.get() {
+                                                    let msg = format!("Time's up! {} didn't solve in time.", player_name);
+                                                    if let Some(ns) = io.of("/") {
+                                                        let _ = ns.to(room_clone.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
+                                                    }
+                                                    if let Some(ns) = io.of("/") {
+                                                        let _ = ns.to(room_clone.clone()).emit("state", &game.get_state());
+                                                    }
+                                                }
+
+                                                // Spawn game over auto-reset timer
+                                                drop(manager); // Release lock before spawning
+                                                spawn_game_over_reset(state_clone.clone(), room_clone);
                                             }
                                         }
                                     });
@@ -1716,9 +2109,13 @@ pub fn register_handlers(io: &SocketIo) {
                                         let _ = ns.to(room_clone.clone()).emit("toast", &serde_json::json!({ "msg": msg }));
                                     }
                                     if let Some(ns) = io.of("/") {
-                                        let _ = ns.to(room_clone).emit("state", &game.get_state());
+                                        let _ = ns.to(room_clone.clone()).emit("state", &game.get_state());
                                     }
                                 }
+
+                                // Spawn game over auto-reset timer
+                                drop(manager); // Release lock before spawning
+                                spawn_game_over_reset(state_clone.clone(), room_clone);
                             }
                         }
                     });
@@ -1870,12 +2267,14 @@ mod tests {
     }
 
     /// Create a test GameManager with a room and players
+    /// Sets phase to Normal by default for testing (games start in Pregame)
     fn create_test_manager_with_players(room: &str) -> GameManager {
         let mut manager = create_test_manager_with_room(room);
         let game = manager.get_room_mut(room).unwrap();
         game.add_player("Player 1".to_string(), Some("socket1".to_string()), None, None);
         game.add_player("Player 2".to_string(), Some("socket2".to_string()), None, None);
         game.add_player("Player 3".to_string(), Some("socket3".to_string()), None, None);
+        game.phase = GamePhase::Normal; // Set to Normal for tests (default is Pregame)
         manager
     }
 
@@ -2248,10 +2647,10 @@ mod tests {
         let result = handle_solve(&mut manager, "test-room", "socket1", "HELLO WORLD");
         assert!(result.is_ok());
 
-        let (solved, msg, delay) = result.unwrap();
+        let (solved, msg, context) = result.unwrap();
         assert!(solved);
         assert!(msg.contains("Correct"));
-        assert!(delay.is_some());
+        assert!(context.is_some()); // Auto-advance should be triggered
 
         // Verify puzzle is solved
         let game = manager.get_room("test-room").unwrap();
@@ -2265,10 +2664,10 @@ mod tests {
         let result = handle_solve(&mut manager, "test-room", "socket1", "WRONG ANSWER");
         assert!(result.is_ok());
 
-        let (solved, msg, delay) = result.unwrap();
+        let (solved, msg, context) = result.unwrap();
         assert!(!solved);
         assert!(msg.contains("Incorrect"));
-        assert!(delay.is_none());
+        assert!(context.is_none()); // No auto-advance on wrong answer
 
         // Verify turn advanced
         let game = manager.get_room("test-room").unwrap();
@@ -2297,10 +2696,10 @@ mod tests {
         let result = handle_solve(&mut manager, "test-room", "socket2", "HELLO WORLD");
         assert!(result.is_ok());
 
-        let (solved, msg, delay) = result.unwrap();
+        let (solved, msg, context) = result.unwrap();
         assert!(solved);
         assert!(msg.contains("toss-up"));
-        assert!(delay.is_some());
+        assert!(context.is_some()); // Auto-advance should be triggered
 
         // Verify tossup award
         let game = manager.get_room("test-room").unwrap();
@@ -2346,7 +2745,7 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_solve_final_phase_correct() {
+    fn test_handle_solve_bonus_phase_correct() {
         let mut manager = create_test_manager_with_players("test-room");
         {
             let game = manager.get_room_mut("test-room").unwrap();
@@ -2357,14 +2756,63 @@ mod tests {
         let result = handle_solve(&mut manager, "test-room", "socket1", "HELLO WORLD");
         assert!(result.is_ok());
 
-        let (solved, msg, delay) = result.unwrap();
+        let (solved, msg, context) = result.unwrap();
         assert!(solved);
         assert!(msg.contains("jackpot"));
-        assert!(delay.is_none()); // No auto-advance for final
+        assert!(context.is_none()); // No auto-advance for bonus round
 
         // Verify jackpot awarded
         let game = manager.get_room("test-room").unwrap();
         assert_eq!(game.players[0].total, game.config.bonus_jackpot);
+    }
+
+    #[test]
+    fn test_handle_solve_final_spin_phase_triggers_bonus_transition() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            // Set up Final Spin phase (not Bonus)
+            game.phase = GamePhase::Final;
+            game.round = 4;
+            game.final_spin.spin_done = true;
+            game.final_spin.spin_value = 500;
+        }
+
+        let result = handle_solve(&mut manager, "test-room", "socket1", "HELLO WORLD");
+        assert!(result.is_ok());
+
+        let (solved, msg, context) = result.unwrap();
+        assert!(solved);
+        assert!(msg.contains("Correct"));
+        assert!(context.is_some()); // Should trigger auto-advance to Bonus
+
+        // Verify context captures Final phase for bonus transition
+        let ctx = context.unwrap();
+        assert_eq!(ctx.phase, GamePhase::Final);
+        assert_eq!(ctx.round, 4);
+        assert_eq!(ctx.solver_idx, 0);
+    }
+
+    #[test]
+    fn test_handle_solve_normal_round_advances() {
+        let mut manager = create_test_manager_with_players("test-room");
+        {
+            let game = manager.get_room_mut("test-room").unwrap();
+            game.phase = GamePhase::Normal;
+            game.round = 2; // Middle round
+        }
+
+        let result = handle_solve(&mut manager, "test-room", "socket1", "HELLO WORLD");
+        assert!(result.is_ok());
+
+        let (solved, _, context) = result.unwrap();
+        assert!(solved);
+        assert!(context.is_some());
+
+        // Verify context captures round 2 for advancement to round 3
+        let ctx = context.unwrap();
+        assert_eq!(ctx.phase, GamePhase::Normal);
+        assert_eq!(ctx.round, 2);
     }
 
     // ========== BUZZ (TOSS-UP) TESTS ==========
