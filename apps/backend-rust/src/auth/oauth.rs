@@ -178,6 +178,7 @@ async fn google_auth(
                 (claims.sub, email, claims.name)
             }
             Err(e) => {
+                tracing::warn!("Google ID token verification failed: {}", e);
                 return (
                     StatusCode::UNAUTHORIZED,
                     Json(OAuthResponse {
@@ -185,7 +186,7 @@ async fn google_auth(
                         token: None,
                         user: None,
                         is_new_user: None,
-                        error: Some(format!("Invalid ID token: {}", e)),
+                        error: Some("Invalid or expired token".to_string()),
                     }),
                 ).into_response();
             }
@@ -212,6 +213,7 @@ async fn google_auth(
                 (user_info.sub, email, user_info.name)
             }
             Err(e) => {
+                tracing::warn!("Google access token verification failed: {}", e);
                 return (
                     StatusCode::UNAUTHORIZED,
                     Json(OAuthResponse {
@@ -219,7 +221,7 @@ async fn google_auth(
                         token: None,
                         user: None,
                         is_new_user: None,
-                        error: Some(format!("Invalid access token: {}", e)),
+                        error: Some("Invalid or expired token".to_string()),
                     }),
                 ).into_response();
             }
@@ -330,6 +332,7 @@ async fn apple_auth(
     let claims = match verify_apple_token(&req.identity_token, &client_id).await {
         Ok(c) => c,
         Err(e) => {
+            tracing::warn!("Apple token verification failed: {}", e);
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(OAuthResponse {
@@ -337,7 +340,7 @@ async fn apple_auth(
                     token: None,
                     user: None,
                     is_new_user: None,
-                    error: Some(format!("Invalid token: {}", e)),
+                    error: Some("Invalid or expired token".to_string()),
                 }),
             ).into_response();
         }
@@ -448,6 +451,7 @@ async fn handle_oauth_user(
                         (new_user_id, true)
                     }
                     Err(e) => {
+                        tracing::error!("Failed to create OAuth user for {}: {}", email, e);
                         return (
                             StatusCode::INTERNAL_SERVER_ERROR,
                             Json(OAuthResponse {
@@ -455,13 +459,14 @@ async fn handle_oauth_user(
                                 token: None,
                                 user: None,
                                 is_new_user: None,
-                                error: Some(format!("Failed to create user: {}", e)),
+                                error: Some("Failed to create account".to_string()),
                             }),
                         ).into_response();
                     }
                 }
             }
             Err(e) => {
+                tracing::error!("Database error looking up user by email {}: {}", email, e);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(OAuthResponse {
@@ -469,7 +474,7 @@ async fn handle_oauth_user(
                         token: None,
                         user: None,
                         is_new_user: None,
-                        error: Some(format!("Database error: {}", e)),
+                        error: Some("An unexpected error occurred".to_string()),
                     }),
                 ).into_response();
             }
@@ -492,6 +497,7 @@ async fn handle_oauth_user(
             ).into_response();
         }
         Err(e) => {
+            tracing::error!("Database error fetching user by id {}: {}", user_id, e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(OAuthResponse {
@@ -499,7 +505,7 @@ async fn handle_oauth_user(
                     token: None,
                     user: None,
                     is_new_user: None,
-                    error: Some(format!("Database error: {}", e)),
+                    error: Some("An unexpected error occurred".to_string()),
                 }),
             ).into_response();
         }
@@ -517,6 +523,7 @@ async fn handle_oauth_user(
     // Generate auth token
     let token = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
     if let Err(e) = state.db.set_remember_token(user_id, &token).await {
+        tracing::error!("Failed to set remember token for user {}: {}", user_id, e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(OAuthResponse {
@@ -524,7 +531,7 @@ async fn handle_oauth_user(
                 token: None,
                 user: None,
                 is_new_user: None,
-                error: Some(format!("Failed to create session: {}", e)),
+                error: Some("Failed to create session".to_string()),
             }),
         ).into_response();
     }
@@ -836,10 +843,16 @@ async fn handle_apple_web_user(
                     }
                     Ok((new_user_id, true))
                 }
-                Err(e) => Err(format!("Failed to create user: {}", e)),
+                Err(e) => {
+                    tracing::error!("Failed to create Apple web user for {}: {}", email, e);
+                    Err("Failed to create account".to_string())
+                }
             }
         }
-        Err(e) => Err(format!("Database error: {}", e)),
+        Err(e) => {
+            tracing::error!("Database error in Apple web auth for {}: {}", email, e);
+            Err("An unexpected error occurred".to_string())
+        }
     }
 }
 

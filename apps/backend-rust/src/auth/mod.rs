@@ -946,14 +946,17 @@ async fn api_packs(
                 }),
             )
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(PacksResponse {
-                ok: false,
-                packs: None,
-                error: Some(format!("Failed to fetch packs: {}", e)),
-            }),
-        ),
+        Err(e) => {
+            tracing::error!("Failed to fetch packs: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(PacksResponse {
+                    ok: false,
+                    packs: None,
+                    error: Some("Failed to fetch packs".to_string()),
+                }),
+            )
+        }
     }
 }
 
@@ -1899,9 +1902,12 @@ async fn admin_save_settings(
                 ok: true, message: Some("Settings saved".to_string()), error: None
             }))
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
-            ok: false, message: None, error: Some(format!("Failed to save settings: {}", e))
-        })),
+        Err(e) => {
+            tracing::error!("Failed to save settings for room {}: {}", room_name, e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
+                ok: false, message: None, error: Some("Failed to save settings".to_string())
+            }))
+        }
     }
 }
 
@@ -2241,7 +2247,7 @@ mod tests {
     fn test_register_request_validation() {
         let valid_request = RegisterRequest {
             email: "test@example.com".to_string(),
-            password: "password1".to_string(),
+            password: "Password1!".to_string(),
             display_name: "Test User".to_string(),
             avatar_id: 1,
             captcha_token: None,
@@ -2250,7 +2256,7 @@ mod tests {
 
         let short_password = RegisterRequest {
             email: "test@example.com".to_string(),
-            password: "short1".to_string(),
+            password: "Short1!".to_string(),
             display_name: "Test User".to_string(),
             avatar_id: 1,
             captcha_token: None,
@@ -2259,7 +2265,7 @@ mod tests {
 
         let short_display_name = RegisterRequest {
             email: "test@example.com".to_string(),
-            password: "password1".to_string(),
+            password: "Password1!".to_string(),
             display_name: "a".to_string(),
             avatar_id: 1,
             captcha_token: None,
@@ -2268,7 +2274,7 @@ mod tests {
 
         let long_display_name = RegisterRequest {
             email: "test@example.com".to_string(),
-            password: "password1".to_string(),
+            password: "Password1!".to_string(),
             display_name: "a".repeat(25),
             avatar_id: 1,
             captcha_token: None,
@@ -2459,7 +2465,7 @@ mod tests {
     fn test_register_request_with_avatar_id() {
         let request = RegisterRequest {
             email: "test@example.com".to_string(),
-            password: "password1".to_string(),
+            password: "Password1!".to_string(),
             display_name: "Test User".to_string(),
             avatar_id: 5,
             captcha_token: None,
@@ -2470,7 +2476,7 @@ mod tests {
     #[test]
     fn test_register_request_default_avatar_id() {
         // When avatar_id is not provided, it should default to 1
-        let json = r#"{"email":"test@example.com","password":"password1","display_name":"Test User"}"#;
+        let json = r#"{"email":"test@example.com","password":"Password1!","display_name":"Test User"}"#;
         let request: RegisterRequest = serde_json::from_str(json).unwrap();
         assert_eq!(request.avatar_id, 1);
         assert!(request.validate().is_ok());
@@ -2478,7 +2484,7 @@ mod tests {
 
     #[test]
     fn test_register_request_with_explicit_avatar() {
-        let json = r#"{"email":"test@example.com","password":"password1","display_name":"Test User","avatar_id":7}"#;
+        let json = r#"{"email":"test@example.com","password":"Password1!","display_name":"Test User","avatar_id":7}"#;
         let request: RegisterRequest = serde_json::from_str(json).unwrap();
         assert_eq!(request.avatar_id, 7);
         assert!(request.validate().is_ok());

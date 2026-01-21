@@ -1,9 +1,21 @@
+use sha2::{Digest, Sha256};
 use sqlx::{migrate::MigrateDatabase, FromRow, Row, Sqlite, SqlitePool};
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tracing::info;
 
 use crate::game::{Puzzle, RoomConfig};
+
+/// Hash a token using SHA-256 for secure storage.
+///
+/// This prevents token theft even if the database is compromised,
+/// as the original token cannot be recovered from the hash.
+fn hash_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    let result = hasher.finalize();
+    hex::encode(result)
+}
 
 // ============================================================================
 // DATABASE MIGRATIONS
@@ -91,6 +103,7 @@ pub struct User {
     pub created_at: i64,
     pub last_login_at: Option<i64>,
     pub remember_token: Option<String>,
+    pub remember_token_expires: Option<i64>,
     #[sqlx(default)]
     pub is_admin: bool,
     #[sqlx(default)]
@@ -347,12 +360,22 @@ impl Database {
         Ok(user)
     }
 
-    /// Get user by remember token
+    /// Get user by remember token (returns None if token is expired or invalid)
+    ///
+    /// The provided token is hashed before comparison since tokens are
+    /// stored as hashes for security.
     pub async fn get_user_by_token(&self, token: &str) -> Result<Option<User>, DbError> {
-        let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE remember_token = ?")
-            .bind(token)
-            .fetch_optional(&self.pool)
-            .await?;
+        let token_hash = hash_token(token);
+        let now = now_secs();
+        // Token must exist (hash must match) and not be expired
+        // Uses COALESCE to treat NULL expires as expired (for old tokens before this migration)
+        let user = sqlx::query_as::<_, User>(
+            "SELECT * FROM users WHERE remember_token = ? AND COALESCE(remember_token_expires, 0) > ?",
+        )
+        .bind(token_hash)
+        .bind(now)
+        .fetch_optional(&self.pool)
+        .await?;
         Ok(user)
     }
 
@@ -367,10 +390,19 @@ impl Database {
         Ok(())
     }
 
-    /// Set remember token
+    /// Token expiration duration: 30 days in seconds
+    const TOKEN_EXPIRATION_SECS: i64 = 30 * 24 * 60 * 60;
+
+    /// Set remember token with expiration (30 days from now)
+    ///
+    /// The token is hashed (SHA-256) before storage for security.
+    /// This means the original token cannot be recovered from the database.
     pub async fn set_remember_token(&self, user_id: i64, token: &str) -> Result<(), DbError> {
-        sqlx::query("UPDATE users SET remember_token = ? WHERE id = ?")
-            .bind(token)
+        let token_hash = hash_token(token);
+        let expires = now_secs() + Self::TOKEN_EXPIRATION_SECS;
+        sqlx::query("UPDATE users SET remember_token = ?, remember_token_expires = ? WHERE id = ?")
+            .bind(token_hash)
+            .bind(expires)
             .bind(user_id)
             .execute(&self.pool)
             .await?;
@@ -379,7 +411,7 @@ impl Database {
 
     /// Clear remember token
     pub async fn clear_remember_token(&self, user_id: i64) -> Result<(), DbError> {
-        sqlx::query("UPDATE users SET remember_token = NULL WHERE id = ?")
+        sqlx::query("UPDATE users SET remember_token = NULL, remember_token_expires = NULL WHERE id = ?")
             .bind(user_id)
             .execute(&self.pool)
             .await?;
@@ -1552,6 +1584,46 @@ mod tests {
 
         // Token no longer works
         let user = db.get_user_by_token("remember-me-token").await.unwrap();
+        assert!(user.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_remember_token_expiration() {
+        let db = create_test_db().await;
+
+        let user_id = db
+            .create_user(NewUser {
+                email: "expire@example.com".to_string(),
+                password_hash: "hash123".to_string(),
+                display_name: "Expire User".to_string(),
+                verification_token: "token123".to_string(),
+                verification_token_expires: 9999999999,
+                avatar_id: 1,
+            })
+            .await
+            .unwrap();
+
+        // Set remember token (automatically sets expiration to 30 days from now)
+        db.set_remember_token(user_id, "will-expire-token").await.unwrap();
+
+        // Token should work (not expired yet)
+        let user = db.get_user_by_token("will-expire-token").await.unwrap();
+        assert!(user.is_some());
+
+        // Verify expiration is set
+        let user = user.unwrap();
+        assert!(user.remember_token_expires.is_some());
+
+        // Manually set token as expired for testing
+        sqlx::query("UPDATE users SET remember_token_expires = ? WHERE id = ?")
+            .bind(1000i64) // Way in the past
+            .bind(user_id)
+            .execute(&db.pool)
+            .await
+            .unwrap();
+
+        // Token should now be rejected (expired)
+        let user = db.get_user_by_token("will-expire-token").await.unwrap();
         assert!(user.is_none());
     }
 
@@ -3009,6 +3081,7 @@ mod tests {
                 created_at INTEGER NOT NULL,
                 last_login_at INTEGER,
                 remember_token TEXT,
+                remember_token_expires INTEGER,
                 is_admin INTEGER NOT NULL DEFAULT 0,
                 avatar_id INTEGER NOT NULL DEFAULT 1
             )

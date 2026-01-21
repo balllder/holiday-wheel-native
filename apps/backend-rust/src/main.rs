@@ -9,7 +9,7 @@ use rustls::crypto::ring::default_provider;
 use socketioxide::SocketIo;
 use tokio::sync::{OnceCell, RwLock};
 use tokio::signal;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -75,6 +75,8 @@ pub struct AppState {
     pub io: OnceCell<SocketIo>,
     /// Track socket IDs by user ID for session invalidation
     pub user_sockets: RwLock<HashMap<i64, HashSet<String>>>,
+    /// Application configuration
+    pub config: Config,
 }
 
 #[tokio::main]
@@ -146,6 +148,7 @@ async fn main() -> anyhow::Result<()> {
         email,
         io: OnceCell::new(),
         user_sockets: RwLock::new(HashMap::new()),
+        config: config.clone(),
     });
 
     // Set up Socket.IO with CORS support for cross-origin connections
@@ -205,25 +208,40 @@ async fn main() -> anyhow::Result<()> {
         .route("/join", get(routes::join))
         .route("/admin", get(routes::admin))
         .route("/health", get(routes::health))
+        .route("/favicon.ico", get(routes::favicon))
         .nest("/auth", auth_routes)
         .with_state(state)
         .merge(metrics_routes)
         .nest("/docs", docs::routes())
         .layer(socket_layer)
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
+        .layer({
+            // Build CORS layer based on configuration
+            let cors = CorsLayer::new()
                 .allow_methods(Any)
-                .allow_headers(Any)
-                .allow_credentials(false)
-        )
+                .allow_headers(Any);
+
+            if config.cors.permissive {
+                // Permissive mode: allow any origin (development/testing only)
+                cors.allow_origin(Any).allow_credentials(false)
+            } else {
+                // Strict mode: only allow configured origins
+                let origins: Vec<_> = config
+                    .cors
+                    .allowed_origins
+                    .iter()
+                    .filter_map(|s| s.parse().ok())
+                    .collect();
+                cors.allow_origin(AllowOrigin::list(origins))
+                    .allow_credentials(true)
+            }
+        })
         // Add metrics middleware to record request metrics
         .layer(middleware::from_fn_with_state(
             metrics_state,
             metrics::metrics_middleware,
         ))
-        // Add security headers (X-Content-Type-Options, X-Frame-Options, CSP, etc.)
-        .layer(SecurityHeadersLayer::new())
+        // Add security headers (X-Content-Type-Options, X-Frame-Options, CSP, HSTS when SSL)
+        .layer(SecurityHeadersLayer::with_ssl(config.server.ssl_enabled))
         // Apply general rate limiting (100 req/s, 250 burst) to all routes
         .layer(create_api_rate_limiter())
         // Add request ID middleware for structured logging (outermost layer = first to execute)

@@ -13,6 +13,9 @@ const X_FRAME_OPTIONS: &str = "DENY";
 const X_XSS_PROTECTION: &str = "1; mode=block";
 const REFERRER_POLICY: &str = "strict-origin-when-cross-origin";
 
+/// HSTS header value - max-age=1 year, include subdomains, preload
+const STRICT_TRANSPORT_SECURITY: &str = "max-age=31536000; includeSubDomains; preload";
+
 /// Content Security Policy
 /// - default-src 'self': Only allow resources from same origin by default
 /// - script-src 'self' 'unsafe-inline' + CDNs: Allow scripts from same origin, inline, Socket.IO, jsdelivr, and Google Sign-In
@@ -25,12 +28,20 @@ const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self' 'un
 
 /// Layer that adds security headers to all responses.
 #[derive(Clone, Debug)]
-pub struct SecurityHeadersLayer;
+pub struct SecurityHeadersLayer {
+    /// Whether SSL/TLS is enabled (adds HSTS header when true)
+    ssl_enabled: bool,
+}
 
 impl SecurityHeadersLayer {
     /// Creates a new `SecurityHeadersLayer`.
     pub fn new() -> Self {
-        Self
+        Self { ssl_enabled: false }
+    }
+
+    /// Creates a new `SecurityHeadersLayer` with SSL/HSTS support.
+    pub fn with_ssl(ssl_enabled: bool) -> Self {
+        Self { ssl_enabled }
     }
 }
 
@@ -44,7 +55,10 @@ impl<S> Layer<S> for SecurityHeadersLayer {
     type Service = SecurityHeadersService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        SecurityHeadersService { inner }
+        SecurityHeadersService {
+            inner,
+            ssl_enabled: self.ssl_enabled,
+        }
     }
 }
 
@@ -52,6 +66,7 @@ impl<S> Layer<S> for SecurityHeadersLayer {
 #[derive(Clone, Debug)]
 pub struct SecurityHeadersService<S> {
     inner: S,
+    ssl_enabled: bool,
 }
 
 impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for SecurityHeadersService<S>
@@ -70,6 +85,7 @@ where
     fn call(&mut self, request: Request<ReqBody>) -> Self::Future {
         SecurityHeadersFuture {
             inner: self.inner.call(request),
+            ssl_enabled: self.ssl_enabled,
         }
     }
 }
@@ -79,6 +95,7 @@ where
 pub struct SecurityHeadersFuture<F> {
     #[pin]
     inner: F,
+    ssl_enabled: bool,
 }
 
 impl<F, ResBody, E> std::future::Future for SecurityHeadersFuture<F>
@@ -89,6 +106,7 @@ where
 
     fn poll(self: std::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
+        let ssl_enabled = *this.ssl_enabled;
         match this.inner.poll(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(result) => Poll::Ready(result.map(|mut response| {
@@ -115,6 +133,14 @@ where
                     header::CONTENT_SECURITY_POLICY,
                     CONTENT_SECURITY_POLICY.parse().unwrap(),
                 );
+
+                // Add HSTS header when SSL is enabled
+                if ssl_enabled {
+                    headers.insert(
+                        header::STRICT_TRANSPORT_SECURITY,
+                        STRICT_TRANSPORT_SECURITY.parse().unwrap(),
+                    );
+                }
 
                 response
             })),
@@ -262,5 +288,50 @@ mod tests {
         // Security headers should be present even on error responses
         assert!(response.headers().contains_key(header::X_CONTENT_TYPE_OPTIONS));
         assert!(response.headers().contains_key(header::X_FRAME_OPTIONS));
+    }
+
+    #[tokio::test]
+    async fn test_hsts_header_when_ssl_enabled() {
+        let app = Router::new()
+            .route("/", get(hello_handler))
+            .layer(SecurityHeadersLayer::with_ssl(true));
+
+        let response = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // HSTS header should be present when SSL is enabled
+        let hsts = response
+            .headers()
+            .get(header::STRICT_TRANSPORT_SECURITY)
+            .map(|v| v.to_str().unwrap());
+
+        assert!(hsts.is_some());
+        let hsts_value = hsts.unwrap();
+        assert!(hsts_value.contains("max-age=31536000"));
+        assert!(hsts_value.contains("includeSubDomains"));
+        assert!(hsts_value.contains("preload"));
+    }
+
+    #[tokio::test]
+    async fn test_no_hsts_header_when_ssl_disabled() {
+        let app = Router::new()
+            .route("/", get(hello_handler))
+            .layer(SecurityHeadersLayer::with_ssl(false));
+
+        let response = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // HSTS header should NOT be present when SSL is disabled
+        assert!(!response
+            .headers()
+            .contains_key(header::STRICT_TRANSPORT_SECURITY));
     }
 }

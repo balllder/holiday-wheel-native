@@ -850,9 +850,7 @@ pub fn register_handlers(io: &SocketIo) {
         socket.on(
             "claim_host",
             |socket: SocketRef, Data(req): Data<ClaimHostRequest>, State(state): State<Arc<AppState>>| async move {
-                let host_code = std::env::var("HOST_CODE").unwrap_or_else(|_| "holiday".to_string());
-
-                if req.code != host_code {
+                if req.code != state.config.game.host_code {
                     toast!(socket, "Invalid host code.");
                     socket.emit("host_granted", &serde_json::json!({ "granted": false })).ok();
                     return;

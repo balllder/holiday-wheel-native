@@ -60,6 +60,26 @@ pub async fn health(State(state): State<Arc<AppState>>) -> Response {
     }
 }
 
+/// Favicon - Holiday Wheel themed SVG
+pub async fn favicon() -> impl IntoResponse {
+    // Simple wheel-themed SVG favicon
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <circle cx="16" cy="16" r="14" fill="#d4af37" stroke="#0d0628" stroke-width="2"/>
+  <circle cx="16" cy="16" r="10" fill="#1a5cb8"/>
+  <circle cx="16" cy="16" r="3" fill="#d4af37"/>
+  <line x1="16" y1="6" x2="16" y2="12" stroke="#d4af37" stroke-width="2"/>
+  <line x1="16" y1="20" x2="16" y2="26" stroke="#d4af37" stroke-width="2"/>
+  <line x1="6" y1="16" x2="12" y2="16" stroke="#d4af37" stroke-width="2"/>
+  <line x1="20" y1="16" x2="26" y2="16" stroke="#d4af37" stroke-width="2"/>
+</svg>"##;
+
+    (
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "image/svg+xml")],
+        svg,
+    )
+}
+
 /// Join query parameters
 #[derive(Deserialize)]
 pub struct JoinQuery {
@@ -8499,6 +8519,7 @@ mod tests {
     use tower::ServiceExt;
     use tokio::sync::{OnceCell, RwLock};
 
+    use crate::config::Config;
     use crate::db::Database;
     use crate::email::EmailService;
     use crate::game::GameManager;
@@ -8512,6 +8533,7 @@ mod tests {
         let db = Database::new(&path).await.unwrap();
         let email = EmailService::from_env();
         let game_manager = GameManager::new();
+        let config = Config::from_env_no_dotenv().unwrap();
 
         Arc::new(AppState {
             game_manager: RwLock::new(game_manager),
@@ -8519,6 +8541,7 @@ mod tests {
             email,
             io: OnceCell::new(),
             user_sockets: RwLock::new(HashMap::new()),
+            config,
         })
     }
 

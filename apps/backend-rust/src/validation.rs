@@ -77,21 +77,53 @@ pub fn email_validator(email: &str) -> Result<(), validator::ValidationError> {
     }
 }
 
+/// Minimum password length requirement
+pub const PASSWORD_MIN_LENGTH: usize = 8;
+
 /// Custom validator for password strength
+///
+/// Enforces the following requirements:
+/// - At least 8 characters long
+/// - At least one lowercase letter
+/// - At least one uppercase letter
+/// - At least one digit
+/// - At least one special character (!@#$%^&*(),.?":{}|<>-_+=)
 pub fn password_validator(password: &str) -> Result<(), validator::ValidationError> {
-    if password.len() < 8 {
+    if password.len() < PASSWORD_MIN_LENGTH {
         let mut err = validator::ValidationError::new("password_length");
-        err.message = Some("Password must be at least 8 characters".into());
+        err.message = Some(format!("Password must be at least {} characters", PASSWORD_MIN_LENGTH).into());
         return Err(err);
     }
 
-    // Check for at least one letter and one number (optional but recommended)
-    let has_letter = password.chars().any(|c| c.is_alphabetic());
+    let has_lowercase = password.chars().any(|c| c.is_ascii_lowercase());
+    let has_uppercase = password.chars().any(|c| c.is_ascii_uppercase());
     let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    let has_special = password.chars().any(|c| "!@#$%^&*(),.?\":{}|<>-_+=[]\\;'/~`".contains(c));
 
-    if !has_letter || !has_digit {
+    let mut missing = Vec::new();
+
+    if !has_lowercase {
+        missing.push("lowercase letter");
+    }
+    if !has_uppercase {
+        missing.push("uppercase letter");
+    }
+    if !has_digit {
+        missing.push("number");
+    }
+    if !has_special {
+        missing.push("special character");
+    }
+
+    if !missing.is_empty() {
         let mut err = validator::ValidationError::new("password_complexity");
-        err.message = Some("Password must contain at least one letter and one number".into());
+        let missing_str = if missing.len() == 1 {
+            format!("a {}", missing[0])
+        } else {
+            let last = missing.pop().unwrap();
+            format!("a {}, and a {}", missing.join(", a "), last)
+        };
+        err.message = Some(format!("Password must contain {}", missing_str).into());
         return Err(err);
     }
 
@@ -145,26 +177,58 @@ mod tests {
 
     #[test]
     fn test_password_validator_valid() {
-        assert!(password_validator("password1").is_ok());
-        assert!(password_validator("MySecure123").is_ok());
-        assert!(password_validator("abcdefg1").is_ok());
+        // Meets all requirements: 8+ chars, lowercase, uppercase, number, special
+        assert!(password_validator("Password1!").is_ok());
+        assert!(password_validator("MySecure123@").is_ok());
+        assert!(password_validator("Abcdefg1#").is_ok());
+        assert!(password_validator("P@ssw0rd").is_ok());
+        assert!(password_validator("Complex-Pass99").is_ok());
     }
 
     #[test]
     fn test_password_validator_too_short() {
-        assert!(password_validator("abc1").is_err());
+        assert!(password_validator("Ab1!").is_err());
         assert!(password_validator("").is_err());
-        assert!(password_validator("short1").is_err());
+        assert!(password_validator("Short1!").is_err()); // 7 chars
     }
 
     #[test]
     fn test_password_validator_no_number() {
-        assert!(password_validator("password").is_err());
+        assert!(password_validator("Password!").is_err());
     }
 
     #[test]
     fn test_password_validator_no_letter() {
-        assert!(password_validator("12345678").is_err());
+        assert!(password_validator("12345678!").is_err());
+    }
+
+    #[test]
+    fn test_password_validator_no_uppercase() {
+        assert!(password_validator("password1!").is_err());
+    }
+
+    #[test]
+    fn test_password_validator_no_lowercase() {
+        assert!(password_validator("PASSWORD1!").is_err());
+    }
+
+    #[test]
+    fn test_password_validator_no_special() {
+        assert!(password_validator("Password1").is_err());
+    }
+
+    #[test]
+    fn test_password_validator_error_messages() {
+        // Test that error messages are descriptive
+        let result = password_validator("abc");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.is_some());
+
+        let result2 = password_validator("abcdefgh"); // Only lowercase
+        assert!(result2.is_err());
+        let err2 = result2.unwrap_err();
+        assert!(err2.message.unwrap().to_string().contains("uppercase"));
     }
 
     #[test]

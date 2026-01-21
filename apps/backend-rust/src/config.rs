@@ -86,6 +86,25 @@ pub struct AdminConfig {
     pub admin_email: Option<String>,
 }
 
+/// CORS configuration
+#[derive(Debug, Clone)]
+pub struct CorsConfig {
+    /// Allowed origins for CORS. Empty means allow all (development only).
+    /// In production, this should be explicitly set via CORS_ALLOWED_ORIGINS.
+    pub allowed_origins: Vec<String>,
+    /// Whether CORS is in permissive mode (allows any origin)
+    pub permissive: bool,
+}
+
+/// Game configuration
+#[derive(Debug, Clone)]
+pub struct GameConfig {
+    /// Host code for claiming host privileges
+    pub host_code: String,
+    /// Whether using the default (insecure) host code
+    pub using_default_host_code: bool,
+}
+
 /// Application configuration loaded from environment variables
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -95,6 +114,8 @@ pub struct Config {
     pub webauthn: WebAuthnConfig,
     pub oauth: OAuthConfig,
     pub admin: AdminConfig,
+    pub cors: CorsConfig,
+    pub game: GameConfig,
     pub rust_log: String,
 }
 
@@ -212,6 +233,12 @@ impl Config {
         // Admin configuration
         let admin_email = Self::get_optional_with_warning("ADMIN_EMAIL", "auto-admin assignment");
 
+        // CORS configuration
+        let (cors_origins, cors_permissive) = Self::parse_cors_origins();
+
+        // Game configuration
+        let (host_code, using_default_host_code) = Self::parse_host_code();
+
         // Logging configuration
         let rust_log = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
 
@@ -251,6 +278,14 @@ impl Config {
                 apple_redirect_uri,
             },
             admin: AdminConfig { admin_email },
+            cors: CorsConfig {
+                allowed_origins: cors_origins,
+                permissive: cors_permissive,
+            },
+            game: GameConfig {
+                host_code,
+                using_default_host_code,
+            },
             rust_log,
         })
     }
@@ -375,6 +410,77 @@ impl Config {
         Ok(())
     }
 
+    /// Parse CORS allowed origins from environment variable.
+    ///
+    /// CORS_ALLOWED_ORIGINS can be:
+    /// - Not set or empty: Permissive mode (allow any origin) - logs warning in production
+    /// - "*": Explicitly permissive mode (allow any origin) - logs warning
+    /// - Comma-separated URLs: Strict mode with specific allowed origins
+    ///
+    /// Returns (origins, is_permissive)
+    fn parse_cors_origins() -> (Vec<String>, bool) {
+        match std::env::var("CORS_ALLOWED_ORIGINS") {
+            Ok(value) if value.trim() == "*" => {
+                warn!(
+                    "CORS_ALLOWED_ORIGINS is set to '*' (allow any origin). \
+                    This is insecure for production! Set specific origins."
+                );
+                (vec![], true)
+            }
+            Ok(value) if !value.trim().is_empty() => {
+                let origins: Vec<String> = value
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+
+                if origins.is_empty() {
+                    warn!(
+                        "CORS_ALLOWED_ORIGINS was set but contains no valid origins. \
+                        Falling back to permissive mode."
+                    );
+                    (vec![], true)
+                } else {
+                    info!("CORS configured with {} allowed origin(s)", origins.len());
+                    (origins, false)
+                }
+            }
+            _ => {
+                warn!(
+                    "CORS_ALLOWED_ORIGINS not set. Using permissive mode (allow any origin). \
+                    This is insecure for production! Set CORS_ALLOWED_ORIGINS=https://your-domain.com"
+                );
+                (vec![], true)
+            }
+        }
+    }
+
+    /// Parse HOST_CODE from environment variable.
+    ///
+    /// If HOST_CODE is not set, uses insecure default "holiday" and logs a warning.
+    /// Returns (host_code, using_default)
+    fn parse_host_code() -> (String, bool) {
+        match std::env::var("HOST_CODE") {
+            Ok(code) if !code.trim().is_empty() => {
+                let code = code.trim().to_string();
+                if code.len() < 8 {
+                    warn!(
+                        "HOST_CODE is set but short ({} chars). Consider using a longer code for security.",
+                        code.len()
+                    );
+                }
+                (code, false)
+            }
+            _ => {
+                warn!(
+                    "HOST_CODE not set! Using insecure default. \
+                    In production, set HOST_CODE to a secure value."
+                );
+                ("holiday".to_string(), true)
+            }
+        }
+    }
+
     /// Log the loaded configuration (with sensitive values redacted)
     pub fn log_config(&self) {
         info!("Configuration loaded:");
@@ -433,6 +539,21 @@ impl Config {
             "    Admin Email: {}",
             self.admin.admin_email.as_deref().unwrap_or("not set")
         );
+        info!("  CORS:");
+        if self.cors.permissive {
+            info!("    Mode: PERMISSIVE (any origin allowed) - NOT SECURE FOR PRODUCTION");
+        } else {
+            info!("    Mode: STRICT ({} origins)", self.cors.allowed_origins.len());
+            for origin in &self.cors.allowed_origins {
+                info!("    - {}", origin);
+            }
+        }
+        info!("  Game:");
+        if self.game.using_default_host_code {
+            info!("    Host Code: DEFAULT ('holiday') - NOT SECURE FOR PRODUCTION");
+        } else {
+            info!("    Host Code: {} (custom)", redact(&self.game.host_code));
+        }
         info!("  Logging: {}", self.rust_log);
     }
 }
@@ -489,6 +610,8 @@ mod tests {
         "APPLE_CLIENT_ID_WEB",
         "APPLE_REDIRECT_URI",
         "ADMIN_EMAIL",
+        "CORS_ALLOWED_ORIGINS",
+        "HOST_CODE",
         "RUST_LOG",
     ];
 
@@ -848,5 +971,109 @@ mod tests {
                 }
             },
         );
+    }
+
+    #[test]
+    fn test_cors_default_permissive() {
+        // Without CORS_ALLOWED_ORIGINS, should be permissive
+        with_clean_env(&[], || {
+            let config = Config::from_env_no_dotenv().unwrap();
+            assert!(config.cors.permissive);
+            assert!(config.cors.allowed_origins.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_cors_explicit_wildcard() {
+        // CORS_ALLOWED_ORIGINS="*" should be explicitly permissive
+        with_clean_env(&[("CORS_ALLOWED_ORIGINS", "*")], || {
+            let config = Config::from_env_no_dotenv().unwrap();
+            assert!(config.cors.permissive);
+            assert!(config.cors.allowed_origins.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_cors_single_origin() {
+        with_clean_env(&[("CORS_ALLOWED_ORIGINS", "https://example.com")], || {
+            let config = Config::from_env_no_dotenv().unwrap();
+            assert!(!config.cors.permissive);
+            assert_eq!(config.cors.allowed_origins.len(), 1);
+            assert_eq!(config.cors.allowed_origins[0], "https://example.com");
+        });
+    }
+
+    #[test]
+    fn test_cors_multiple_origins() {
+        with_clean_env(
+            &[(
+                "CORS_ALLOWED_ORIGINS",
+                "https://example.com, https://app.example.com, http://localhost:3000",
+            )],
+            || {
+                let config = Config::from_env_no_dotenv().unwrap();
+                assert!(!config.cors.permissive);
+                assert_eq!(config.cors.allowed_origins.len(), 3);
+                assert_eq!(config.cors.allowed_origins[0], "https://example.com");
+                assert_eq!(config.cors.allowed_origins[1], "https://app.example.com");
+                assert_eq!(config.cors.allowed_origins[2], "http://localhost:3000");
+            },
+        );
+    }
+
+    #[test]
+    fn test_cors_empty_string_fallback() {
+        // Empty CORS_ALLOWED_ORIGINS should fall back to permissive
+        with_clean_env(&[("CORS_ALLOWED_ORIGINS", "")], || {
+            let config = Config::from_env_no_dotenv().unwrap();
+            assert!(config.cors.permissive);
+        });
+    }
+
+    #[test]
+    fn test_cors_whitespace_only_fallback() {
+        // Whitespace-only CORS_ALLOWED_ORIGINS should fall back to permissive
+        with_clean_env(&[("CORS_ALLOWED_ORIGINS", "   ")], || {
+            let config = Config::from_env_no_dotenv().unwrap();
+            assert!(config.cors.permissive);
+        });
+    }
+
+    #[test]
+    fn test_host_code_default() {
+        // Without HOST_CODE, should use default "holiday"
+        with_clean_env(&[], || {
+            let config = Config::from_env_no_dotenv().unwrap();
+            assert!(config.game.using_default_host_code);
+            assert_eq!(config.game.host_code, "holiday");
+        });
+    }
+
+    #[test]
+    fn test_host_code_custom() {
+        with_clean_env(&[("HOST_CODE", "my-secure-code-123")], || {
+            let config = Config::from_env_no_dotenv().unwrap();
+            assert!(!config.game.using_default_host_code);
+            assert_eq!(config.game.host_code, "my-secure-code-123");
+        });
+    }
+
+    #[test]
+    fn test_host_code_empty_falls_back() {
+        // Empty HOST_CODE should fall back to default
+        with_clean_env(&[("HOST_CODE", "")], || {
+            let config = Config::from_env_no_dotenv().unwrap();
+            assert!(config.game.using_default_host_code);
+            assert_eq!(config.game.host_code, "holiday");
+        });
+    }
+
+    #[test]
+    fn test_host_code_whitespace_trimmed() {
+        with_clean_env(&[("HOST_CODE", "  my-code  ")], || {
+            let config = Config::from_env_no_dotenv().unwrap();
+            assert!(!config.game.using_default_host_code);
+            assert_eq!(config.game.host_code, "my-code");
+        });
     }
 }

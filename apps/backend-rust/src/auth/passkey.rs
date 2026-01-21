@@ -171,12 +171,13 @@ async fn register_start(
             );
         }
         Err(e) => {
+            tracing::error!("Database error checking user exists for {}: {}", email, e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(RegisterStartResponse {
                     ok: false,
                     options: None,
-                    error: Some(format!("Database error: {}", e)),
+                    error: Some("An unexpected error occurred".to_string()),
                 }),
             );
         }
@@ -226,12 +227,13 @@ async fn register_start(
     let state_json = match serde_json::to_string(&reg_state) {
         Ok(s) => s,
         Err(e) => {
+            tracing::error!("Failed to serialize registration state: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(RegisterStartResponse {
                     ok: false,
                     options: None,
-                    error: Some(format!("Serialization error: {}", e)),
+                    error: Some("Failed to start registration".to_string()),
                 }),
             );
         }
@@ -244,12 +246,13 @@ async fn register_start(
         .store_challenge(&challenge_id, None, Some(&email), "registration", 300)
         .await
     {
+        tracing::error!("Failed to store challenge for {}: {}", email, e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(RegisterStartResponse {
                 ok: false,
                 options: None,
-                error: Some(format!("Failed to store challenge: {}", e)),
+                error: Some("Failed to start registration".to_string()),
             }),
         );
     }
@@ -261,12 +264,13 @@ async fn register_start(
         .store_challenge(&format!("state:{}", challenge_id), None, Some(&state_json), "state", 300)
         .await
     {
+        tracing::error!("Failed to store registration state for {}: {}", email, e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(RegisterStartResponse {
                 ok: false,
                 options: None,
-                error: Some(format!("Failed to store state: {}", e)),
+                error: Some("Failed to start registration".to_string()),
             }),
         );
     }
@@ -275,12 +279,13 @@ async fn register_start(
     let options = match serde_json::to_value(&ccr) {
         Ok(v) => v,
         Err(e) => {
+            tracing::error!("Failed to serialize registration options: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(RegisterStartResponse {
                     ok: false,
                     options: None,
-                    error: Some(format!("JSON error: {}", e)),
+                    error: Some("Failed to start registration".to_string()),
                 }),
             );
         }
@@ -321,13 +326,14 @@ async fn register_finish(
     let reg_response: RegisterPublicKeyCredential = match serde_json::from_value(req.credential) {
         Ok(r) => r,
         Err(e) => {
+            tracing::warn!("Invalid passkey credential format: {}", e);
             return (
                 StatusCode::BAD_REQUEST,
                 Json(RegisterFinishResponse {
                     ok: false,
                     token: None,
                     user: None,
-                    error: Some(format!("Invalid credential: {}", e)),
+                    error: Some("Invalid credential format".to_string()),
                 }),
             ).into_response();
         }
@@ -340,13 +346,14 @@ async fn register_finish(
     let client_data: serde_json::Value = match serde_json::from_slice(&reg_response.response.client_data_json) {
         Ok(v) => v,
         Err(e) => {
+            tracing::warn!("Invalid client data in passkey registration: {}", e);
             return (
                 StatusCode::BAD_REQUEST,
                 Json(RegisterFinishResponse {
                     ok: false,
                     token: None,
                     user: None,
-                    error: Some(format!("Invalid client data: {}", e)),
+                    error: Some("Invalid credential format".to_string()),
                 }),
             ).into_response();
         }
@@ -369,13 +376,14 @@ async fn register_finish(
             ).into_response();
         }
         Err(e) => {
+            tracing::error!("Database error consuming challenge: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(RegisterFinishResponse {
                     ok: false,
                     token: None,
                     user: None,
-                    error: Some(format!("Database error: {}", e)),
+                    error: Some("An unexpected error occurred".to_string()),
                 }),
             ).into_response();
         }
@@ -404,13 +412,14 @@ async fn register_finish(
     let passkey = match webauthn.finish_passkey_registration(&reg_response, &reg_state) {
         Ok(p) => p,
         Err(e) => {
+            tracing::warn!("Passkey registration verification failed: {}", e);
             return (
                 StatusCode::BAD_REQUEST,
                 Json(RegisterFinishResponse {
                     ok: false,
                     token: None,
                     user: None,
-                    error: Some(format!("Registration failed: {}", e)),
+                    error: Some("Registration verification failed".to_string()),
                 }),
             ).into_response();
         }
@@ -420,13 +429,14 @@ async fn register_finish(
     let user_id = match state.db.create_oauth_user(&email, email.split('@').next().unwrap_or(&email), true).await {
         Ok(id) => id,
         Err(e) => {
+            tracing::error!("Failed to create user for passkey registration {}: {}", email, e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(RegisterFinishResponse {
                     ok: false,
                     token: None,
                     user: None,
-                    error: Some(format!("Failed to create user: {}", e)),
+                    error: Some("Failed to create account".to_string()),
                 }),
             ).into_response();
         }
@@ -437,13 +447,14 @@ async fn register_finish(
     let public_key = match serde_json::to_vec(&passkey) {
         Ok(v) => v,
         Err(e) => {
+            tracing::error!("Failed to serialize passkey: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(RegisterFinishResponse {
                     ok: false,
                     token: None,
                     user: None,
-                    error: Some(format!("Failed to serialize passkey: {}", e)),
+                    error: Some("Failed to complete registration".to_string()),
                 }),
             ).into_response();
         }
@@ -454,13 +465,14 @@ async fn register_finish(
         .create_passkey(&cred_id, user_id, &public_key, 0, None, None)
         .await
     {
+        tracing::error!("Failed to store passkey for user {}: {}", user_id, e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(RegisterFinishResponse {
                 ok: false,
                 token: None,
                 user: None,
-                error: Some(format!("Failed to store passkey: {}", e)),
+                error: Some("Failed to complete registration".to_string()),
             }),
         ).into_response();
     }
@@ -468,13 +480,14 @@ async fn register_finish(
     // Generate auth token
     let token = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
     if let Err(e) = state.db.set_remember_token(user_id, &token).await {
+        tracing::error!("Failed to set remember token for user {}: {}", user_id, e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(RegisterFinishResponse {
                 ok: false,
                 token: None,
                 user: None,
-                error: Some(format!("Failed to create session: {}", e)),
+                error: Some("Failed to create session".to_string()),
             }),
         ).into_response();
     }
@@ -548,12 +561,13 @@ async fn login_start(
                 );
             }
             Err(e) => {
+                tracing::error!("Database error in login_start: {}", e);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(LoginStartResponse {
                         ok: false,
                         options: None,
-                        error: Some(format!("Database error: {}", e)),
+                        error: Some("An unexpected error occurred".to_string()),
                     }),
                 );
             }
@@ -585,12 +599,13 @@ async fn login_start(
     let (rcr, auth_state) = match webauthn.start_passkey_authentication(&allow_credentials) {
         Ok(result) => result,
         Err(e) => {
+            tracing::error!("WebAuthn authentication start error: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(LoginStartResponse {
                     ok: false,
                     options: None,
-                    error: Some(format!("WebAuthn error: {}", e)),
+                    error: Some("Failed to start authentication".to_string()),
                 }),
             );
         }
@@ -600,12 +615,13 @@ async fn login_start(
     let state_json = match serde_json::to_string(&auth_state) {
         Ok(s) => s,
         Err(e) => {
+            tracing::error!("Failed to serialize auth state: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(LoginStartResponse {
                     ok: false,
                     options: None,
-                    error: Some(format!("Serialization error: {}", e)),
+                    error: Some("Failed to start authentication".to_string()),
                 }),
             );
         }
@@ -617,12 +633,13 @@ async fn login_start(
         .store_challenge(&challenge_id, user_id, None, "authentication", 300)
         .await
     {
+        tracing::error!("Failed to store auth challenge: {}", e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(LoginStartResponse {
                 ok: false,
                 options: None,
-                error: Some(format!("Failed to store challenge: {}", e)),
+                error: Some("Failed to start authentication".to_string()),
             }),
         );
     }
@@ -632,12 +649,13 @@ async fn login_start(
         .store_challenge(&format!("state:{}", challenge_id), user_id, Some(&state_json), "state", 300)
         .await
     {
+        tracing::error!("Failed to store auth state: {}", e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(LoginStartResponse {
                 ok: false,
                 options: None,
-                error: Some(format!("Failed to store state: {}", e)),
+                error: Some("Failed to start authentication".to_string()),
             }),
         );
     }
@@ -645,12 +663,13 @@ async fn login_start(
     let options = match serde_json::to_value(&rcr) {
         Ok(v) => v,
         Err(e) => {
+            tracing::error!("Failed to serialize auth options: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(LoginStartResponse {
                     ok: false,
                     options: None,
-                    error: Some(format!("JSON error: {}", e)),
+                    error: Some("Failed to start authentication".to_string()),
                 }),
             );
         }
@@ -689,13 +708,14 @@ async fn login_finish(
     let auth_response: PublicKeyCredential = match serde_json::from_value(req.credential) {
         Ok(r) => r,
         Err(e) => {
+            tracing::warn!("Invalid passkey login credential format: {}", e);
             return (
                 StatusCode::BAD_REQUEST,
                 Json(LoginFinishResponse {
                     ok: false,
                     token: None,
                     user: None,
-                    error: Some(format!("Invalid credential: {}", e)),
+                    error: Some("Invalid credential format".to_string()),
                 }),
             ).into_response();
         }
@@ -705,13 +725,14 @@ async fn login_finish(
     let client_data: serde_json::Value = match serde_json::from_slice(&auth_response.response.client_data_json) {
         Ok(v) => v,
         Err(e) => {
+            tracing::warn!("Invalid client data in passkey login: {}", e);
             return (
                 StatusCode::BAD_REQUEST,
                 Json(LoginFinishResponse {
                     ok: false,
                     token: None,
                     user: None,
-                    error: Some(format!("Invalid client data: {}", e)),
+                    error: Some("Invalid credential format".to_string()),
                 }),
             ).into_response();
         }
@@ -734,13 +755,14 @@ async fn login_finish(
             ).into_response();
         }
         Err(e) => {
+            tracing::error!("Database error consuming login challenge: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(LoginFinishResponse {
                     ok: false,
                     token: None,
                     user: None,
-                    error: Some(format!("Database error: {}", e)),
+                    error: Some("An unexpected error occurred".to_string()),
                 }),
             ).into_response();
         }
@@ -766,13 +788,14 @@ async fn login_finish(
             ).into_response();
         }
         Err(e) => {
+            tracing::error!("Database error getting passkey: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(LoginFinishResponse {
                     ok: false,
                     token: None,
                     user: None,
-                    error: Some(format!("Database error: {}", e)),
+                    error: Some("An unexpected error occurred".to_string()),
                 }),
             ).into_response();
         }
@@ -782,13 +805,14 @@ async fn login_finish(
     let _passkey: Passkey = match serde_json::from_slice(&stored_cred.public_key) {
         Ok(p) => p,
         Err(e) => {
+            tracing::error!("Invalid stored passkey format: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(LoginFinishResponse {
                     ok: false,
                     token: None,
                     user: None,
-                    error: Some(format!("Invalid stored passkey: {}", e)),
+                    error: Some("An unexpected error occurred".to_string()),
                 }),
             ).into_response();
         }
@@ -814,13 +838,14 @@ async fn login_finish(
     let auth_result = match webauthn.finish_passkey_authentication(&auth_response, &auth_state) {
         Ok(r) => r,
         Err(e) => {
+            tracing::warn!("Passkey authentication verification failed: {}", e);
             return (
                 StatusCode::BAD_REQUEST,
                 Json(LoginFinishResponse {
                     ok: false,
                     token: None,
                     user: None,
-                    error: Some(format!("Authentication failed: {}", e)),
+                    error: Some("Authentication verification failed".to_string()),
                 }),
             ).into_response();
         }
@@ -847,13 +872,14 @@ async fn login_finish(
             ).into_response();
         }
         Err(e) => {
+            tracing::error!("Database error fetching user for passkey login: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(LoginFinishResponse {
                     ok: false,
                     token: None,
                     user: None,
-                    error: Some(format!("Database error: {}", e)),
+                    error: Some("An unexpected error occurred".to_string()),
                 }),
             ).into_response();
         }
@@ -871,13 +897,14 @@ async fn login_finish(
     // Generate auth token
     let token = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
     if let Err(e) = state.db.set_remember_token(user.id, &token).await {
+        tracing::error!("Failed to set remember token for passkey login: {}", e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(LoginFinishResponse {
                 ok: false,
                 token: None,
                 user: None,
-                error: Some(format!("Failed to create session: {}", e)),
+                error: Some("Failed to create session".to_string()),
             }),
         ).into_response();
     }
@@ -939,12 +966,13 @@ async fn list_passkeys(
     let passkeys = match state.db.get_user_passkeys(user.id).await {
         Ok(p) => p,
         Err(e) => {
+            tracing::error!("Database error listing passkeys: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(PasskeyListResponse {
                     ok: false,
                     passkeys: None,
-                    error: Some(format!("Database error: {}", e)),
+                    error: Some("Failed to list passkeys".to_string()),
                 }),
             );
         }
@@ -1035,12 +1063,13 @@ async fn add_passkey_start(
     ) {
         Ok(result) => result,
         Err(e) => {
+            tracing::error!("WebAuthn error adding passkey for user {}: {}", user.id, e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(RegisterStartResponse {
                     ok: false,
                     options: None,
-                    error: Some(format!("WebAuthn error: {}", e)),
+                    error: Some("Failed to start passkey registration".to_string()),
                 }),
             );
         }
@@ -1124,12 +1153,13 @@ async fn add_passkey_finish(
     let reg_response: RegisterPublicKeyCredential = match serde_json::from_value(req.credential) {
         Ok(r) => r,
         Err(e) => {
+            tracing::warn!("Invalid credential format in add_passkey_finish: {}", e);
             return (
                 StatusCode::BAD_REQUEST,
                 Json(SimpleResponse {
                     ok: false,
                     message: None,
-                    error: Some(format!("Invalid credential: {}", e)),
+                    error: Some("Invalid credential format".to_string()),
                 }),
             );
         }
@@ -1166,12 +1196,13 @@ async fn add_passkey_finish(
     let passkey = match webauthn.finish_passkey_registration(&reg_response, &reg_state) {
         Ok(p) => p,
         Err(e) => {
+            tracing::warn!("Passkey verification failed in add_passkey_finish: {}", e);
             return (
                 StatusCode::BAD_REQUEST,
                 Json(SimpleResponse {
                     ok: false,
                     message: None,
-                    error: Some(format!("Registration failed: {}", e)),
+                    error: Some("Passkey verification failed".to_string()),
                 }),
             );
         }
@@ -1185,12 +1216,13 @@ async fn add_passkey_finish(
         .create_passkey(&cred_id, user.id, &public_key, 0, None, device_name.as_deref())
         .await
     {
+        tracing::error!("Failed to store passkey for user {}: {}", user.id, e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(SimpleResponse {
                 ok: false,
                 message: None,
-                error: Some(format!("Failed to store passkey: {}", e)),
+                error: Some("Failed to add passkey".to_string()),
             }),
         );
     }
@@ -1271,13 +1303,16 @@ async fn delete_passkey(
                 error: Some("Passkey not found".to_string()),
             }),
         ),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(SimpleResponse {
-                ok: false,
-                message: None,
-                error: Some(format!("Database error: {}", e)),
-            }),
-        ),
+        Err(e) => {
+            tracing::error!("Database error deleting passkey for user {}: {}", user.id, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(SimpleResponse {
+                    ok: false,
+                    message: None,
+                    error: Some("Failed to delete passkey".to_string()),
+                }),
+            )
+        }
     }
 }
