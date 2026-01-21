@@ -225,7 +225,7 @@ async fn main() -> anyhow::Result<()> {
                     .allow_credentials(false)
             } else {
                 // Strict mode: only allow configured origins
-                // When credentials are enabled, headers must be explicit (not Any)
+                // When credentials are enabled, headers and methods must be explicit (not Any)
                 let origins: Vec<_> = config
                     .cors
                     .allowed_origins
@@ -233,7 +233,14 @@ async fn main() -> anyhow::Result<()> {
                     .filter_map(|s| s.parse().ok())
                     .collect();
                 CorsLayer::new()
-                    .allow_methods(Any)
+                    .allow_methods([
+                        axum::http::Method::GET,
+                        axum::http::Method::POST,
+                        axum::http::Method::PUT,
+                        axum::http::Method::PATCH,
+                        axum::http::Method::DELETE,
+                        axum::http::Method::OPTIONS,
+                    ])
                     .allow_headers(AllowHeaders::list([
                         axum::http::header::CONTENT_TYPE,
                         axum::http::header::AUTHORIZATION,
