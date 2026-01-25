@@ -27,6 +27,7 @@ jobs:
             **/*.tsx
             **/*.js
             **/*.jsx
+            **/*.rs
 
       - name: Review with AI
         if: steps.changed-files.outputs.any_changed == 'true'
