@@ -33,24 +33,51 @@ holiday-wheel-native/
 
 ## Commands
 
+**IMPORTANT: Always use `make` commands instead of raw npm/cargo.**
+
 ```bash
-# Root level (run from project root)
-npm run build          # Build all packages
-npm run dev            # Start dev servers
-npm run lint           # Lint all packages
-npm run format         # Format with Prettier
-npm run check-types    # Type check all packages
+# Setup
+make setup              # Install all dependencies
+make setup-hooks        # Install Git pre-commit hooks
 
-# App level (run from apps/phone or apps/tv)
-npm start              # Start Metro bundler
-npm run android        # Run on Android/Android TV
-npm run ios            # Run on iOS/Apple TV
-npm run test           # Run Jest tests
+# Development
+make dev                # Start backend + phone Metro
+make dev-backend        # Start backend only
+make dev-phone          # Start phone Metro bundler
+make dev-tv             # Start TV Metro bundler
 
-# Backend (run from apps/backend-rust)
-cargo run              # Start server
-cargo build            # Build server
-cargo test             # Run tests
+# Backend (Rust)
+make backend-build      # Build Rust backend
+make backend-run        # Run backend server
+make backend-test       # Run backend tests
+make backend-lint       # Run clippy
+make backend-format     # Format with cargo fmt
+
+# Phone App
+make phone-android      # Run on Android
+make phone-ios          # Run on iOS
+make phone-test         # Run tests
+
+# TV App
+make tv-android         # Run on Android TV
+make tv-ios             # Run on Apple TV
+make tv-test            # Run tests
+
+# Quality
+make test               # All tests (backend + apps)
+make lint               # Lint everything
+make format             # Format everything
+make check-types        # TypeScript checks
+
+# CI
+make ci-quick           # Fast validation (lint + types)
+make pre-commit         # Full pre-commit checks
+make ci                 # Full CI (ci-quick + tests)
+
+# Utilities
+make health             # Check backend health
+make clean              # Clean all artifacts
+make pods-install       # Install iOS CocoaPods
 ```
 
 ## Key Files
@@ -166,7 +193,10 @@ Key events handled in `socketService.ts`:
 
 Jest with React Native preset. Run tests:
 ```bash
-npm test
+make test           # All tests (backend + apps)
+make backend-test   # Backend only
+make phone-test     # Phone app only
+make tv-test        # TV app only
 ```
 
 Tests located in `__tests__/` directories.
@@ -176,6 +206,94 @@ Tests located in `__tests__/` directories.
 - ESLint with `@react-native` config
 - Prettier for formatting (single quotes, trailing commas)
 - TypeScript strict mode
+
+## Development Guidelines
+
+### Makefile-First Development
+
+**Always use Makefile commands** - never run raw npm/cargo:
+```bash
+# ✅ Correct
+make backend-test
+make lint
+make phone-android
+
+# ❌ Wrong
+cargo test
+npm run lint
+cd apps/phone && npm run android
+```
+
+### AI-Assisted Cost Optimization
+
+**Model Selection:**
+- **Skip AI** (Edit tool): Simple refactoring, var→const, add-types ($0)
+- **Haiku** (>60% of tasks): Bug fixes, small features ($0.0002)
+- **Sonnet** (<30%): Medium features, API changes ($0.003)
+- **Opus** (<1%): Architecture, security audits ($0.015)
+
+### Testing Requirements
+
+- **Coverage Target**: ≥80%
+- **E2E First**: Write tests before implementing features
+- **Bug Fixes**: Always include regression tests
+
+## Rust Backend Patterns
+
+### Error Handling
+
+```rust
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum AppError {
+    #[error("Not found: {0}")]
+    NotFound(String),
+    #[error("Database error: {0}")]
+    Database(#[from] rusqlite::Error),
+}
+```
+
+### Tracing
+
+```rust
+use tracing::instrument;
+
+#[instrument(skip(db))]
+pub async fn get_room(room_id: &str, db: &Database) -> Result<Room, AppError> {
+    // ...
+}
+```
+
+## Definition of Done
+
+**Code Quality:**
+- [ ] `make pre-commit` passes
+- [ ] Tests pass (≥80% coverage)
+- [ ] TypeScript strict mode passes
+
+**Backend API Changes:**
+- [ ] Error handling implemented
+- [ ] Tracing instrumented
+
+**Features:**
+- [ ] E2E test written and passing
+- [ ] Manual QA on target platforms
+
+## Git Workflow
+
+### Commit Format
+
+```bash
+git commit -m "<type>(<scope>): <description>
+
+- Detailed change 1
+- Detailed change 2
+
+Co-Authored-By: Claude <model> <noreply@anthropic.com>"
+```
+
+**Types**: feat, fix, docs, style, refactor, test, chore
 
 ## Common Patterns
 
