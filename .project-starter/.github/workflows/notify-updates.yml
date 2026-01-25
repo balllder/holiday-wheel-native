@@ -1,0 +1,73 @@
+name: Notify Projects of Updates
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'templates/**'
+      - 'CLAUDE.md'
+      - 'README.md'
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Get commit messages
+        id: commits
+        run: |
+          COMMITS=$(git log --format="- %s" HEAD^..HEAD)
+          echo "messages<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create issues in dependent repos
+        uses: actions/github-script@v7
+        env:
+          COMMIT_MESSAGES: ${{ steps.commits.outputs.messages }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // List of repositories using this template
+            //
+            // HOW TO ADD YOUR REPO:
+            // 1. Fork project-starter (if not already)
+            // 2. Add your repo name to the array below
+            // 3. Create PR to project-starter
+            // 4. Install sync workflow in your repo (see INTEGRATION_GUIDE.md)
+            //
+            // Example: If your repo is github.com/brefwiz/my-app, add: 'my-app'
+            const repos = [
+              'auth-service',  // Auth-service uses project-starter patterns
+              // 'my-project-1',
+              // 'my-project-2',
+            ];
+
+            if (repos.length === 0) {
+              console.log('No dependent repositories configured yet.');
+              console.log('Add repository names to .github/workflows/notify-updates.yml');
+              return;
+            }
+
+            const commits = process.env.COMMIT_MESSAGES;
+
+            for (const repo of repos) {
+              try {
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: repo,
+                  title: '📋 Project-Starter Updates Available',
+                  body: `New updates are available in [project-starter](https://github.com/${context.repo.owner}/project-starter):\n\n${commits}\n\n## How to Sync\n\n\`\`\`bash\n# Pull latest changes from template\ngit subtree pull --prefix=.project-starter \\\n  https://github.com/${context.repo.owner}/project-starter.git main --squash\n\n# Review changes\ngit diff HEAD~1 .project-starter/\n\n# Copy relevant updates\ncp .project-starter/docs/testing/API_TESTING_REQUIREMENTS.md docs/testing/\ncp .project-starter/docs/methodology/SHARING_STRATEGY.md docs/methodology/\n\n# Commit\ngit add .\ngit commit -m "docs: sync project-starter updates"\ngit push\n\`\`\`\n\n---\n*This issue was automatically created by the project-starter template.*`,
+                  labels: ['dependencies', 'template-sync', 'documentation']
+                });
+                console.log(`✓ Created issue in ${repo}`);
+              } catch (error) {
+                console.log(`✗ Failed to create issue in ${repo}: ${error.message}`);
+              }
+            }

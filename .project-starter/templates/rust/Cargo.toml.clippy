@@ -1,0 +1,79 @@
+# Rust Clippy Configuration Template
+# Add this to your Cargo.toml [workspace.lints.clippy] section
+
+# === DENIAL LIST - MUST BE FIXED ===
+# These are critical issues that can cause production failures
+
+# Debugging artifacts - Must be removed before merge
+dbg_macro = "deny"              # No dbg!() macros in production code
+todo = "deny"                   # No TODO!() macros in production code
+unimplemented = "deny"          # No unimplemented!() in production code
+
+# Panic prevention - No unwrap/expect/panic in production
+unwrap_used = "deny"            # Forces explicit error handling instead of unwrap()
+expect_used = "deny"            # Forces explicit error handling instead of expect()
+panic = "deny"                  # No panic!() in production code
+
+# === WARNING LIST - SHOULD BE FIXED ===
+# These improve code quality but aren't critical
+
+# Pedantic lint group - Catches common mistakes
+pedantic = "warn"               # Enable all pedantic lints (can be noisy initially)
+
+# Nursery lint group - Experimental but useful
+nursery = "warn"                # Enable experimental lints (future-facing)
+
+# === ALLOWED EXCEPTIONS (WITH JUSTIFICATION) ===
+# These have specific use cases where they're acceptable
+
+# Allow .clone() for simplicity in non-hot paths
+# Justification: Readability > micro-optimization outside hot loops
+clone_on_copy = "allow"
+
+# Allow large enum variants (errors are intentionally detailed)
+# Justification: Error types benefit from rich context for debugging
+large_enum_variant = "allow"
+
+# Allow module inception (auth/auth.rs is clear)
+# Justification: Standard Rust module pattern (matches cargo conventions)
+module_inception = "allow"
+
+# === OPTIONAL: DISABLE NOISY PEDANTIC LINTS ===
+# Uncomment if pedantic is too noisy for your team
+
+# must_use_candidate = "allow"   # Don't force #[must_use] everywhere
+# missing_errors_doc = "allow"   # Don't require /// # Errors on all functions
+# missing_panics_doc = "allow"   # Don't require /// # Panics documentation
+
+# === OPTIONAL: COMPLEXITY LIMITS ===
+# Uncomment to enforce function complexity limits
+
+# cognitive_complexity = "warn"  # Warn if function complexity > 15
+# too_many_arguments = "warn"    # Warn if function has > 7 arguments
+# too_many_lines = "warn"        # Warn if function > 100 lines
+
+# === EXAMPLE USAGE IN Cargo.toml ===
+# [workspace]
+# [workspace.lints.clippy]
+# # Copy the configuration above here
+#
+# [[workspace.members]]
+# members = ["backend", "frontend", "shared"]
+
+# === RUNNING CLIPPY ===
+# cargo clippy --all-targets --all-features -- -D warnings
+#
+# This command:
+# - Checks all targets (lib, bins, tests, benches, examples)
+# - Enables all features
+# - Treats all warnings as errors (-D warnings)
+
+# === CI/CD INTEGRATION ===
+# Add to your CI pipeline:
+#
+# - name: Run Clippy
+#   run: cargo clippy --all-targets --all-features -- -D warnings
+
+# === MORE INFORMATION ===
+# See: docs/development/CLIPPY_CONFIGURATION.md
+# See: docs/development/FUNCTION_COMPLEXITY.md

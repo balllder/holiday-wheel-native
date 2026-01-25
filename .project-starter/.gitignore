@@ -1,0 +1,61 @@
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Project-specific (customize for your stack)
+# Uncomment relevant sections:
+
+# Node.js
+# node_modules/
+# dist/
+# build/
+# .env
+# .env.local
+
+# Rust
+# target/
+# Cargo.lock
+# **/*.rs.bk
+
+# Python
+# __pycache__/
+# *.py[cod]
+# *$py.class
+# .Python
+# venv/
+# .env
+
+# Go
+# bin/
+# *.exe
+# *.test
+# *.out
+
+# Java
+# *.class
+# *.jar
+# *.war
+# target/
+
+# Generated Files
+# documentation/static/api/openapi.json
+# frontend/src/api/schema.d.ts
+
+# Test Coverage
+# coverage/
+# .nyc_output/
+
+# Logs
+*.log
+logs/
+
+# Temporary Files
+tmp/
+temp/

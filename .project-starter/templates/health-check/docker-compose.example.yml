@@ -1,0 +1,122 @@
+# Docker Compose with Health Checks
+#
+# This example shows how to add health checks to all services
+# in your docker-compose.yml file.
+#
+# Copy relevant sections to your docker-compose.yml
+
+version: '3.8'
+
+services:
+  # Backend service with health check
+  backend:
+    build: ./backend
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://user:password@postgres:5432/mydb
+      REDIS_URL: redis://redis:6379
+    healthcheck:
+      # Check liveness endpoint
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s      # Check every 30 seconds
+      timeout: 10s       # Fail if no response in 10 seconds
+      retries: 3         # Allow 3 failures before marking unhealthy
+      start_period: 40s  # Wait 40 seconds before first check (allows startup time)
+    depends_on:
+      postgres:
+        condition: service_healthy  # Wait for database to be healthy
+      redis:
+        condition: service_healthy  # Wait for cache to be healthy
+    restart: unless-stopped
+
+  # Frontend service with health check
+  frontend:
+    build: ./frontend
+    ports:
+      - "4200:4200"
+    healthcheck:
+      # Check if frontend server is responding
+      test: ["CMD", "curl", "-f", "http://localhost:4200"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # PostgreSQL with health check
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # Use pg_isready to check if Postgres is accepting connections
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # Redis with health check
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      # Use redis-cli ping command
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+# Benefits of Health Checks:
+#
+# 1. Startup Order:
+#    - Backend waits for database and cache to be healthy
+#    - No more "connection refused" errors on startup
+#
+# 2. Automatic Recovery:
+#    - Unhealthy containers are automatically restarted
+#    - Failed health checks trigger restart after retries exhausted
+#
+# 3. Better Development Experience:
+#    - `docker-compose up` waits for all services to be ready
+#    - No need to manually check if services are up
+#
+# 4. Production-Like Behavior:
+#    - Same health checks used in Kubernetes
+#    - Tests deployment configuration locally
+#
+# Health Check Status:
+#
+# View health status:
+#   docker-compose ps
+#
+# Output shows health status:
+#   NAME         STATUS              PORTS
+#   backend      Up (healthy)        0.0.0.0:3000->3000/tcp
+#   postgres     Up (healthy)        0.0.0.0:5432->5432/tcp
+#   redis        Up (healthy)        0.0.0.0:6379->6379/tcp
+#
+# Unhealthy services:
+#   backend      Up (unhealthy)      0.0.0.0:3000->3000/tcp
+#
+# Health check commands run inside container, so:
+#   - curl must be available in container image
+#   - For minimal images, use wget or add curl
+#   - Example: RUN apk add --no-cache curl (Alpine)
+#
+# Alternative: HTTP check without curl:
+#   test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]

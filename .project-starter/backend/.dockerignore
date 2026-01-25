@@ -1,0 +1,40 @@
+# Build artifacts
+target/
+*.o
+*.so
+*.rlib
+
+# Development files
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
+*.swp
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+docs/
+
+# Tests (keep tests/ dir, ignore test artifacts)
+*.profraw
+*.profdata
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Docker
+Dockerfile*
+.dockerignore
+docker-compose*.yml

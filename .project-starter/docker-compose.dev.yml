@@ -1,0 +1,41 @@
+# Development override for docker-compose.yml
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Or: make dev-up (if using updated Makefile)
+
+version: '3.8'
+
+services:
+  backend-dev:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+      # BuildKit optimizations
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    image: project-starter-backend:dev
+    container_name: project-starter-backend-dev
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/project_starter
+      PORT: 3000
+      RUST_LOG: debug
+      RUST_BACKTRACE: 1
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Mount source for hot-reload
+      - ./backend/src:/app/src:ro
+      - ./backend/Cargo.toml:/app/Cargo.toml:ro
+      - ./backend/Cargo.lock:/app/Cargo.lock:ro
+      # Cache dependencies
+      - backend_cargo_cache:/usr/local/cargo/registry
+      - backend_cargo_git:/usr/local/cargo/git
+      - backend_target_cache:/app/target
+    command: cargo watch -x run
+
+volumes:
+  backend_cargo_cache:
+  backend_cargo_git:
+  backend_target_cache:
