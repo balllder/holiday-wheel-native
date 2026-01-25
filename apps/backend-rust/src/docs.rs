@@ -62,22 +62,14 @@ async fn swagger_ui() -> Html<&'static str> {
 
 /// Serve the OpenAPI YAML specification
 async fn openapi_yaml() -> Response {
-    (
-        [("content-type", "application/yaml")],
-        OPENAPI_YAML,
-    )
-        .into_response()
+    ([("content-type", "application/yaml")], OPENAPI_YAML).into_response()
 }
 
 /// Serve the OpenAPI JSON specification (converted from YAML)
 async fn openapi_json() -> Response {
     // Parse YAML and convert to JSON
     match serde_yaml_to_json(OPENAPI_YAML) {
-        Ok(json) => (
-            [("content-type", "application/json")],
-            json,
-        )
-            .into_response(),
+        Ok(json) => ([("content-type", "application/json")], json).into_response(),
         Err(e) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to convert OpenAPI spec: {}", e),

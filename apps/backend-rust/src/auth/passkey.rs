@@ -136,8 +136,8 @@ pub fn routes() -> Router<Arc<AppState>> {
 fn get_webauthn(_state: &AppState) -> Result<Webauthn, String> {
     let rp_id = std::env::var("WEBAUTHN_RP_ID").unwrap_or_else(|_| "localhost".to_string());
     let rp_name = std::env::var("WEBAUTHN_RP_NAME").unwrap_or_else(|_| "Holiday Wheel".to_string());
-    let rp_origin = std::env::var("WEBAUTHN_RP_ORIGIN")
-        .unwrap_or_else(|_| "http://localhost:5000".to_string());
+    let rp_origin =
+        std::env::var("WEBAUTHN_RP_ORIGIN").unwrap_or_else(|_| "http://localhost:5000".to_string());
 
     let rp_origin_url = Url::parse(&rp_origin).map_err(|e| format!("Invalid RP origin: {}", e))?;
 
@@ -261,7 +261,13 @@ async fn register_start(
     // For simplicity, store it alongside the challenge data
     if let Err(e) = state
         .db
-        .store_challenge(&format!("state:{}", challenge_id), None, Some(&state_json), "state", 300)
+        .store_challenge(
+            &format!("state:{}", challenge_id),
+            None,
+            Some(&state_json),
+            "state",
+            300,
+        )
         .await
     {
         tracing::error!("Failed to store registration state for {}: {}", email, e);
@@ -318,7 +324,8 @@ async fn register_finish(
                     user: None,
                     error: Some(e),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -335,7 +342,8 @@ async fn register_finish(
                     user: None,
                     error: Some("Invalid credential format".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -343,26 +351,32 @@ async fn register_finish(
     let _challenge_b64 = URL_SAFE_NO_PAD.encode(&reg_response.response.client_data_json);
 
     // Parse client data to get challenge
-    let client_data: serde_json::Value = match serde_json::from_slice(&reg_response.response.client_data_json) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!("Invalid client data in passkey registration: {}", e);
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(RegisterFinishResponse {
-                    ok: false,
-                    token: None,
-                    user: None,
-                    error: Some("Invalid credential format".to_string()),
-                }),
-            ).into_response();
-        }
-    };
+    let client_data: serde_json::Value =
+        match serde_json::from_slice(&reg_response.response.client_data_json) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("Invalid client data in passkey registration: {}", e);
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(RegisterFinishResponse {
+                        ok: false,
+                        token: None,
+                        user: None,
+                        error: Some("Invalid credential format".to_string()),
+                    }),
+                )
+                    .into_response();
+            }
+        };
 
     let challenge_str = client_data["challenge"].as_str().unwrap_or("");
 
     // Look up stored state
-    let state_challenge = match state.db.consume_challenge(&format!("state:{}", challenge_str)).await {
+    let state_challenge = match state
+        .db
+        .consume_challenge(&format!("state:{}", challenge_str))
+        .await
+    {
         Ok(Some(c)) => c,
         Ok(None) => {
             return (
@@ -373,7 +387,8 @@ async fn register_finish(
                     user: None,
                     error: Some("Challenge expired or not found".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
         Err(e) => {
             tracing::error!("Database error consuming challenge: {}", e);
@@ -385,7 +400,8 @@ async fn register_finish(
                     user: None,
                     error: Some("An unexpected error occurred".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -393,7 +409,11 @@ async fn register_finish(
     let _ = state.db.consume_challenge(challenge_str).await;
 
     // Deserialize the registration state
-    let reg_state: PasskeyRegistration = match state_challenge.email.as_ref().and_then(|s| serde_json::from_str(s).ok()) {
+    let reg_state: PasskeyRegistration = match state_challenge
+        .email
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+    {
         Some(s) => s,
         None => {
             return (
@@ -404,7 +424,8 @@ async fn register_finish(
                     user: None,
                     error: Some("Invalid registration state".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -421,15 +442,24 @@ async fn register_finish(
                     user: None,
                     error: Some("Registration verification failed".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
     // Create user (verified since passkey proves device ownership)
-    let user_id = match state.db.create_oauth_user(&email, email.split('@').next().unwrap_or(&email), true).await {
+    let user_id = match state
+        .db
+        .create_oauth_user(&email, email.split('@').next().unwrap_or(&email), true)
+        .await
+    {
         Ok(id) => id,
         Err(e) => {
-            tracing::error!("Failed to create user for passkey registration {}: {}", email, e);
+            tracing::error!(
+                "Failed to create user for passkey registration {}: {}",
+                email,
+                e
+            );
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(RegisterFinishResponse {
@@ -438,7 +468,8 @@ async fn register_finish(
                     user: None,
                     error: Some("Failed to create account".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -456,7 +487,8 @@ async fn register_finish(
                     user: None,
                     error: Some("Failed to complete registration".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -474,7 +506,8 @@ async fn register_finish(
                 user: None,
                 error: Some("Failed to complete registration".to_string()),
             }),
-        ).into_response();
+        )
+            .into_response();
     }
 
     // Generate auth token
@@ -489,7 +522,8 @@ async fn register_finish(
                 user: None,
                 error: Some("Failed to create session".to_string()),
             }),
-        ).into_response();
+        )
+            .into_response();
     }
     let _ = state.db.update_last_login(user_id).await;
 
@@ -501,14 +535,15 @@ async fn register_finish(
             id: user_id,
             email: email.clone(),
             display_name: email.split('@').next().unwrap_or(&email).to_string(),
-            avatar_id: 1, // Default avatar for new users
+            avatar_id: 1,   // Default avatar for new users
             is_admin: None, // New users are not admins
         }),
         error: None,
     };
 
     let mut res = (StatusCode::OK, Json(response)).into_response();
-    res.headers_mut().insert(header::SET_COOKIE, set_cookie_header(&token));
+    res.headers_mut()
+        .insert(header::SET_COOKIE, set_cookie_header(&token));
     res
 }
 
@@ -537,7 +572,11 @@ async fn login_start(
         let email = email.trim().to_lowercase();
         match state.db.get_user_by_email(&email).await {
             Ok(Some(user)) => {
-                let creds = state.db.get_user_passkeys(user.id).await.unwrap_or_default();
+                let creds = state
+                    .db
+                    .get_user_passkeys(user.id)
+                    .await
+                    .unwrap_or_default();
                 if creds.is_empty() {
                     return (
                         StatusCode::BAD_REQUEST,
@@ -646,7 +685,13 @@ async fn login_start(
 
     if let Err(e) = state
         .db
-        .store_challenge(&format!("state:{}", challenge_id), user_id, Some(&state_json), "state", 300)
+        .store_challenge(
+            &format!("state:{}", challenge_id),
+            user_id,
+            Some(&state_json),
+            "state",
+            300,
+        )
         .await
     {
         tracing::error!("Failed to store auth state: {}", e);
@@ -700,7 +745,8 @@ async fn login_finish(
                     user: None,
                     error: Some(e),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -717,31 +763,38 @@ async fn login_finish(
                     user: None,
                     error: Some("Invalid credential format".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
     // Parse client data to get challenge
-    let client_data: serde_json::Value = match serde_json::from_slice(&auth_response.response.client_data_json) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!("Invalid client data in passkey login: {}", e);
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(LoginFinishResponse {
-                    ok: false,
-                    token: None,
-                    user: None,
-                    error: Some("Invalid credential format".to_string()),
-                }),
-            ).into_response();
-        }
-    };
+    let client_data: serde_json::Value =
+        match serde_json::from_slice(&auth_response.response.client_data_json) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("Invalid client data in passkey login: {}", e);
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(LoginFinishResponse {
+                        ok: false,
+                        token: None,
+                        user: None,
+                        error: Some("Invalid credential format".to_string()),
+                    }),
+                )
+                    .into_response();
+            }
+        };
 
     let challenge_str = client_data["challenge"].as_str().unwrap_or("");
 
     // Look up stored state
-    let state_challenge = match state.db.consume_challenge(&format!("state:{}", challenge_str)).await {
+    let state_challenge = match state
+        .db
+        .consume_challenge(&format!("state:{}", challenge_str))
+        .await
+    {
         Ok(Some(c)) => c,
         Ok(None) => {
             return (
@@ -752,7 +805,8 @@ async fn login_finish(
                     user: None,
                     error: Some("Challenge expired or not found".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
         Err(e) => {
             tracing::error!("Database error consuming login challenge: {}", e);
@@ -764,12 +818,18 @@ async fn login_finish(
                     user: None,
                     error: Some("An unexpected error occurred".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
     // Also consume the main challenge
-    let _main_challenge = state.db.consume_challenge(challenge_str).await.ok().flatten();
+    let _main_challenge = state
+        .db
+        .consume_challenge(challenge_str)
+        .await
+        .ok()
+        .flatten();
 
     // Look up the credential to find the user
     // Use raw_id which is the raw bytes of the credential ID
@@ -785,7 +845,8 @@ async fn login_finish(
                     user: None,
                     error: Some("Passkey not found".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
         Err(e) => {
             tracing::error!("Database error getting passkey: {}", e);
@@ -797,7 +858,8 @@ async fn login_finish(
                     user: None,
                     error: Some("An unexpected error occurred".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -814,12 +876,17 @@ async fn login_finish(
                     user: None,
                     error: Some("An unexpected error occurred".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
     // Deserialize auth state
-    let auth_state: PasskeyAuthentication = match state_challenge.email.as_ref().and_then(|s| serde_json::from_str(s).ok()) {
+    let auth_state: PasskeyAuthentication = match state_challenge
+        .email
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+    {
         Some(s) => s,
         None => {
             return (
@@ -830,7 +897,8 @@ async fn login_finish(
                     user: None,
                     error: Some("Invalid authentication state".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -847,7 +915,8 @@ async fn login_finish(
                     user: None,
                     error: Some("Authentication verification failed".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -869,7 +938,8 @@ async fn login_finish(
                     user: None,
                     error: Some("User not found".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
         Err(e) => {
             tracing::error!("Database error fetching user for passkey login: {}", e);
@@ -881,7 +951,8 @@ async fn login_finish(
                     user: None,
                     error: Some("An unexpected error occurred".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -906,7 +977,8 @@ async fn login_finish(
                 user: None,
                 error: Some("Failed to create session".to_string()),
             }),
-        ).into_response();
+        )
+            .into_response();
     }
     let _ = state.db.update_last_login(user.id).await;
 
@@ -925,7 +997,8 @@ async fn login_finish(
     };
 
     let mut res = (StatusCode::OK, Json(response)).into_response();
-    res.headers_mut().insert(header::SET_COOKIE, set_cookie_header(&token));
+    res.headers_mut()
+        .insert(header::SET_COOKIE, set_cookie_header(&token));
     res
 }
 
@@ -1046,7 +1119,11 @@ async fn add_passkey_start(
     };
 
     // Get existing passkeys to exclude
-    let existing = state.db.get_user_passkeys(user.id).await.unwrap_or_default();
+    let existing = state
+        .db
+        .get_user_passkeys(user.id)
+        .await
+        .unwrap_or_default();
     let exclude_credentials: Vec<CredentialID> = existing
         .iter()
         .filter_map(|p| URL_SAFE_NO_PAD.decode(&p.id).ok())
@@ -1079,16 +1156,30 @@ async fn add_passkey_start(
     let challenge_id = URL_SAFE_NO_PAD.encode(ccr.public_key.challenge.as_ref());
 
     // Store device name in email field (hacky but works)
-    let device_info = req.device_name.unwrap_or_else(|| "Unknown Device".to_string());
+    let device_info = req
+        .device_name
+        .unwrap_or_else(|| "Unknown Device".to_string());
 
     let _ = state
         .db
-        .store_challenge(&challenge_id, Some(user.id), Some(&device_info), "add_passkey", 300)
+        .store_challenge(
+            &challenge_id,
+            Some(user.id),
+            Some(&device_info),
+            "add_passkey",
+            300,
+        )
         .await;
 
     let _ = state
         .db
-        .store_challenge(&format!("state:{}", challenge_id), Some(user.id), Some(&state_json), "state", 300)
+        .store_challenge(
+            &format!("state:{}", challenge_id),
+            Some(user.id),
+            Some(&state_json),
+            "state",
+            300,
+        )
         .await;
 
     let options = serde_json::to_value(&ccr).unwrap_or_default();
@@ -1169,7 +1260,12 @@ async fn add_passkey_finish(
         serde_json::from_slice(&reg_response.response.client_data_json).unwrap_or_default();
     let challenge_str = client_data["challenge"].as_str().unwrap_or("");
 
-    let main_challenge = state.db.consume_challenge(challenge_str).await.ok().flatten();
+    let main_challenge = state
+        .db
+        .consume_challenge(challenge_str)
+        .await
+        .ok()
+        .flatten();
     let state_challenge = state
         .db
         .consume_challenge(&format!("state:{}", challenge_str))
@@ -1179,7 +1275,10 @@ async fn add_passkey_finish(
 
     let device_name = main_challenge.and_then(|c| c.email);
 
-    let reg_state: PasskeyRegistration = match state_challenge.and_then(|c| c.email).and_then(|s| serde_json::from_str(&s).ok()) {
+    let reg_state: PasskeyRegistration = match state_challenge
+        .and_then(|c| c.email)
+        .and_then(|s| serde_json::from_str(&s).ok())
+    {
         Some(s) => s,
         None => {
             return (
@@ -1213,7 +1312,14 @@ async fn add_passkey_finish(
 
     if let Err(e) = state
         .db
-        .create_passkey(&cred_id, user.id, &public_key, 0, None, device_name.as_deref())
+        .create_passkey(
+            &cred_id,
+            user.id,
+            &public_key,
+            0,
+            None,
+            device_name.as_deref(),
+        )
         .await
     {
         tracing::error!("Failed to store passkey for user {}: {}", user.id, e);
@@ -1271,9 +1377,17 @@ async fn delete_passkey(
     };
 
     // Check if user has other login methods before deleting last passkey
-    let passkeys = state.db.get_user_passkeys(user.id).await.unwrap_or_default();
+    let passkeys = state
+        .db
+        .get_user_passkeys(user.id)
+        .await
+        .unwrap_or_default();
     let has_password = state.db.user_has_password(user.id).await.unwrap_or(false);
-    let oauth_accounts = state.db.get_user_oauth_accounts(user.id).await.unwrap_or_default();
+    let oauth_accounts = state
+        .db
+        .get_user_oauth_accounts(user.id)
+        .await
+        .unwrap_or_default();
 
     if passkeys.len() <= 1 && !has_password && oauth_accounts.is_empty() {
         return (
@@ -1304,7 +1418,11 @@ async fn delete_passkey(
             }),
         ),
         Err(e) => {
-            tracing::error!("Database error deleting passkey for user {}: {}", user.id, e);
+            tracing::error!(
+                "Database error deleting passkey for user {}: {}",
+                user.id,
+                e
+            );
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(SimpleResponse {

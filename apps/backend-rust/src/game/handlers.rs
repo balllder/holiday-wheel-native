@@ -33,11 +33,7 @@ pub(crate) struct AutoAdvanceContext {
 /// - Toss-up win -> 10 sec delay -> new puzzle -> Normal Round 1 starts (winner goes first)
 /// - Normal round win -> 10 sec delay -> new puzzle -> next round starts (winner goes first)
 /// - Final Spin solve -> 10 sec delay -> auto-start Bonus round (highest total scorer plays)
-fn spawn_auto_advance_puzzle(
-    state: Arc<AppState>,
-    room: String,
-    context: AutoAdvanceContext,
-) {
+fn spawn_auto_advance_puzzle(state: Arc<AppState>, room: String, context: AutoAdvanceContext) {
     tokio::spawn(async move {
         // Wait for the display time (fixed 10 seconds as per requirements)
         tokio::time::sleep(Duration::from_secs(AUTO_ADVANCE_DELAY_SECONDS)).await;
@@ -45,7 +41,8 @@ fn spawn_auto_advance_puzzle(
         // Get the pack_id from room config
         let pack_id = {
             let manager = state.game_manager.read().await;
-            manager.get_room(&room)
+            manager
+                .get_room(&room)
                 .map(|game| game.config.pack_id)
                 .unwrap_or(None)
         };
@@ -79,10 +76,18 @@ fn spawn_auto_advance_puzzle(
                             // After normal round solve: advance to next round, winner goes first
                             let next_round = (context.round + 1).min(4);
                             if next_round > context.round {
-                                (GamePhase::Normal, next_round, context.solver_idx,
-                                 if next_round == 2 { "Round 2 begins!" }
-                                 else if next_round == 3 { "Round 3 begins!" }
-                                 else { "Round 4 begins!" })
+                                (
+                                    GamePhase::Normal,
+                                    next_round,
+                                    context.solver_idx,
+                                    if next_round == 2 {
+                                        "Round 2 begins!"
+                                    } else if next_round == 3 {
+                                        "Round 3 begins!"
+                                    } else {
+                                        "Round 4 begins!"
+                                    },
+                                )
                             } else {
                                 // Already at round 4, stay in normal mode
                                 (GamePhase::Normal, 4, context.solver_idx, "New puzzle!")
@@ -91,14 +96,20 @@ fn spawn_auto_advance_puzzle(
                         GamePhase::Final => {
                             // After Final Spin solve: auto-start Bonus round
                             // Find player with highest total score
-                            let highest_scorer_idx = game.players.iter()
+                            let highest_scorer_idx = game
+                                .players
+                                .iter()
                                 .enumerate()
                                 .max_by_key(|(_, p)| p.total)
                                 .map(|(i, _)| i)
                                 .unwrap_or(0);
 
-                            (GamePhase::Bonus, context.round, highest_scorer_idx,
-                             "Bonus Round! Pick your letters!")
+                            (
+                                GamePhase::Bonus,
+                                context.round,
+                                highest_scorer_idx,
+                                "Bonus Round! Pick your letters!",
+                            )
                         }
                         GamePhase::Bonus | GamePhase::Pregame | GamePhase::GameOver => {
                             // No auto-advance for Bonus, Pregame, or GameOver
@@ -143,7 +154,9 @@ fn spawn_auto_advance_puzzle(
                 // Send toast notification
                 if let Some(ns) = io.of("/") {
                     let msg = toast_msg.unwrap_or("New puzzle!");
-                    let _ = ns.to(room).emit("toast", &serde_json::json!({ "msg": msg }));
+                    let _ = ns
+                        .to(room)
+                        .emit("toast", &serde_json::json!({ "msg": msg }));
                 }
             }
         }
@@ -154,10 +167,7 @@ fn spawn_auto_advance_puzzle(
 const GAME_OVER_DISPLAY_SECONDS: u64 = 15;
 
 /// Spawn a background task to auto-reset the game after game over display
-fn spawn_game_over_reset(
-    state: Arc<AppState>,
-    room: String,
-) {
+fn spawn_game_over_reset(state: Arc<AppState>, room: String) {
     tokio::spawn(async move {
         // Wait for the game over display time
         tokio::time::sleep(Duration::from_secs(GAME_OVER_DISPLAY_SECONDS + 1)).await;
@@ -165,7 +175,8 @@ fn spawn_game_over_reset(
         // Get the pack_id from room config
         let pack_id = {
             let manager = state.game_manager.read().await;
-            manager.get_room(&room)
+            manager
+                .get_room(&room)
                 .map(|game| game.config.pack_id)
                 .unwrap_or(None)
         };
@@ -174,7 +185,10 @@ fn spawn_game_over_reset(
         let puzzle = match state.db.get_random_puzzle(&room, pack_id).await {
             Ok(p) => p,
             Err(e) => {
-                info!("Failed to get puzzle for game reset in room {}: {}", room, e);
+                info!(
+                    "Failed to get puzzle for game reset in room {}: {}",
+                    room, e
+                );
                 return;
             }
         };
@@ -508,7 +522,9 @@ pub fn handle_guess(
                     "Invalid letter (must be a consonant)".to_string()
                 }
                 super::state::GuessResult::NotEnoughMoney => "Not enough money".to_string(),
-                super::state::GuessResult::NeedToSpin => "Spin before guessing a consonant".to_string(),
+                super::state::GuessResult::NeedToSpin => {
+                    "Spin before guessing a consonant".to_string()
+                }
             };
             Ok(msg)
         }
@@ -526,11 +542,11 @@ pub fn handle_guess(
                 }
                 super::state::GuessResult::Incorrect => format!("No {}s", letter.to_uppercase()),
                 super::state::GuessResult::AlreadyUsed => "Letter already used".to_string(),
-                super::state::GuessResult::InvalidLetter => {
-                    "Invalid letter".to_string()
-                }
+                super::state::GuessResult::InvalidLetter => "Invalid letter".to_string(),
                 super::state::GuessResult::NotEnoughMoney => "Not enough money".to_string(),
-                super::state::GuessResult::NeedToSpin => "Active player must spin first".to_string(),
+                super::state::GuessResult::NeedToSpin => {
+                    "Active player must spin first".to_string()
+                }
             };
             Ok(msg)
         }
@@ -554,9 +570,7 @@ pub fn handle_solve(
     let round_at_solve = game.round;
 
     match game.phase {
-        super::state::GamePhase::Pregame => {
-            Err("Game has not started yet.")
-        }
+        super::state::GamePhase::Pregame => Err("Game has not started yet."),
         super::state::GamePhase::Normal => {
             if !game.is_active_player(socket_id, false) {
                 return Err("Only the active player can solve.");
@@ -599,7 +613,10 @@ pub fn handle_solve(
             }
             let solved = game.bonus_solve(attempt);
             let msg = if solved {
-                format!("Correct! You win the ${} jackpot!", game.config.bonus_jackpot)
+                format!(
+                    "Correct! You win the ${} jackpot!",
+                    game.config.bonus_jackpot
+                )
             } else {
                 "Incorrect!".to_string()
             };
@@ -624,9 +641,7 @@ pub fn handle_solve(
                 Ok((false, "Incorrect!".to_string(), None))
             }
         }
-        super::state::GamePhase::GameOver => {
-            Err("Game has ended.")
-        }
+        super::state::GamePhase::GameOver => Err("Game has ended."),
     }
 }
 
@@ -2324,9 +2339,24 @@ mod tests {
     fn create_test_manager_with_players(room: &str) -> GameManager {
         let mut manager = create_test_manager_with_room(room);
         let game = manager.get_room_mut(room).unwrap();
-        game.add_player("Player 1".to_string(), Some("socket1".to_string()), None, None);
-        game.add_player("Player 2".to_string(), Some("socket2".to_string()), None, None);
-        game.add_player("Player 3".to_string(), Some("socket3".to_string()), None, None);
+        game.add_player(
+            "Player 1".to_string(),
+            Some("socket1".to_string()),
+            None,
+            None,
+        );
+        game.add_player(
+            "Player 2".to_string(),
+            Some("socket2".to_string()),
+            None,
+            None,
+        );
+        game.add_player(
+            "Player 3".to_string(),
+            Some("socket3".to_string()),
+            None,
+            None,
+        );
         game.phase = GamePhase::Normal; // Set to Normal for tests (default is Pregame)
         manager
     }
@@ -2365,7 +2395,12 @@ mod tests {
     #[test]
     fn test_handle_join_game_new_player() {
         let mut manager = create_test_manager();
-        let result = handle_join_game(&mut manager, "test-room", "socket1", Some("Alice".to_string()));
+        let result = handle_join_game(
+            &mut manager,
+            "test-room",
+            "socket1",
+            Some("Alice".to_string()),
+        );
 
         assert!(result.is_ok());
         let (idx, is_reconnect, name) = result.unwrap();
@@ -2394,8 +2429,18 @@ mod tests {
     fn test_handle_join_game_multiple_players() {
         let mut manager = create_test_manager();
 
-        let result1 = handle_join_game(&mut manager, "test-room", "socket1", Some("Alice".to_string()));
-        let result2 = handle_join_game(&mut manager, "test-room", "socket2", Some("Bob".to_string()));
+        let result1 = handle_join_game(
+            &mut manager,
+            "test-room",
+            "socket1",
+            Some("Alice".to_string()),
+        );
+        let result2 = handle_join_game(
+            &mut manager,
+            "test-room",
+            "socket2",
+            Some("Bob".to_string()),
+        );
 
         assert!(result1.is_ok());
         assert!(result2.is_ok());
@@ -2415,13 +2460,23 @@ mod tests {
         let mut manager = create_test_manager();
 
         // First join
-        let result1 = handle_join_game(&mut manager, "test-room", "socket1", Some("Alice".to_string()));
+        let result1 = handle_join_game(
+            &mut manager,
+            "test-room",
+            "socket1",
+            Some("Alice".to_string()),
+        );
         assert!(result1.is_ok());
         let (idx1, is_reconnect1, _) = result1.unwrap();
         assert!(!is_reconnect1);
 
         // Second join with same socket - should return existing player
-        let result2 = handle_join_game(&mut manager, "test-room", "socket1", Some("Different Name".to_string()));
+        let result2 = handle_join_game(
+            &mut manager,
+            "test-room",
+            "socket1",
+            Some("Different Name".to_string()),
+        );
         assert!(result2.is_ok());
         let (idx2, is_reconnect2, name2) = result2.unwrap();
 
@@ -2441,14 +2496,24 @@ mod tests {
         // Add player then disconnect them
         {
             let game = manager.get_or_create_room("test-room");
-            game.add_player("Alice".to_string(), Some("old-socket".to_string()), None, None);
+            game.add_player(
+                "Alice".to_string(),
+                Some("old-socket".to_string()),
+                None,
+                None,
+            );
             // Simulate disconnect
             game.players[0].socket_id = None;
             game.players[0].disconnected_at = Some(12345);
         }
 
         // Reconnect with same name, new socket
-        let result = handle_join_game(&mut manager, "test-room", "new-socket", Some("Alice".to_string()));
+        let result = handle_join_game(
+            &mut manager,
+            "test-room",
+            "new-socket",
+            Some("Alice".to_string()),
+        );
         assert!(result.is_ok());
         let (idx, is_reconnect, name) = result.unwrap();
 
@@ -2468,7 +2533,12 @@ mod tests {
         let mut manager = create_test_manager();
         assert!(manager.get_room("new-room").is_none());
 
-        let result = handle_join_game(&mut manager, "new-room", "socket1", Some("Player".to_string()));
+        let result = handle_join_game(
+            &mut manager,
+            "new-room",
+            "socket1",
+            Some("Player".to_string()),
+        );
         assert!(result.is_ok());
 
         assert!(manager.get_room("new-room").is_some());
@@ -2560,7 +2630,10 @@ mod tests {
         let result = handle_spin(&mut manager, "test-room", "socket2");
 
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Only the active player (or host) can spin.");
+        assert_eq!(
+            result.unwrap_err(),
+            "Only the active player (or host) can spin."
+        );
     }
 
     #[test]
@@ -2573,7 +2646,10 @@ mod tests {
 
         let result = handle_spin(&mut manager, "test-room", "socket1");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Spin is only allowed during normal rounds.");
+        assert_eq!(
+            result.unwrap_err(),
+            "Spin is only allowed during normal rounds."
+        );
     }
 
     #[test]
@@ -2688,7 +2764,9 @@ mod tests {
 
         let result = handle_guess(&mut manager, "test-room", "socket1", 'H');
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("only allowed during normal or final spin rounds"));
+        assert!(result
+            .unwrap_err()
+            .contains("only allowed during normal or final spin rounds"));
     }
 
     // ========== SOLVE PUZZLE TESTS ==========
@@ -2794,7 +2872,10 @@ mod tests {
         // socket1 tries to solve but socket2 has control
         let result = handle_solve(&mut manager, "test-room", "socket1", "HELLO WORLD");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Only the player who buzzed in can solve.");
+        assert_eq!(
+            result.unwrap_err(),
+            "Only the player who buzzed in can solve."
+        );
     }
 
     #[test]
@@ -3123,9 +3204,10 @@ mod tests {
         assert!(game.players[0].socket_id.is_none());
 
         // Player can reconnect - find by user_id
-        let reconnect_idx = game.players.iter().position(|p| {
-            p.user_id == Some(123) && p.socket_id.is_none()
-        });
+        let reconnect_idx = game
+            .players
+            .iter()
+            .position(|p| p.user_id == Some(123) && p.socket_id.is_none());
 
         assert_eq!(reconnect_idx, Some(0));
 

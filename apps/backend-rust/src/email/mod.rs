@@ -105,10 +105,7 @@ impl EmailService {
             )
             .map_err(|e| format!("Failed to build email: {}", e))?;
 
-        let creds = Credentials::new(
-            self.config.smtp_user.clone(),
-            self.config.smtp_pass.clone(),
-        );
+        let creds = Credentials::new(self.config.smtp_user.clone(), self.config.smtp_pass.clone());
 
         let mailer: AsyncSmtpTransport<Tokio1Executor> =
             AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&self.config.smtp_host)

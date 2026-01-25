@@ -89,9 +89,13 @@ pub struct JoinQuery {
 /// Universal link join page - tries app first, falls back to web
 pub async fn join(Query(query): Query<JoinQuery>) -> Html<String> {
     let room = query.room.unwrap_or_else(|| "main".to_string());
-    let room_escaped = room.replace('\"', "&quot;").replace('<', "&lt;").replace('>', "&gt;");
+    let room_escaped = room
+        .replace('\"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
 
-    Html(format!(r#"<!DOCTYPE html>
+    Html(format!(
+        r#"<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -258,7 +262,10 @@ pub async fn join(Query(query): Query<JoinQuery>) -> Html<String> {
         tryOpenApp();
     </script>
 </body>
-</html>"#, room_escaped = room_escaped, server = "{server}"))
+</html>"#,
+        room_escaped = room_escaped,
+        server = "{server}"
+    ))
 }
 
 /// Common styles for all pages
@@ -474,7 +481,8 @@ const COMMON_STYLES: &str = r#"
 /// Root route - serves login page
 pub async fn index() -> Html<String> {
     let google_client_id = std::env::var("GOOGLE_CLIENT_ID").unwrap_or_default();
-    Html(format!(r##"<!DOCTYPE html>
+    Html(format!(
+        r##"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -850,12 +858,16 @@ pub async fn index() -> Html<String> {
         }});
     </script>
 </body>
-</html>"##, common_styles = COMMON_STYLES, google_client_id = google_client_id))
+</html>"##,
+        common_styles = COMMON_STYLES,
+        google_client_id = google_client_id
+    ))
 }
 
 /// Register page
 pub async fn register() -> Html<String> {
-    Html(format!(r##"<!DOCTYPE html>
+    Html(format!(
+        r##"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1243,12 +1255,15 @@ pub async fn register() -> Html<String> {
         }});
     </script>
 </body>
-</html>"##, common_styles = COMMON_STYLES))
+</html>"##,
+        common_styles = COMMON_STYLES
+    ))
 }
 
 /// Lobby page
 pub async fn lobby() -> Html<String> {
-    Html(format!(r#"<!DOCTYPE html>
+    Html(format!(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -2164,12 +2179,15 @@ pub async fn lobby() -> Html<String> {
         }});
     </script>
 </body>
-</html>"#, common_styles = COMMON_STYLES))
+</html>"#,
+        common_styles = COMMON_STYLES
+    ))
 }
 
 /// Game page
 pub async fn game() -> Html<String> {
-    Html(format!(r##"<!DOCTYPE html>
+    Html(format!(
+        r##"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -7190,12 +7208,15 @@ pub async fn game() -> Html<String> {
         loadPacks(); // Pre-load packs so they're ready when user becomes host
     </script>
 </body>
-</html>"##, common_styles = COMMON_STYLES))
+</html>"##,
+        common_styles = COMMON_STYLES
+    ))
 }
 
 /// Admin page
 pub async fn admin() -> Html<String> {
-    Html(format!(r#"<!DOCTYPE html>
+    Html(format!(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -8507,7 +8528,9 @@ pub async fn admin() -> Html<String> {
         checkAdmin();
     </script>
 </body>
-</html>"#, common_styles = COMMON_STYLES))
+</html>"#,
+        common_styles = COMMON_STYLES
+    ))
 }
 
 #[cfg(test)]
@@ -8515,9 +8538,9 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    use axum::{body::Body, http::Request, Router, routing::get};
-    use tower::ServiceExt;
+    use axum::{body::Body, http::Request, routing::get, Router};
     use tokio::sync::{OnceCell, RwLock};
+    use tower::ServiceExt;
 
     use crate::config::Config;
     use crate::db::Database;
@@ -8557,7 +8580,12 @@ mod tests {
             .with_state(state);
 
         let response = app
-            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -8583,7 +8611,12 @@ mod tests {
             .with_state(state);
 
         let response = app
-            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -8599,7 +8632,10 @@ mod tests {
 
         let checks = json.get("checks").unwrap();
         assert!(checks.get("database").is_some(), "Missing 'database' check");
-        assert!(checks.get("uptime_seconds").is_some(), "Missing 'uptime_seconds'");
+        assert!(
+            checks.get("uptime_seconds").is_some(),
+            "Missing 'uptime_seconds'"
+        );
     }
 
     #[tokio::test]
@@ -8611,8 +8647,14 @@ mod tests {
             .with_state(state.clone());
 
         // First request
-        let response1 = app.clone()
-            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+        let response1 = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         let body1 = axum::body::to_bytes(response1.into_body(), usize::MAX)
@@ -8626,7 +8668,12 @@ mod tests {
 
         // Second request
         let response2 = app
-            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         let body2 = axum::body::to_bytes(response2.into_body(), usize::MAX)

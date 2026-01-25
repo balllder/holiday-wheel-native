@@ -124,10 +124,10 @@ pub struct NewUser {
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct PasskeyCredential {
-    pub id: String,           // credential ID (base64url)
+    pub id: String, // credential ID (base64url)
     pub user_id: i64,
-    pub public_key: Vec<u8>,  // COSE public key
-    pub counter: i64,         // signature counter
+    pub public_key: Vec<u8>,        // COSE public key
+    pub counter: i64,               // signature counter
     pub transports: Option<String>, // JSON array of transports
     pub created_at: i64,
     pub last_used_at: Option<i64>,
@@ -138,7 +138,7 @@ pub struct PasskeyCredential {
 pub struct OAuthAccount {
     pub id: i64,
     pub user_id: i64,
-    pub provider: String,     // 'google' or 'apple'
+    pub provider: String,         // 'google' or 'apple'
     pub provider_user_id: String, // sub claim from ID token
     pub email: Option<String>,
     pub created_at: i64,
@@ -158,8 +158,8 @@ pub struct WebAuthnChallenge {
 #[derive(Debug, Clone)]
 pub struct OAuthStateData {
     pub state: String,
-    pub user_data: String,      // JSON data (redirect_uri, etc.)
-    pub provider: String,       // 'apple', 'google', etc.
+    pub user_data: String, // JSON data (redirect_uri, etc.)
+    pub provider: String,  // 'apple', 'google', etc.
     pub created_at: i64,
     pub expires_at: i64,
 }
@@ -292,13 +292,11 @@ impl Database {
 
             let puzzle_count_inserted = default_puzzles.len();
             for (category, answer) in default_puzzles {
-                sqlx::query(
-                    "INSERT INTO puzzles (category, answer, pack_id) VALUES (?, ?, 1)",
-                )
-                .bind(category)
-                .bind(answer)
-                .execute(&self.pool)
-                .await?;
+                sqlx::query("INSERT INTO puzzles (category, answer, pack_id) VALUES (?, ?, 1)")
+                    .bind(category)
+                    .bind(answer)
+                    .execute(&self.pool)
+                    .await?;
             }
             info!("Inserted {} default puzzles", puzzle_count_inserted);
         }
@@ -372,11 +370,10 @@ impl Database {
         token: &str,
     ) -> Result<Option<User>, DbError> {
         let token_hash = hash_token(token);
-        let user =
-            sqlx::query_as::<_, User>("SELECT * FROM users WHERE verification_token = ?")
-                .bind(token_hash)
-                .fetch_optional(&self.pool)
-                .await?;
+        let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE verification_token = ?")
+            .bind(token_hash)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(user)
     }
 
@@ -431,10 +428,12 @@ impl Database {
 
     /// Clear remember token
     pub async fn clear_remember_token(&self, user_id: i64) -> Result<(), DbError> {
-        sqlx::query("UPDATE users SET remember_token = NULL, remember_token_expires = NULL WHERE id = ?")
-            .bind(user_id)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "UPDATE users SET remember_token = NULL, remember_token_expires = NULL WHERE id = ?",
+        )
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -603,11 +602,7 @@ impl Database {
     }
 
     /// Mark a puzzle as used in a room
-    pub async fn mark_puzzle_used(
-        &self,
-        room_name: &str,
-        puzzle_id: i64,
-    ) -> Result<(), DbError> {
+    pub async fn mark_puzzle_used(&self, room_name: &str, puzzle_id: i64) -> Result<(), DbError> {
         sqlx::query(
             "INSERT OR REPLACE INTO used_puzzles (room_name, puzzle_id, used_at) VALUES (?, ?, ?)",
         )
@@ -733,12 +728,24 @@ impl Database {
                 bonus_seconds: row.get::<Option<i32>, _>("bonus_seconds").unwrap_or(30),
                 bonus_jackpot: row.get::<Option<i32>, _>("bonus_jackpot").unwrap_or(10000),
                 prize_replace_cash_values: prize_values,
-                puzzle_display_seconds: row.get::<Option<i32>, _>("puzzle_display_seconds").unwrap_or(30),
+                puzzle_display_seconds: row
+                    .get::<Option<i32>, _>("puzzle_display_seconds")
+                    .unwrap_or(30),
                 prize_wedge_names,
                 pack_id: row.get::<Option<i64>, _>("active_pack_id"),
-                disconnect_timeout_secs: row.get::<Option<i64>, _>("disconnect_timeout_secs").unwrap_or(300),
-                turn_timer_seconds: row.try_get::<Option<i32>, _>("turn_timer_seconds").ok().flatten().unwrap_or(10),
-                buzz_timer_seconds: row.try_get::<Option<i32>, _>("buzz_timer_seconds").ok().flatten().unwrap_or(5),
+                disconnect_timeout_secs: row
+                    .get::<Option<i64>, _>("disconnect_timeout_secs")
+                    .unwrap_or(300),
+                turn_timer_seconds: row
+                    .try_get::<Option<i32>, _>("turn_timer_seconds")
+                    .ok()
+                    .flatten()
+                    .unwrap_or(10),
+                buzz_timer_seconds: row
+                    .try_get::<Option<i32>, _>("buzz_timer_seconds")
+                    .ok()
+                    .flatten()
+                    .unwrap_or(5),
             })
         } else {
             Ok(RoomConfig::default())
@@ -887,11 +894,9 @@ impl Database {
 
     /// List all users (admin)
     pub async fn list_all_users(&self) -> Result<Vec<User>, DbError> {
-        let users = sqlx::query_as::<_, User>(
-            "SELECT * FROM users ORDER BY created_at DESC"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let users = sqlx::query_as::<_, User>("SELECT * FROM users ORDER BY created_at DESC")
+            .fetch_all(&self.pool)
+            .await?;
         Ok(users)
     }
 
@@ -918,14 +923,14 @@ impl Database {
     pub async fn list_all_puzzles(&self, pack_id: Option<i64>) -> Result<Vec<DbPuzzle>, DbError> {
         let puzzles = if let Some(pack_id) = pack_id {
             sqlx::query_as::<_, DbPuzzle>(
-                "SELECT * FROM puzzles WHERE pack_id = ? ORDER BY category, answer"
+                "SELECT * FROM puzzles WHERE pack_id = ? ORDER BY category, answer",
             )
             .bind(pack_id)
             .fetch_all(&self.pool)
             .await?
         } else {
             sqlx::query_as::<_, DbPuzzle>(
-                "SELECT * FROM puzzles ORDER BY pack_id, category, answer"
+                "SELECT * FROM puzzles ORDER BY pack_id, category, answer",
             )
             .fetch_all(&self.pool)
             .await?
@@ -934,15 +939,19 @@ impl Database {
     }
 
     /// Add a single puzzle
-    pub async fn add_puzzle(&self, category: &str, answer: &str, pack_id: i64) -> Result<i64, DbError> {
-        let result = sqlx::query(
-            "INSERT INTO puzzles (category, answer, pack_id) VALUES (?, ?, ?)"
-        )
-        .bind(category)
-        .bind(answer.to_uppercase())
-        .bind(pack_id)
-        .execute(&self.pool)
-        .await?;
+    pub async fn add_puzzle(
+        &self,
+        category: &str,
+        answer: &str,
+        pack_id: i64,
+    ) -> Result<i64, DbError> {
+        let result =
+            sqlx::query("INSERT INTO puzzles (category, answer, pack_id) VALUES (?, ?, ?)")
+                .bind(category)
+                .bind(answer.to_uppercase())
+                .bind(pack_id)
+                .execute(&self.pool)
+                .await?;
         Ok(result.last_insert_rowid())
     }
 
@@ -974,28 +983,31 @@ impl Database {
             LEFT JOIN puzzles pz ON pz.pack_id = p.id AND pz.enabled = 1
             GROUP BY p.id
             ORDER BY p.name
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.iter().map(|r| {
-            (r.get("id"), r.get("name"), r.get("count"))
-        }).collect())
+        Ok(rows
+            .iter()
+            .map(|r| (r.get("id"), r.get("name"), r.get("count")))
+            .collect())
     }
 
     /// Bulk import puzzles from a list
-    pub async fn import_puzzles(&self, puzzles: Vec<(String, String)>, pack_id: i64) -> Result<usize, DbError> {
+    pub async fn import_puzzles(
+        &self,
+        puzzles: Vec<(String, String)>,
+        pack_id: i64,
+    ) -> Result<usize, DbError> {
         let mut count = 0;
         for (category, answer) in puzzles {
-            sqlx::query(
-                "INSERT INTO puzzles (category, answer, pack_id) VALUES (?, ?, ?)"
-            )
-            .bind(&category)
-            .bind(answer.to_uppercase())
-            .bind(pack_id)
-            .execute(&self.pool)
-            .await?;
+            sqlx::query("INSERT INTO puzzles (category, answer, pack_id) VALUES (?, ?, ?)")
+                .bind(&category)
+                .bind(answer.to_uppercase())
+                .bind(pack_id)
+                .execute(&self.pool)
+                .await?;
             count += 1;
         }
         Ok(count)
@@ -1032,7 +1044,10 @@ impl Database {
     }
 
     /// Get passkey credential by ID
-    pub async fn get_passkey(&self, credential_id: &str) -> Result<Option<PasskeyCredential>, DbError> {
+    pub async fn get_passkey(
+        &self,
+        credential_id: &str,
+    ) -> Result<Option<PasskeyCredential>, DbError> {
         let cred = sqlx::query_as::<_, PasskeyCredential>(
             "SELECT * FROM passkey_credentials WHERE id = ?",
         )
@@ -1059,26 +1074,22 @@ impl Database {
         credential_id: &str,
         counter: i64,
     ) -> Result<(), DbError> {
-        sqlx::query(
-            "UPDATE passkey_credentials SET counter = ?, last_used_at = ? WHERE id = ?",
-        )
-        .bind(counter)
-        .bind(now_secs())
-        .bind(credential_id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE passkey_credentials SET counter = ?, last_used_at = ? WHERE id = ?")
+            .bind(counter)
+            .bind(now_secs())
+            .bind(credential_id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
     /// Delete a passkey credential
     pub async fn delete_passkey(&self, credential_id: &str, user_id: i64) -> Result<bool, DbError> {
-        let result = sqlx::query(
-            "DELETE FROM passkey_credentials WHERE id = ? AND user_id = ?",
-        )
-        .bind(credential_id)
-        .bind(user_id)
-        .execute(&self.pool)
-        .await?;
+        let result = sqlx::query("DELETE FROM passkey_credentials WHERE id = ? AND user_id = ?")
+            .bind(credential_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -1125,7 +1136,10 @@ impl Database {
     }
 
     /// Get all OAuth accounts for a user
-    pub async fn get_user_oauth_accounts(&self, user_id: i64) -> Result<Vec<OAuthAccount>, DbError> {
+    pub async fn get_user_oauth_accounts(
+        &self,
+        user_id: i64,
+    ) -> Result<Vec<OAuthAccount>, DbError> {
         let accounts = sqlx::query_as::<_, OAuthAccount>(
             "SELECT * FROM oauth_accounts WHERE user_id = ? ORDER BY created_at DESC",
         )
@@ -1137,13 +1151,11 @@ impl Database {
 
     /// Delete an OAuth account link
     pub async fn delete_oauth_account(&self, id: i64, user_id: i64) -> Result<bool, DbError> {
-        let result = sqlx::query(
-            "DELETE FROM oauth_accounts WHERE id = ? AND user_id = ?",
-        )
-        .bind(id)
-        .bind(user_id)
-        .execute(&self.pool)
-        .await?;
+        let result = sqlx::query("DELETE FROM oauth_accounts WHERE id = ? AND user_id = ?")
+            .bind(id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -1177,7 +1189,10 @@ impl Database {
     }
 
     /// Get and delete a challenge (one-time use)
-    pub async fn consume_challenge(&self, challenge: &str) -> Result<Option<WebAuthnChallenge>, DbError> {
+    pub async fn consume_challenge(
+        &self,
+        challenge: &str,
+    ) -> Result<Option<WebAuthnChallenge>, DbError> {
         // First get the challenge
         let row = sqlx::query(
             "SELECT challenge, user_id, email, type, created_at, expires_at FROM webauthn_challenges WHERE challenge = ?",
@@ -1344,7 +1359,11 @@ impl Database {
     }
 
     /// Set password for user (for OAuth users adding password)
-    pub async fn set_user_password(&self, user_id: i64, password_hash: &str) -> Result<(), DbError> {
+    pub async fn set_user_password(
+        &self,
+        user_id: i64,
+        password_hash: &str,
+    ) -> Result<(), DbError> {
         sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
             .bind(password_hash)
             .bind(user_id)
@@ -1429,11 +1448,13 @@ impl Database {
     ) -> Result<(Vec<String>, Vec<serde_json::Value>, i64), DbError> {
         // Get column info using PRAGMA
         let pragma_query = format!("PRAGMA table_info({})", table_name);
-        let columns: Vec<(i32, String, String, i32, Option<String>, i32)> = sqlx::query_as(&pragma_query)
-            .fetch_all(&self.pool)
-            .await?;
+        let columns: Vec<(i32, String, String, i32, Option<String>, i32)> =
+            sqlx::query_as(&pragma_query).fetch_all(&self.pool).await?;
 
-        let column_names: Vec<String> = columns.iter().map(|(_, name, _, _, _, _)| name.clone()).collect();
+        let column_names: Vec<String> = columns
+            .iter()
+            .map(|(_, name, _, _, _, _)| name.clone())
+            .collect();
 
         if column_names.is_empty() {
             return Err(DbError::NotFound);
@@ -1441,9 +1462,7 @@ impl Database {
 
         // Get total count
         let count_query = format!("SELECT COUNT(*) FROM {}", table_name);
-        let (total_count,): (i64,) = sqlx::query_as(&count_query)
-            .fetch_one(&self.pool)
-            .await?;
+        let (total_count,): (i64,) = sqlx::query_as(&count_query).fetch_one(&self.pool).await?;
 
         // Get paginated data
         let offset = (page - 1) * page_size;
@@ -1452,9 +1471,7 @@ impl Database {
             table_name, page_size, offset
         );
 
-        let rows = sqlx::query(&select_query)
-            .fetch_all(&self.pool)
-            .await?;
+        let rows = sqlx::query(&select_query).fetch_all(&self.pool).await?;
 
         // Convert rows to JSON values
         let json_rows: Vec<serde_json::Value> = rows
@@ -1474,7 +1491,8 @@ impl Database {
                     } else if let Ok(v) = row.try_get::<bool, _>(idx) {
                         serde_json::Value::Bool(v)
                     } else if let Ok(v) = row.try_get::<Option<String>, _>(idx) {
-                        v.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null)
+                        v.map(serde_json::Value::String)
+                            .unwrap_or(serde_json::Value::Null)
                     } else {
                         serde_json::Value::Null
                     };
@@ -1591,7 +1609,10 @@ mod tests {
     async fn test_get_user_by_email_not_found() {
         let db = create_test_db().await;
 
-        let user = db.get_user_by_email("nonexistent@example.com").await.unwrap();
+        let user = db
+            .get_user_by_email("nonexistent@example.com")
+            .await
+            .unwrap();
         assert!(user.is_none());
     }
 
@@ -1686,7 +1707,9 @@ mod tests {
             .unwrap();
 
         // Set remember token
-        db.set_remember_token(user_id, "remember-me-token").await.unwrap();
+        db.set_remember_token(user_id, "remember-me-token")
+            .await
+            .unwrap();
 
         // Get user by token
         let user = db.get_user_by_token("remember-me-token").await.unwrap();
@@ -1717,7 +1740,9 @@ mod tests {
             .unwrap();
 
         // Set remember token (automatically sets expiration to 30 days from now)
-        db.set_remember_token(user_id, "will-expire-token").await.unwrap();
+        db.set_remember_token(user_id, "will-expire-token")
+            .await
+            .unwrap();
 
         // Token should work (not expired yet)
         let user = db.get_user_by_token("will-expire-token").await.unwrap();
@@ -1864,7 +1889,10 @@ mod tests {
     async fn test_add_puzzle() {
         let db = create_test_db().await;
 
-        let puzzle_id = db.add_puzzle("TEST CATEGORY", "test answer", 1).await.unwrap();
+        let puzzle_id = db
+            .add_puzzle("TEST CATEGORY", "test answer", 1)
+            .await
+            .unwrap();
         assert!(puzzle_id > 0);
 
         // Verify puzzle was added with uppercase answer
@@ -1952,7 +1980,12 @@ mod tests {
             .unwrap();
 
         let account_id = db
-            .create_oauth_account(user_id, "google", "google-user-123", Some("test@example.com"))
+            .create_oauth_account(
+                user_id,
+                "google",
+                "google-user-123",
+                Some("test@example.com"),
+            )
             .await
             .unwrap();
 
@@ -1968,11 +2001,19 @@ mod tests {
             .await
             .unwrap();
 
-        db.create_oauth_account(user_id, "google", "google-user-123", Some("test@example.com"))
+        db.create_oauth_account(
+            user_id,
+            "google",
+            "google-user-123",
+            Some("test@example.com"),
+        )
+        .await
+        .unwrap();
+
+        let account = db
+            .get_oauth_account("google", "google-user-123")
             .await
             .unwrap();
-
-        let account = db.get_oauth_account("google", "google-user-123").await.unwrap();
         assert!(account.is_some());
         let account = account.unwrap();
         assert_eq!(account.user_id, user_id);
@@ -2199,10 +2240,16 @@ mod tests {
 
         // Cleanup should remove expired state
         let deleted = db.cleanup_expired_oauth_states().await.unwrap();
-        assert!(deleted >= 1, "Should have deleted at least one expired state");
+        assert!(
+            deleted >= 1,
+            "Should have deleted at least one expired state"
+        );
 
         // Expired state should be gone
-        let expired = db.get_and_delete_oauth_state("expired-state").await.unwrap();
+        let expired = db
+            .get_and_delete_oauth_state("expired-state")
+            .await
+            .unwrap();
         assert!(expired.is_none());
 
         // Valid state should still exist
@@ -2263,7 +2310,9 @@ mod tests {
             buzz_timer_seconds: 5,
         };
 
-        db.set_room_config("custom-room", &config, Some(1)).await.unwrap();
+        db.set_room_config("custom-room", &config, Some(1))
+            .await
+            .unwrap();
 
         let loaded = db.get_room_config("custom-room").await.unwrap();
         assert_eq!(loaded.vowel_cost, 500);
@@ -2289,7 +2338,9 @@ mod tests {
     async fn test_delete_room() {
         let db = create_test_db().await;
 
-        db.update_room_activity("room-to-delete", None).await.unwrap();
+        db.update_room_activity("room-to-delete", None)
+            .await
+            .unwrap();
 
         let deleted = db.delete_room("room-to-delete").await.unwrap();
         assert!(deleted);
@@ -2371,7 +2422,10 @@ mod tests {
 
         // Default pack should have puzzles
         assert!(!counts.is_empty());
-        let default_pack = counts.iter().find(|(_, name, _)| name == "Default").unwrap();
+        let default_pack = counts
+            .iter()
+            .find(|(_, name, _)| name == "Default")
+            .unwrap();
         assert!(default_pack.2 > 0); // Should have default puzzles
     }
 
@@ -2520,7 +2574,7 @@ mod tests {
 
         let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
         assert!(!user.verified); // Should be unverified again
-        // Token should be stored as a SHA-256 hash (64 hex chars)
+                                 // Token should be stored as a SHA-256 hash (64 hex chars)
         assert!(user.verification_token.is_some());
         assert_eq!(user.verification_token.as_ref().unwrap().len(), 64);
         assert_ne!(user.verification_token, Some(new_token.to_string())); // Not plaintext
@@ -2570,7 +2624,10 @@ mod tests {
             .unwrap();
 
         // Get puzzle from specific pack
-        let puzzle = db.get_random_puzzle("pack-test-room", Some(pack_id)).await.unwrap();
+        let puzzle = db
+            .get_random_puzzle("pack-test-room", Some(pack_id))
+            .await
+            .unwrap();
 
         // Should be from our test pack
         assert!(puzzle.answer == "TEST ANSWER ONE" || puzzle.answer == "TEST ANSWER TWO");
@@ -2581,7 +2638,10 @@ mod tests {
         let db = create_test_db().await;
 
         // Pack ID 0 should use all packs (like None)
-        let puzzle = db.get_random_puzzle("all-packs-room", Some(0)).await.unwrap();
+        let puzzle = db
+            .get_random_puzzle("all-packs-room", Some(0))
+            .await
+            .unwrap();
 
         // Should work and return a puzzle
         assert!(!puzzle.answer.is_empty());
@@ -2622,7 +2682,10 @@ mod tests {
         let puzzle_id = db.add_puzzle("Test", "ONLY PUZZLE", pack_id).await.unwrap();
 
         // Get the puzzle once (should work)
-        let puzzle = db.get_random_puzzle("disabled-test", Some(pack_id)).await.unwrap();
+        let puzzle = db
+            .get_random_puzzle("disabled-test", Some(pack_id))
+            .await
+            .unwrap();
         assert_eq!(puzzle.answer, "ONLY PUZZLE");
 
         // Clear used puzzles and disable the puzzle
@@ -2699,7 +2762,9 @@ mod tests {
         assert!(active.is_none());
 
         // Set active pack
-        db.set_active_pack("pack-room", Some(pack_id)).await.unwrap();
+        db.set_active_pack("pack-room", Some(pack_id))
+            .await
+            .unwrap();
 
         let active = db.get_active_pack_id("pack-room").await.unwrap();
         assert_eq!(active, Some(pack_id));
@@ -2777,7 +2842,9 @@ mod tests {
         let path = tmp.path().to_str().unwrap().to_string();
         std::mem::forget(tmp);
 
-        let db = Database::connect(&format!("sqlite:{}", path)).await.unwrap();
+        let db = Database::connect(&format!("sqlite:{}", path))
+            .await
+            .unwrap();
 
         // Should work
         let packs = db.list_packs().await.unwrap();
@@ -2820,8 +2887,14 @@ mod tests {
     async fn test_passkey_wrong_user_delete() {
         let db = create_test_db().await;
 
-        let user1 = db.create_oauth_user("pk1@example.com", "User 1", true).await.unwrap();
-        let user2 = db.create_oauth_user("pk2@example.com", "User 2", true).await.unwrap();
+        let user1 = db
+            .create_oauth_user("pk1@example.com", "User 1", true)
+            .await
+            .unwrap();
+        let user2 = db
+            .create_oauth_user("pk2@example.com", "User 2", true)
+            .await
+            .unwrap();
 
         db.create_passkey("cred-user1", user1, &[1, 2, 3], 0, None, None)
             .await
@@ -2841,7 +2914,9 @@ mod tests {
 
         // Create additional pack with puzzles
         let pack_id = db.get_or_create_pack("Extra Pack").await.unwrap();
-        db.add_puzzle("Test", "EXTRA PUZZLE", pack_id).await.unwrap();
+        db.add_puzzle("Test", "EXTRA PUZZLE", pack_id)
+            .await
+            .unwrap();
 
         // List all puzzles (no pack filter)
         let all = db.list_all_puzzles(None).await.unwrap();
@@ -2872,7 +2947,9 @@ mod tests {
             buzz_timer_seconds: 5,
         };
 
-        db.set_room_config("config-test", &config1, Some(1)).await.unwrap();
+        db.set_room_config("config-test", &config1, Some(1))
+            .await
+            .unwrap();
 
         // Update with different values
         let config2 = RoomConfig {
@@ -2888,7 +2965,9 @@ mod tests {
             buzz_timer_seconds: 5,
         };
 
-        db.set_room_config("config-test", &config2, Some(2)).await.unwrap();
+        db.set_room_config("config-test", &config2, Some(2))
+            .await
+            .unwrap();
 
         let loaded = db.get_room_config("config-test").await.unwrap();
         assert_eq!(loaded.vowel_cost, 400);
@@ -3112,7 +3191,9 @@ mod tests {
             .unwrap();
 
         // Update only avatar (name should remain unchanged)
-        db.update_user_profile(user_id, None, Some(10)).await.unwrap();
+        db.update_user_profile(user_id, None, Some(10))
+            .await
+            .unwrap();
 
         let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
         assert_eq!(user.display_name, "Keep This Name"); // Should be unchanged
@@ -3163,7 +3244,9 @@ mod tests {
             .unwrap();
 
         // Update avatar to exactly 12 (should work)
-        db.update_user_profile(user_id, None, Some(12)).await.unwrap();
+        db.update_user_profile(user_id, None, Some(12))
+            .await
+            .unwrap();
 
         let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
         assert_eq!(user.avatar_id, 12);
@@ -3186,7 +3269,9 @@ mod tests {
             .unwrap();
 
         // Update avatar to exactly 1 (should work)
-        db.update_user_profile(user_id, None, Some(1)).await.unwrap();
+        db.update_user_profile(user_id, None, Some(1))
+            .await
+            .unwrap();
 
         let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
         assert_eq!(user.avatar_id, 1);
@@ -3209,7 +3294,9 @@ mod tests {
             .unwrap();
 
         // Update avatar to 13 (should be clamped to 12)
-        db.update_user_profile(user_id, None, Some(13)).await.unwrap();
+        db.update_user_profile(user_id, None, Some(13))
+            .await
+            .unwrap();
 
         let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
         assert_eq!(user.avatar_id, 12);
@@ -3287,7 +3374,8 @@ mod tests {
 
         // Create the old schema manually (before migration 004 renaming)
         // This is the schema from migrations 001-003 with old column names
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -3305,19 +3393,31 @@ mod tests {
                 is_admin INTEGER NOT NULL DEFAULT 0,
                 avatar_id INTEGER NOT NULL DEFAULT 1
             )
-        "#).execute(&pool).await.unwrap();
+        "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             CREATE TABLE IF NOT EXISTS packs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE
             )
-        "#).execute(&pool).await.unwrap();
+        "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         sqlx::query("INSERT OR IGNORE INTO packs (id, name) VALUES (1, 'Default')")
-            .execute(&pool).await.unwrap();
+            .execute(&pool)
+            .await
+            .unwrap();
 
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             CREATE TABLE IF NOT EXISTS puzzles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 category TEXT NOT NULL,
@@ -3326,10 +3426,15 @@ mod tests {
                 enabled INTEGER NOT NULL DEFAULT 1,
                 FOREIGN KEY(pack_id) REFERENCES packs(id)
             )
-        "#).execute(&pool).await.unwrap();
+        "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         // OLD schema: final_seconds and final_jackpot (before migration 004)
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             CREATE TABLE IF NOT EXISTS room_config (
                 room_name TEXT PRIMARY KEY,
                 active_pack_id INTEGER,
@@ -3344,10 +3449,15 @@ mod tests {
                 buzz_timer_seconds INTEGER DEFAULT 5,
                 FOREIGN KEY(active_pack_id) REFERENCES packs(id)
             )
-        "#).execute(&pool).await.unwrap();
+        "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         // Create sqlx migrations tracking table (simulating previous migrations applied)
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             CREATE TABLE IF NOT EXISTS _sqlx_migrations (
                 version BIGINT PRIMARY KEY,
                 description TEXT NOT NULL,
@@ -3356,16 +3466,25 @@ mod tests {
                 checksum BLOB NOT NULL,
                 execution_time BIGINT NOT NULL
             )
-        "#).execute(&pool).await.unwrap();
+        "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         // Mark migrations 001-003 as already applied
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time)
             VALUES
                 (1, 'initial_schema', 1, X'00', 0),
                 (2, 'additional_indexes', 1, X'00', 0),
                 (3, 'add_avatar', 1, X'00', 0)
-        "#).execute(&pool).await.unwrap();
+        "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         (tmp, pool)
     }
@@ -3376,16 +3495,23 @@ mod tests {
         let (tmp, pool) = create_old_schema_db().await;
 
         // Insert data using OLD column names
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             INSERT INTO room_config (room_name, vowel_cost, final_seconds, final_jackpot)
             VALUES ('test-room', 300, 45, 25000)
-        "#).execute(&pool).await.unwrap();
+        "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         // Verify data was inserted with old column names
-        let row = sqlx::query("SELECT final_seconds, final_jackpot FROM room_config WHERE room_name = 'test-room'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let row = sqlx::query(
+            "SELECT final_seconds, final_jackpot FROM room_config WHERE room_name = 'test-room'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(row.get::<i32, _>("final_seconds"), 45);
         assert_eq!(row.get::<i32, _>("final_jackpot"), 25000);
 
@@ -3400,10 +3526,12 @@ mod tests {
             .unwrap();
 
         // Verify data is preserved with new column names
-        let row = sqlx::query("SELECT bonus_seconds, bonus_jackpot FROM room_config WHERE room_name = 'test-room'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let row = sqlx::query(
+            "SELECT bonus_seconds, bonus_jackpot FROM room_config WHERE room_name = 'test-room'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(row.get::<i32, _>("bonus_seconds"), 45);
         assert_eq!(row.get::<i32, _>("bonus_jackpot"), 25000);
 
@@ -3418,24 +3546,36 @@ mod tests {
         let (tmp, pool) = create_old_schema_db().await;
 
         // Insert multiple rows with different values
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             INSERT INTO room_config (room_name, vowel_cost, final_seconds, final_jackpot)
             VALUES
                 ('room-1', 250, 30, 10000),
                 ('room-2', 500, 60, 50000),
                 ('room-3', 100, 15, 5000)
-        "#).execute(&pool).await.unwrap();
+        "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         // Run migration
         sqlx::query("ALTER TABLE room_config RENAME COLUMN final_seconds TO bonus_seconds")
-            .execute(&pool).await.unwrap();
+            .execute(&pool)
+            .await
+            .unwrap();
         sqlx::query("ALTER TABLE room_config RENAME COLUMN final_jackpot TO bonus_jackpot")
-            .execute(&pool).await.unwrap();
+            .execute(&pool)
+            .await
+            .unwrap();
 
         // Verify all rows preserved
         let rows: Vec<(String, i32, i32)> = sqlx::query_as(
-            "SELECT room_name, bonus_seconds, bonus_jackpot FROM room_config ORDER BY room_name"
-        ).fetch_all(&pool).await.unwrap();
+            "SELECT room_name, bonus_seconds, bonus_jackpot FROM room_config ORDER BY room_name",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
 
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0], ("room-1".to_string(), 30, 10000));
@@ -3452,22 +3592,33 @@ mod tests {
         let (tmp, pool) = create_old_schema_db().await;
 
         // Insert row with NULL values in old columns
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             INSERT INTO room_config (room_name, vowel_cost)
             VALUES ('null-room', 250)
-        "#).execute(&pool).await.unwrap();
+        "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         // Run migration
         sqlx::query("ALTER TABLE room_config RENAME COLUMN final_seconds TO bonus_seconds")
-            .execute(&pool).await.unwrap();
-        sqlx::query("ALTER TABLE room_config RENAME COLUMN final_jackpot TO bonus_jackpot")
-            .execute(&pool).await.unwrap();
-
-        // Verify NULL values are preserved
-        let row = sqlx::query("SELECT bonus_seconds, bonus_jackpot FROM room_config WHERE room_name = 'null-room'")
-            .fetch_one(&pool)
+            .execute(&pool)
             .await
             .unwrap();
+        sqlx::query("ALTER TABLE room_config RENAME COLUMN final_jackpot TO bonus_jackpot")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Verify NULL values are preserved
+        let row = sqlx::query(
+            "SELECT bonus_seconds, bonus_jackpot FROM room_config WHERE room_name = 'null-room'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert!(row.get::<Option<i32>, _>("bonus_seconds").is_none());
         assert!(row.get::<Option<i32>, _>("bonus_jackpot").is_none());
 
@@ -3484,7 +3635,8 @@ mod tests {
         let pool = SqlitePool::connect(&db_url).await.unwrap();
 
         // Create users table WITHOUT avatar_id (pre-migration 003)
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -3493,13 +3645,22 @@ mod tests {
                 verified INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL
             )
-        "#).execute(&pool).await.unwrap();
+        "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         // Insert user before migration
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             INSERT INTO users (email, display_name, created_at)
             VALUES ('old@user.com', 'Old User', 1234567890)
-        "#).execute(&pool).await.unwrap();
+        "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         // Run migration: add avatar_id column with default value
         sqlx::query("ALTER TABLE users ADD COLUMN avatar_id INTEGER NOT NULL DEFAULT 1")
@@ -3515,10 +3676,15 @@ mod tests {
         assert_eq!(row.get::<i32, _>("avatar_id"), 1);
 
         // Verify new users can be inserted with avatar_id
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             INSERT INTO users (email, display_name, created_at, avatar_id)
             VALUES ('new@user.com', 'New User', 1234567891, 5)
-        "#).execute(&pool).await.unwrap();
+        "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         let row = sqlx::query("SELECT avatar_id FROM users WHERE email = 'new@user.com'")
             .fetch_one(&pool)
@@ -3537,9 +3703,13 @@ mod tests {
 
         // Run migration
         sqlx::query("ALTER TABLE room_config RENAME COLUMN final_seconds TO bonus_seconds")
-            .execute(&pool).await.unwrap();
+            .execute(&pool)
+            .await
+            .unwrap();
         sqlx::query("ALTER TABLE room_config RENAME COLUMN final_jackpot TO bonus_jackpot")
-            .execute(&pool).await.unwrap();
+            .execute(&pool)
+            .await
+            .unwrap();
 
         // Verify old column names no longer work
         let result = sqlx::query("SELECT final_seconds FROM room_config")
@@ -3582,15 +3752,19 @@ mod tests {
             buzz_timer_seconds: 5,
         };
 
-        db.set_room_config("migration-test", &config, None).await.unwrap();
+        db.set_room_config("migration-test", &config, None)
+            .await
+            .unwrap();
 
         let loaded = db.get_room_config("migration-test").await.unwrap();
         assert_eq!(loaded.bonus_seconds, 90);
         assert_eq!(loaded.bonus_jackpot, 75000);
 
         // Verify users table has avatar_id column
-        let user_id = db.create_oauth_user("migration@test.com", "Migration Test", true)
-            .await.unwrap();
+        let user_id = db
+            .create_oauth_user("migration@test.com", "Migration Test", true)
+            .await
+            .unwrap();
         let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
         assert_eq!(user.avatar_id, 1); // Default avatar
     }

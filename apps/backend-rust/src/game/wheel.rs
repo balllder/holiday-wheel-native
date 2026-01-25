@@ -118,7 +118,10 @@ impl WedgeValue {
     pub fn is_special(&self) -> bool {
         matches!(
             self,
-            WedgeValue::Bankrupt | WedgeValue::LoseTurn | WedgeValue::FreePlay | WedgeValue::Prize { .. }
+            WedgeValue::Bankrupt
+                | WedgeValue::LoseTurn
+                | WedgeValue::FreePlay
+                | WedgeValue::Prize { .. }
         )
     }
 
@@ -138,30 +141,30 @@ pub const WHEEL_SIZE: usize = 24;
 /// All unique cash values to avoid visual confusion
 pub fn create_standard_wheel() -> Vec<WedgeValue> {
     vec![
-        WedgeValue::Cash(5000),      // 1 - Top dollar
-        WedgeValue::Cash(300),       // 2
-        WedgeValue::Cash(900),       // 3
-        WedgeValue::Cash(400),       // 4
-        WedgeValue::Cash(650),       // 5
-        WedgeValue::Bankrupt,        // 6 - Bankrupt
-        WedgeValue::Cash(450),       // 7
-        WedgeValue::Cash(800),       // 8
-        WedgeValue::Cash(350),       // 9
-        WedgeValue::Cash(550),       // 10
+        WedgeValue::Cash(5000),         // 1 - Top dollar
+        WedgeValue::Cash(300),          // 2
+        WedgeValue::Cash(900),          // 3
+        WedgeValue::Cash(400),          // 4
+        WedgeValue::Cash(650),          // 5
+        WedgeValue::Bankrupt,           // 6 - Bankrupt
+        WedgeValue::Cash(450),          // 7
+        WedgeValue::Cash(800),          // 8
+        WedgeValue::Cash(350),          // 9
+        WedgeValue::Cash(550),          // 10
         WedgeValue::prize("GIFT CARD"), // 11 - Prize
-        WedgeValue::Cash(700),       // 12
-        WedgeValue::Cash(500),       // 13
-        WedgeValue::Cash(1000),      // 14
-        WedgeValue::LoseTurn,        // 15 - Lose A Turn
-        WedgeValue::Cash(600),       // 16
-        WedgeValue::Cash(2500),      // 17
-        WedgeValue::Cash(750),       // 18
-        WedgeValue::Cash(850),       // 19
-        WedgeValue::FreePlay,        // 20 - Free Play
-        WedgeValue::Cash(950),       // 21
-        WedgeValue::Cash(1500),      // 22
-        WedgeValue::Cash(3500),      // 23
-        WedgeValue::Bankrupt,        // 24 - Bankrupt
+        WedgeValue::Cash(700),          // 12
+        WedgeValue::Cash(500),          // 13
+        WedgeValue::Cash(1000),         // 14
+        WedgeValue::LoseTurn,           // 15 - Lose A Turn
+        WedgeValue::Cash(600),          // 16
+        WedgeValue::Cash(2500),         // 17
+        WedgeValue::Cash(750),          // 18
+        WedgeValue::Cash(850),          // 19
+        WedgeValue::FreePlay,           // 20 - Free Play
+        WedgeValue::Cash(950),          // 21
+        WedgeValue::Cash(1500),         // 22
+        WedgeValue::Cash(3500),         // 23
+        WedgeValue::Bankrupt,           // 24 - Bankrupt
     ]
 }
 

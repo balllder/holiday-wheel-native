@@ -483,24 +483,20 @@ impl Config {
 
                 // Enforce minimum length
                 if code.len() < 8 {
-                    return Err(ConfigError::InsecureHostCode(
-                        format!(
-                            "HOST_CODE must be at least 8 characters (got {} chars). \
+                    return Err(ConfigError::InsecureHostCode(format!(
+                        "HOST_CODE must be at least 8 characters (got {} chars). \
                             Please set a secure value.",
-                            code.len()
-                        )
-                    ));
+                        code.len()
+                    )));
                 }
 
                 Ok((code, false))
             }
-            _ => {
-                Err(ConfigError::InsecureHostCode(
-                    "HOST_CODE environment variable is required. \
+            _ => Err(ConfigError::InsecureHostCode(
+                "HOST_CODE environment variable is required. \
                     Please set HOST_CODE to a secure value (minimum 8 characters)."
-                        .to_string()
-                ))
-            }
+                    .to_string(),
+            )),
         }
     }
 
@@ -545,10 +541,7 @@ impl Config {
         );
         info!(
             "    Apple Client ID: {}",
-            self.oauth
-                .apple_client_id
-                .as_deref()
-                .unwrap_or("not set")
+            self.oauth.apple_client_id.as_deref().unwrap_or("not set")
         );
         info!(
             "    Apple Client ID (web): {}",
@@ -566,7 +559,10 @@ impl Config {
         if self.cors.permissive {
             info!("    Mode: PERMISSIVE (any origin allowed) - NOT SECURE FOR PRODUCTION");
         } else {
-            info!("    Mode: STRICT ({} origins)", self.cors.allowed_origins.len());
+            info!(
+                "    Mode: STRICT ({} origins)",
+                self.cors.allowed_origins.len()
+            );
             for origin in &self.cors.allowed_origins {
                 info!("    - {}", origin);
             }
@@ -1099,7 +1095,9 @@ mod tests {
                     assert!(msg.contains("required"));
                 }
                 ConfigError::Multiple(errors) => {
-                    assert!(errors.iter().any(|e| matches!(e, ConfigError::InsecureHostCode(_))));
+                    assert!(errors
+                        .iter()
+                        .any(|e| matches!(e, ConfigError::InsecureHostCode(_))));
                 }
                 _ => panic!("Expected InsecureHostCode error, got {:?}", err),
             }
@@ -1127,7 +1125,9 @@ mod tests {
                     assert!(msg.contains("holiday"));
                 }
                 ConfigError::Multiple(errors) => {
-                    assert!(errors.iter().any(|e| matches!(e, ConfigError::InsecureHostCode(_))));
+                    assert!(errors
+                        .iter()
+                        .any(|e| matches!(e, ConfigError::InsecureHostCode(_))));
                 }
                 _ => panic!("Expected InsecureHostCode error, got {:?}", err),
             }
@@ -1146,7 +1146,9 @@ mod tests {
                     assert!(msg.contains("8 characters"));
                 }
                 ConfigError::Multiple(errors) => {
-                    assert!(errors.iter().any(|e| matches!(e, ConfigError::InsecureHostCode(_))));
+                    assert!(errors
+                        .iter()
+                        .any(|e| matches!(e, ConfigError::InsecureHostCode(_))));
                 }
                 _ => panic!("Expected InsecureHostCode error, got {:?}", err),
             }

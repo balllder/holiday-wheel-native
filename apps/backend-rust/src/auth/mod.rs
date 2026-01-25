@@ -60,7 +60,6 @@ pub struct UserInfo {
     pub is_admin: Option<bool>,
 }
 
-
 #[derive(Debug, Deserialize, Validate)]
 pub struct RegisterRequest {
     #[validate(custom(function = "email_validator"))]
@@ -168,34 +167,55 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/api/admin/users", get(admin_list_users))
         .route("/api/admin/users/{id}/admin", post(admin_set_user_admin))
         .route("/api/admin/users/{id}/verify", post(admin_verify_user))
-        .route("/api/admin/users/{id}", axum::routing::delete(admin_delete_user))
+        .route(
+            "/api/admin/users/{id}",
+            axum::routing::delete(admin_delete_user),
+        )
         .route("/api/admin/packs", get(admin_list_packs))
         .route("/api/admin/packs", post(admin_create_pack))
-        .route("/api/admin/packs/{id}", axum::routing::delete(admin_delete_pack))
+        .route(
+            "/api/admin/packs/{id}",
+            axum::routing::delete(admin_delete_pack),
+        )
         .route("/api/admin/puzzles", get(admin_list_puzzles))
         .route("/api/admin/puzzles", post(admin_add_puzzle))
         .route("/api/admin/puzzles/import", post(admin_import_puzzles))
-        .route("/api/admin/puzzles/{id}", axum::routing::delete(admin_delete_puzzle))
+        .route(
+            "/api/admin/puzzles/{id}",
+            axum::routing::delete(admin_delete_puzzle),
+        )
         .route("/api/admin/rooms", get(admin_list_rooms))
         .route("/api/admin/rooms", post(admin_create_room))
-        .route("/api/admin/rooms/{name}", axum::routing::delete(admin_delete_room))
-        .route("/api/admin/rooms/{room}/players/{idx}", axum::routing::delete(admin_kick_player))
-        .route("/api/admin/rooms/{room}/players/{idx}/reset", post(admin_reset_player_score))
-        .route("/api/admin/rooms/{room}/kick-user/{user_id}", post(admin_kick_user))
+        .route(
+            "/api/admin/rooms/{name}",
+            axum::routing::delete(admin_delete_room),
+        )
+        .route(
+            "/api/admin/rooms/{room}/players/{idx}",
+            axum::routing::delete(admin_kick_player),
+        )
+        .route(
+            "/api/admin/rooms/{room}/players/{idx}/reset",
+            post(admin_reset_player_score),
+        )
+        .route(
+            "/api/admin/rooms/{room}/kick-user/{user_id}",
+            post(admin_kick_user),
+        )
         .route("/api/admin/rooms/{room}/new-game", post(admin_new_game))
         .route("/api/admin/settings/{room}", get(admin_get_settings))
         .route("/api/admin/settings/{room}", post(admin_save_settings))
         // Database browser
         .route("/api/admin/database/tables", get(admin_list_tables))
-        .route("/api/admin/database/tables/{table}", get(admin_get_table_data))
+        .route(
+            "/api/admin/database/tables/{table}",
+            get(admin_get_table_data),
+        )
 }
 
 // ========== LOGIN ENDPOINTS ==========
 
-async fn api_login(
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<LoginRequest>,
-) -> Response {
+async fn api_login(State(state): State<Arc<AppState>>, Json(req): Json<LoginRequest>) -> Response {
     // Validate input
     if let Err(errors) = req.validate() {
         return ValidationErrorResponse::from_validation_errors(&errors).into_response();
@@ -210,7 +230,8 @@ async fn api_login(
                 token: None,
                 user: None,
                 error: Some("Invalid email or password".to_string()),
-            }).into_response();
+            })
+            .into_response();
         }
         Err(_) => {
             return Json(LoginResponse {
@@ -218,7 +239,8 @@ async fn api_login(
                 token: None,
                 user: None,
                 error: Some("Database error".to_string()),
-            }).into_response();
+            })
+            .into_response();
         }
     };
 
@@ -234,7 +256,8 @@ async fn api_login(
             token: None,
             user: None,
             error: Some("Invalid email or password".to_string()),
-        }).into_response();
+        })
+        .into_response();
     }
 
     // Check if verified
@@ -244,7 +267,8 @@ async fn api_login(
             token: None,
             user: None,
             error: Some("Please verify your email first".to_string()),
-        }).into_response();
+        })
+        .into_response();
     }
 
     // Check if user should be admin based on ADMIN_EMAIL env var
@@ -262,9 +286,12 @@ async fn api_login(
         if let Some(io) = state.io.get() {
             if let Some(ns) = io.of("/") {
                 tracing::info!("Emitting session_invalidated to room {}", user_room);
-                let _ = ns.to(user_room).emit("session_invalidated", &serde_json::json!({
-                    "reason": "logged_in_elsewhere"
-                }));
+                let _ = ns.to(user_room).emit(
+                    "session_invalidated",
+                    &serde_json::json!({
+                        "reason": "logged_in_elsewhere"
+                    }),
+                );
             }
         }
     }
@@ -285,7 +312,8 @@ async fn api_login(
             token: None,
             user: None,
             error: Some("Failed to generate token".to_string()),
-        }).into_response();
+        })
+        .into_response();
     }
     let _ = state.db.update_last_login(user.id).await;
 
@@ -304,17 +332,12 @@ async fn api_login(
     };
 
     let mut res = Json(response).into_response();
-    res.headers_mut().insert(
-        header::SET_COOKIE,
-        set_cookie_header(&token),
-    );
+    res.headers_mut()
+        .insert(header::SET_COOKIE, set_cookie_header(&token));
     res
 }
 
-async fn login(
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<LoginRequest>,
-) -> Response {
+async fn login(State(state): State<Arc<AppState>>, Json(req): Json<LoginRequest>) -> Response {
     api_login(State(state), Json(req)).await
 }
 
@@ -334,10 +357,7 @@ async fn register(
     register_user(state, req).await
 }
 
-async fn register_user(
-    state: Arc<AppState>,
-    req: RegisterRequest,
-) -> Response {
+async fn register_user(state: Arc<AppState>, req: RegisterRequest) -> Response {
     // Validate input using validator crate
     if let Err(validation_errors) = req.validate() {
         // Convert validation errors to the existing RegisterResponse format
@@ -362,7 +382,8 @@ async fn register_user(
                 errors: Some(errors),
                 user: None,
             }),
-        ).into_response();
+        )
+            .into_response();
     }
 
     let email = req.email.trim().to_lowercase();
@@ -379,7 +400,8 @@ async fn register_user(
                     errors: Some(vec!["Email already registered".to_string()]),
                     user: None,
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
         Err(_) => {
             return (
@@ -390,7 +412,8 @@ async fn register_user(
                     errors: Some(vec!["Database error".to_string()]),
                     user: None,
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
         Ok(false) => {}
     }
@@ -407,7 +430,8 @@ async fn register_user(
                     errors: Some(vec!["Failed to hash password".to_string()]),
                     user: None,
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -444,17 +468,20 @@ async fn register_user(
                         Json(RegisterResponse {
                             ok: true,
                             message: Some(
-                                "Registration successful! You can now log in."
-                                    .to_string(),
+                                "Registration successful! You can now log in.".to_string(),
                             ),
                             errors: None,
                             user: None,
                         }),
-                    ).into_response();
+                    )
+                        .into_response();
                 }
 
                 // Return response with user info for auto-login (frontend checks for data.user)
-                tracing::info!("Auto-login user {} after registration (email disabled)", email);
+                tracing::info!(
+                    "Auto-login user {} after registration (email disabled)",
+                    email
+                );
                 let response = RegisterResponse {
                     ok: true,
                     message: None,
@@ -468,10 +495,8 @@ async fn register_user(
                     }),
                 };
                 let mut res = Json(response).into_response();
-                res.headers_mut().insert(
-                    header::SET_COOKIE,
-                    set_cookie_header(&token),
-                );
+                res.headers_mut()
+                    .insert(header::SET_COOKIE, set_cookie_header(&token));
                 return res;
             }
 
@@ -496,7 +521,8 @@ async fn register_user(
                     errors: None,
                     user: None,
                 }),
-            ).into_response()
+            )
+                .into_response()
         }
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -506,7 +532,8 @@ async fn register_user(
                 errors: Some(vec!["Failed to create account".to_string()]),
                 user: None,
             }),
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
@@ -600,7 +627,9 @@ async fn verify_email(
                 Json(SimpleResponse {
                     ok: false,
                     message: None,
-                    error: Some("Verification link has expired. Please register again.".to_string()),
+                    error: Some(
+                        "Verification link has expired. Please register again.".to_string(),
+                    ),
                 }),
             );
         }
@@ -630,10 +659,7 @@ async fn verify_email(
 
 // ========== OTHER AUTH ENDPOINTS ==========
 
-async fn logout(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-) -> Response {
+async fn logout(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
     // Clear token from database
     if let Some(token) = extract_auth_token(&headers) {
         if let Ok(Some(user)) = state.db.get_user_by_token(&token).await {
@@ -657,10 +683,7 @@ async fn logout(
     res
 }
 
-async fn me(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-) -> Json<VerifyResponse> {
+async fn me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Json<VerifyResponse> {
     let token = match extract_auth_token(&headers) {
         Some(t) => t,
         None => {
@@ -748,7 +771,10 @@ async fn api_update_profile(
         let error_messages: Vec<String> = errors
             .field_errors()
             .values()
-            .flat_map(|v| v.iter().filter_map(|e| e.message.as_ref().map(|s| s.to_string())))
+            .flat_map(|v| {
+                v.iter()
+                    .filter_map(|e| e.message.as_ref().map(|s| s.to_string()))
+            })
             .collect();
         return (
             StatusCode::BAD_REQUEST,
@@ -792,11 +818,7 @@ async fn api_update_profile(
     // Update profile
     if let Err(e) = state
         .db
-        .update_user_profile(
-            user.id,
-            req.display_name.as_deref(),
-            req.avatar_id,
-        )
+        .update_user_profile(user.id, req.display_name.as_deref(), req.avatar_id)
         .await
     {
         tracing::error!("Failed to update profile: {:?}", e);
@@ -821,7 +843,11 @@ async fn api_update_profile(
                     email: updated_user.email,
                     display_name: updated_user.display_name,
                     avatar_id: updated_user.avatar_id,
-                    is_admin: if updated_user.is_admin { Some(true) } else { None },
+                    is_admin: if updated_user.is_admin {
+                        Some(true)
+                    } else {
+                        None
+                    },
                 }),
                 error: None,
             }),
@@ -856,7 +882,14 @@ async fn api_rooms(
         }
     };
 
-    if state.db.get_user_by_token(&token).await.ok().flatten().is_none() {
+    if state
+        .db
+        .get_user_by_token(&token)
+        .await
+        .ok()
+        .flatten()
+        .is_none()
+    {
         return (
             StatusCode::UNAUTHORIZED,
             Json(RoomsResponse {
@@ -915,7 +948,14 @@ async fn api_packs(
         }
     };
 
-    if state.db.get_user_by_token(&token).await.ok().flatten().is_none() {
+    if state
+        .db
+        .get_user_by_token(&token)
+        .await
+        .ok()
+        .flatten()
+        .is_none()
+    {
         return (
             StatusCode::UNAUTHORIZED,
             Json(PacksResponse {
@@ -996,7 +1036,8 @@ pub fn extract_cookie_token(headers: &HeaderMap) -> Option<String> {
         .and_then(|cookies| {
             cookies.split(';').find_map(|cookie| {
                 let cookie = cookie.trim();
-                cookie.strip_prefix(&format!("{}=", AUTH_COOKIE_NAME))
+                cookie
+                    .strip_prefix(&format!("{}=", AUTH_COOKIE_NAME))
                     .map(|value| value.to_string())
             })
         })
@@ -1098,7 +1139,12 @@ fn verify_werkzeug_hash(password: &str, hash: &str) -> bool {
 
     // Compute hash
     let mut result = vec![0u8; expected_hash.len() / 2];
-    pbkdf2_hmac::<Sha256>(password.as_bytes(), salt.as_bytes(), iterations, &mut result);
+    pbkdf2_hmac::<Sha256>(
+        password.as_bytes(),
+        salt.as_bytes(),
+        iterations,
+        &mut result,
+    );
 
     // Compare
     let computed = hex::encode(&result);
@@ -1143,9 +1189,14 @@ async fn admin_list_users(
     headers: HeaderMap,
 ) -> (StatusCode, Json<AdminUsersResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(AdminUsersResponse {
-            ok: false, users: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(AdminUsersResponse {
+                ok: false,
+                users: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     // Build a map of user_id -> room_name from the game manager
@@ -1161,23 +1212,36 @@ async fn admin_list_users(
     drop(manager);
 
     match state.db.list_all_users().await {
-        Ok(users) => (StatusCode::OK, Json(AdminUsersResponse {
-            ok: true,
-            users: Some(users.into_iter().map(|u| AdminUserInfo {
-                current_room: user_rooms.get(&u.id).cloned(),
-                id: u.id,
-                email: u.email,
-                display_name: u.display_name,
-                verified: u.verified,
-                is_admin: u.is_admin,
-                created_at: u.created_at,
-                last_login_at: u.last_login_at,
-            }).collect()),
-            error: None,
-        })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(AdminUsersResponse {
-            ok: false, users: None, error: Some("Database error".to_string())
-        })),
+        Ok(users) => (
+            StatusCode::OK,
+            Json(AdminUsersResponse {
+                ok: true,
+                users: Some(
+                    users
+                        .into_iter()
+                        .map(|u| AdminUserInfo {
+                            current_room: user_rooms.get(&u.id).cloned(),
+                            id: u.id,
+                            email: u.email,
+                            display_name: u.display_name,
+                            verified: u.verified,
+                            is_admin: u.is_admin,
+                            created_at: u.created_at,
+                            last_login_at: u.last_login_at,
+                        })
+                        .collect(),
+                ),
+                error: None,
+            }),
+        ),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(AdminUsersResponse {
+                ok: false,
+                users: None,
+                error: Some("Database error".to_string()),
+            }),
+        ),
     }
 }
 
@@ -1193,18 +1257,33 @@ async fn admin_set_user_admin(
     Json(req): Json<SetAdminRequest>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     match state.db.set_user_admin(user_id, req.is_admin).await {
-        Ok(()) => (StatusCode::OK, Json(SimpleResponse {
-            ok: true, message: Some("User admin status updated".to_string()), error: None
-        })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Failed to update user".to_string())
-        })),
+        Ok(()) => (
+            StatusCode::OK,
+            Json(SimpleResponse {
+                ok: true,
+                message: Some("User admin status updated".to_string()),
+                error: None,
+            }),
+        ),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Failed to update user".to_string()),
+            }),
+        ),
     }
 }
 
@@ -1214,18 +1293,33 @@ async fn admin_verify_user(
     Path(user_id): Path<i64>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     match state.db.verify_user(user_id).await {
-        Ok(()) => (StatusCode::OK, Json(SimpleResponse {
-            ok: true, message: Some("User verified".to_string()), error: None
-        })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Failed to verify user".to_string())
-        })),
+        Ok(()) => (
+            StatusCode::OK,
+            Json(SimpleResponse {
+                ok: true,
+                message: Some("User verified".to_string()),
+                error: None,
+            }),
+        ),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Failed to verify user".to_string()),
+            }),
+        ),
     }
 }
 
@@ -1235,21 +1329,41 @@ async fn admin_delete_user(
     Path(user_id): Path<i64>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     match state.db.delete_user(user_id).await {
-        Ok(true) => (StatusCode::OK, Json(SimpleResponse {
-            ok: true, message: Some("User deleted".to_string()), error: None
-        })),
-        Ok(false) => (StatusCode::NOT_FOUND, Json(SimpleResponse {
-            ok: false, message: None, error: Some("User not found".to_string())
-        })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Failed to delete user".to_string())
-        })),
+        Ok(true) => (
+            StatusCode::OK,
+            Json(SimpleResponse {
+                ok: true,
+                message: Some("User deleted".to_string()),
+                error: None,
+            }),
+        ),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("User not found".to_string()),
+            }),
+        ),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Failed to delete user".to_string()),
+            }),
+        ),
     }
 }
 
@@ -1272,22 +1386,42 @@ async fn admin_list_packs(
     headers: HeaderMap,
 ) -> (StatusCode, Json<AdminPacksResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(AdminPacksResponse {
-            ok: false, packs: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(AdminPacksResponse {
+                ok: false,
+                packs: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     match state.db.get_puzzle_counts().await {
-        Ok(counts) => (StatusCode::OK, Json(AdminPacksResponse {
-            ok: true,
-            packs: Some(counts.into_iter().map(|(id, name, count)| PackInfo {
-                id, name, puzzle_count: count
-            }).collect()),
-            error: None,
-        })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(AdminPacksResponse {
-            ok: false, packs: None, error: Some("Database error".to_string())
-        })),
+        Ok(counts) => (
+            StatusCode::OK,
+            Json(AdminPacksResponse {
+                ok: true,
+                packs: Some(
+                    counts
+                        .into_iter()
+                        .map(|(id, name, count)| PackInfo {
+                            id,
+                            name,
+                            puzzle_count: count,
+                        })
+                        .collect(),
+                ),
+                error: None,
+            }),
+        ),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(AdminPacksResponse {
+                ok: false,
+                packs: None,
+                error: Some("Database error".to_string()),
+            }),
+        ),
     }
 }
 
@@ -1313,18 +1447,36 @@ async fn admin_create_pack(
     Json(req): Json<CreatePackRequest>,
 ) -> (StatusCode, Json<CreatePackResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(CreatePackResponse {
-            ok: false, id: None, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(CreatePackResponse {
+                ok: false,
+                id: None,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     match state.db.get_or_create_pack(&req.name).await {
-        Ok(id) => (StatusCode::OK, Json(CreatePackResponse {
-            ok: true, id: Some(id), message: Some(format!("Pack created with ID {}", id)), error: None
-        })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(CreatePackResponse {
-            ok: false, id: None, message: None, error: Some("Failed to create pack".to_string())
-        })),
+        Ok(id) => (
+            StatusCode::OK,
+            Json(CreatePackResponse {
+                ok: true,
+                id: Some(id),
+                message: Some(format!("Pack created with ID {}", id)),
+                error: None,
+            }),
+        ),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(CreatePackResponse {
+                ok: false,
+                id: None,
+                message: None,
+                error: Some("Failed to create pack".to_string()),
+            }),
+        ),
     }
 }
 
@@ -1334,27 +1486,52 @@ async fn admin_delete_pack(
     Path(pack_id): Path<i64>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     if pack_id == 1 {
-        return (StatusCode::BAD_REQUEST, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Cannot delete default pack".to_string())
-        }));
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Cannot delete default pack".to_string()),
+            }),
+        );
     }
 
     match state.db.delete_pack(pack_id).await {
-        Ok(true) => (StatusCode::OK, Json(SimpleResponse {
-            ok: true, message: Some("Pack deleted".to_string()), error: None
-        })),
-        Ok(false) => (StatusCode::NOT_FOUND, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Pack not found".to_string())
-        })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Failed to delete pack".to_string())
-        })),
+        Ok(true) => (
+            StatusCode::OK,
+            Json(SimpleResponse {
+                ok: true,
+                message: Some("Pack deleted".to_string()),
+                error: None,
+            }),
+        ),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Pack not found".to_string()),
+            }),
+        ),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Failed to delete pack".to_string()),
+            }),
+        ),
     }
 }
 
@@ -1385,26 +1562,44 @@ async fn admin_list_puzzles(
     axum::extract::Query(query): axum::extract::Query<ListPuzzlesQuery>,
 ) -> (StatusCode, Json<AdminPuzzlesResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(AdminPuzzlesResponse {
-            ok: false, puzzles: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(AdminPuzzlesResponse {
+                ok: false,
+                puzzles: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     match state.db.list_all_puzzles(query.pack_id).await {
-        Ok(puzzles) => (StatusCode::OK, Json(AdminPuzzlesResponse {
-            ok: true,
-            puzzles: Some(puzzles.into_iter().map(|p| PuzzleInfo {
-                id: p.id,
-                category: p.category,
-                answer: p.answer,
-                pack_id: p.pack_id,
-                enabled: p.enabled,
-            }).collect()),
-            error: None,
-        })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(AdminPuzzlesResponse {
-            ok: false, puzzles: None, error: Some("Database error".to_string())
-        })),
+        Ok(puzzles) => (
+            StatusCode::OK,
+            Json(AdminPuzzlesResponse {
+                ok: true,
+                puzzles: Some(
+                    puzzles
+                        .into_iter()
+                        .map(|p| PuzzleInfo {
+                            id: p.id,
+                            category: p.category,
+                            answer: p.answer,
+                            pack_id: p.pack_id,
+                            enabled: p.enabled,
+                        })
+                        .collect(),
+                ),
+                error: None,
+            }),
+        ),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(AdminPuzzlesResponse {
+                ok: false,
+                puzzles: None,
+                error: Some("Database error".to_string()),
+            }),
+        ),
     }
 }
 
@@ -1421,18 +1616,37 @@ async fn admin_add_puzzle(
     Json(req): Json<AddPuzzleRequest>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
-    match state.db.add_puzzle(&req.category, &req.answer, req.pack_id).await {
-        Ok(id) => (StatusCode::OK, Json(SimpleResponse {
-            ok: true, message: Some(format!("Puzzle added with ID {}", id)), error: None
-        })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Failed to add puzzle".to_string())
-        })),
+    match state
+        .db
+        .add_puzzle(&req.category, &req.answer, req.pack_id)
+        .await
+    {
+        Ok(id) => (
+            StatusCode::OK,
+            Json(SimpleResponse {
+                ok: true,
+                message: Some(format!("Puzzle added with ID {}", id)),
+                error: None,
+            }),
+        ),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Failed to add puzzle".to_string()),
+            }),
+        ),
     }
 }
 
@@ -1455,9 +1669,14 @@ async fn admin_import_puzzles(
     Json(req): Json<ImportPuzzlesRequest>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     // Determine pack_id: use provided pack_id, or create/get pack by name, or default to 1
@@ -1466,32 +1685,49 @@ async fn admin_import_puzzles(
     } else if let Some(name) = req.pack_name {
         match state.db.get_or_create_pack(&name).await {
             Ok(id) => id,
-            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
-                ok: false, message: None, error: Some("Failed to create pack".to_string())
-            })),
+            Err(_) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(SimpleResponse {
+                        ok: false,
+                        message: None,
+                        error: Some("Failed to create pack".to_string()),
+                    }),
+                )
+            }
         }
     } else {
         1 // Default pack
     };
 
     // Convert to tuple format for import
-    let puzzles: Vec<(String, String)> = req.puzzles
+    let puzzles: Vec<(String, String)> = req
+        .puzzles
         .into_iter()
         .map(|p| (p.category, p.answer))
         .collect();
 
     let count = puzzles.len();
     match state.db.import_puzzles(puzzles, pack_id).await {
-        Ok(imported) => (StatusCode::OK, Json(SimpleResponse {
-            ok: true,
-            message: Some(format!("Imported {} puzzles into pack {}", imported, pack_id)),
-            error: None
-        })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
-            ok: false,
-            message: Some(format!("Failed after importing some of {} puzzles", count)),
-            error: Some("Import failed".to_string())
-        })),
+        Ok(imported) => (
+            StatusCode::OK,
+            Json(SimpleResponse {
+                ok: true,
+                message: Some(format!(
+                    "Imported {} puzzles into pack {}",
+                    imported, pack_id
+                )),
+                error: None,
+            }),
+        ),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(SimpleResponse {
+                ok: false,
+                message: Some(format!("Failed after importing some of {} puzzles", count)),
+                error: Some("Import failed".to_string()),
+            }),
+        ),
     }
 }
 
@@ -1501,21 +1737,41 @@ async fn admin_delete_puzzle(
     Path(puzzle_id): Path<i64>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     match state.db.delete_puzzle(puzzle_id).await {
-        Ok(true) => (StatusCode::OK, Json(SimpleResponse {
-            ok: true, message: Some("Puzzle deleted".to_string()), error: None
-        })),
-        Ok(false) => (StatusCode::NOT_FOUND, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Puzzle not found".to_string())
-        })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Failed to delete puzzle".to_string())
-        })),
+        Ok(true) => (
+            StatusCode::OK,
+            Json(SimpleResponse {
+                ok: true,
+                message: Some("Puzzle deleted".to_string()),
+                error: None,
+            }),
+        ),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Puzzle not found".to_string()),
+            }),
+        ),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Failed to delete puzzle".to_string()),
+            }),
+        ),
     }
 }
 
@@ -1556,54 +1812,85 @@ async fn admin_list_rooms(
     headers: HeaderMap,
 ) -> (StatusCode, Json<AdminRoomsResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(AdminRoomsResponse {
-            ok: false, rooms: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(AdminRoomsResponse {
+                ok: false,
+                rooms: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     let manager = state.game_manager.read().await;
-    let rooms: Vec<AdminRoomInfo> = manager.rooms.iter().map(|(name, game)| {
-        let players: Vec<AdminPlayerInfo> = game.players.iter().map(|p| {
-            AdminPlayerInfo {
-                name: p.name.clone(),
-                total: p.total,
-                round_bank: p.round_bank,
-                is_connected: p.socket_id.is_some(),
-                avatar_id: p.avatar_id,
-            }
-        }).collect();
+    let rooms: Vec<AdminRoomInfo> = manager
+        .rooms
+        .iter()
+        .map(|(name, game)| {
+            let players: Vec<AdminPlayerInfo> = game
+                .players
+                .iter()
+                .map(|p| AdminPlayerInfo {
+                    name: p.name.clone(),
+                    total: p.total,
+                    round_bank: p.round_bank,
+                    is_connected: p.socket_id.is_some(),
+                    avatar_id: p.avatar_id,
+                })
+                .collect();
 
-        let total_letters = game.puzzle.answer.chars().filter(|c| c.is_ascii_alphabetic()).count();
-        let revealed_count = game.revealed.len();
+            let total_letters = game
+                .puzzle
+                .answer
+                .chars()
+                .filter(|c| c.is_ascii_alphabetic())
+                .count();
+            let revealed_count = game.revealed.len();
 
-        let current_wedge = game.current_wedge.as_ref().map(|w| {
-            match w {
+            let current_wedge = game.current_wedge.as_ref().map(|w| match w {
                 crate::game::WedgeValue::Cash(v) => format!("${}", v),
                 crate::game::WedgeValue::Bankrupt => "BANKRUPT".to_string(),
                 crate::game::WedgeValue::LoseTurn => "LOSE A TURN".to_string(),
                 crate::game::WedgeValue::FreePlay => "FREE PLAY".to_string(),
                 crate::game::WedgeValue::Prize { name, .. } => name.clone(),
+            });
+
+            AdminRoomInfo {
+                name: name.clone(),
+                player_count: game.players.len(),
+                phase: format!("{:?}", game.phase),
+                has_host: game.host_sid.is_some(),
+                players,
+                active_idx: if game.players.is_empty() {
+                    None
+                } else {
+                    Some(game.active_idx)
+                },
+                puzzle_category: if game.puzzle.category.is_empty() {
+                    None
+                } else {
+                    Some(game.puzzle.category.clone())
+                },
+                puzzle_answer: if game.puzzle.answer.is_empty() {
+                    None
+                } else {
+                    Some(game.puzzle.answer.clone())
+                },
+                revealed_count,
+                total_letters,
+                current_wedge,
             }
-        });
+        })
+        .collect();
 
-        AdminRoomInfo {
-            name: name.clone(),
-            player_count: game.players.len(),
-            phase: format!("{:?}", game.phase),
-            has_host: game.host_sid.is_some(),
-            players,
-            active_idx: if game.players.is_empty() { None } else { Some(game.active_idx) },
-            puzzle_category: if game.puzzle.category.is_empty() { None } else { Some(game.puzzle.category.clone()) },
-            puzzle_answer: if game.puzzle.answer.is_empty() { None } else { Some(game.puzzle.answer.clone()) },
-            revealed_count,
-            total_letters,
-            current_wedge,
-        }
-    }).collect();
-
-    (StatusCode::OK, Json(AdminRoomsResponse {
-        ok: true, rooms: Some(rooms), error: None
-    }))
+    (
+        StatusCode::OK,
+        Json(AdminRoomsResponse {
+            ok: true,
+            rooms: Some(rooms),
+            error: None,
+        }),
+    )
 }
 
 #[derive(Deserialize)]
@@ -1617,33 +1904,59 @@ async fn admin_create_room(
     Json(req): Json<CreateRoomRequest>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     let room_name = req.name.trim().to_lowercase();
 
     // Validate room name
     if room_name.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Room name cannot be empty".to_string())
-        }));
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Room name cannot be empty".to_string()),
+            }),
+        );
     }
 
-    if !room_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        return (StatusCode::BAD_REQUEST, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Room name can only contain letters, numbers, hyphens and underscores".to_string())
-        }));
+    if !room_name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some(
+                    "Room name can only contain letters, numbers, hyphens and underscores"
+                        .to_string(),
+                ),
+            }),
+        );
     }
 
     // Check if room already exists
     {
         let manager = state.game_manager.read().await;
         if manager.rooms.contains_key(&room_name) {
-            return (StatusCode::CONFLICT, Json(SimpleResponse {
-                ok: false, message: None, error: Some("Room already exists".to_string())
-            }));
+            return (
+                StatusCode::CONFLICT,
+                Json(SimpleResponse {
+                    ok: false,
+                    message: None,
+                    error: Some("Room already exists".to_string()),
+                }),
+            );
         }
     }
 
@@ -1653,9 +1966,14 @@ async fn admin_create_room(
         manager.get_or_create_room(&room_name);
     }
 
-    (StatusCode::OK, Json(SimpleResponse {
-        ok: true, message: Some(format!("Room '{}' created", room_name)), error: None
-    }))
+    (
+        StatusCode::OK,
+        Json(SimpleResponse {
+            ok: true,
+            message: Some(format!("Room '{}' created", room_name)),
+            error: None,
+        }),
+    )
 }
 
 async fn admin_delete_room(
@@ -1664,9 +1982,14 @@ async fn admin_delete_room(
     Path(room_name): Path<String>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     // Remove from game manager
@@ -1678,9 +2001,14 @@ async fn admin_delete_room(
     // Remove from database
     let _ = state.db.delete_room(&room_name).await;
 
-    (StatusCode::OK, Json(SimpleResponse {
-        ok: true, message: Some("Room deleted".to_string()), error: None
-    }))
+    (
+        StatusCode::OK,
+        Json(SimpleResponse {
+            ok: true,
+            message: Some("Room deleted".to_string()),
+            error: None,
+        }),
+    )
 }
 
 #[derive(Deserialize)]
@@ -1695,9 +2023,14 @@ async fn admin_kick_player(
     Path(path): Path<PlayerIdxPath>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     let mut manager = state.game_manager.write().await;
@@ -1709,15 +2042,25 @@ async fn admin_kick_player(
             if game.active_idx >= game.players.len() && !game.players.is_empty() {
                 game.active_idx = 0;
             }
-            return (StatusCode::OK, Json(SimpleResponse {
-                ok: true, message: Some(format!("Player '{}' kicked", player_name)), error: None
-            }));
+            return (
+                StatusCode::OK,
+                Json(SimpleResponse {
+                    ok: true,
+                    message: Some(format!("Player '{}' kicked", player_name)),
+                    error: None,
+                }),
+            );
         }
     }
 
-    (StatusCode::NOT_FOUND, Json(SimpleResponse {
-        ok: false, message: None, error: Some("Player not found".to_string())
-    }))
+    (
+        StatusCode::NOT_FOUND,
+        Json(SimpleResponse {
+            ok: false,
+            message: None,
+            error: Some("Player not found".to_string()),
+        }),
+    )
 }
 
 async fn admin_reset_player_score(
@@ -1726,9 +2069,14 @@ async fn admin_reset_player_score(
     Path(path): Path<PlayerIdxPath>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     let mut manager = state.game_manager.write().await;
@@ -1736,15 +2084,25 @@ async fn admin_reset_player_score(
         if path.idx < game.players.len() {
             game.players[path.idx].total = 0;
             game.players[path.idx].round_bank = 0;
-            return (StatusCode::OK, Json(SimpleResponse {
-                ok: true, message: Some("Score reset".to_string()), error: None
-            }));
+            return (
+                StatusCode::OK,
+                Json(SimpleResponse {
+                    ok: true,
+                    message: Some("Score reset".to_string()),
+                    error: None,
+                }),
+            );
         }
     }
 
-    (StatusCode::NOT_FOUND, Json(SimpleResponse {
-        ok: false, message: None, error: Some("Player not found".to_string())
-    }))
+    (
+        StatusCode::NOT_FOUND,
+        Json(SimpleResponse {
+            ok: false,
+            message: None,
+            error: Some("Player not found".to_string()),
+        }),
+    )
 }
 
 #[derive(Deserialize)]
@@ -1759,31 +2117,50 @@ async fn admin_kick_user(
     Path(path): Path<KickUserPath>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     // Find the player by user_id and remove them
     let mut manager = state.game_manager.write().await;
     if let Some(game) = manager.get_room_mut(&path.room) {
         // Find player with matching user_id
-        if let Some(idx) = game.players.iter().position(|p| p.user_id == Some(path.user_id)) {
+        if let Some(idx) = game
+            .players
+            .iter()
+            .position(|p| p.user_id == Some(path.user_id))
+        {
             let player_name = game.players[idx].name.clone();
             game.players.remove(idx);
             // Adjust active_idx if needed
             if game.active_idx >= game.players.len() && !game.players.is_empty() {
                 game.active_idx = 0;
             }
-            return (StatusCode::OK, Json(SimpleResponse {
-                ok: true, message: Some(format!("User '{}' kicked from room", player_name)), error: None
-            }));
+            return (
+                StatusCode::OK,
+                Json(SimpleResponse {
+                    ok: true,
+                    message: Some(format!("User '{}' kicked from room", player_name)),
+                    error: None,
+                }),
+            );
         }
     }
 
-    (StatusCode::NOT_FOUND, Json(SimpleResponse {
-        ok: false, message: None, error: Some("User not found in room".to_string())
-    }))
+    (
+        StatusCode::NOT_FOUND,
+        Json(SimpleResponse {
+            ok: false,
+            message: None,
+            error: Some("User not found in room".to_string()),
+        }),
+    )
 }
 
 async fn admin_new_game(
@@ -1792,23 +2169,38 @@ async fn admin_new_game(
     Path(room_name): Path<String>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     let mut manager = state.game_manager.write().await;
     if let Some(game) = manager.get_room_mut(&room_name) {
         // Reset the game state
         game.reset_game();
-        return (StatusCode::OK, Json(SimpleResponse {
-            ok: true, message: Some("New game started".to_string()), error: None
-        }));
+        return (
+            StatusCode::OK,
+            Json(SimpleResponse {
+                ok: true,
+                message: Some("New game started".to_string()),
+                error: None,
+            }),
+        );
     }
 
-    (StatusCode::NOT_FOUND, Json(SimpleResponse {
-        ok: false, message: None, error: Some("Room not found".to_string())
-    }))
+    (
+        StatusCode::NOT_FOUND,
+        Json(SimpleResponse {
+            ok: false,
+            message: None,
+            error: Some("Room not found".to_string()),
+        }),
+    )
 }
 
 // ========== SETTINGS ENDPOINTS ==========
@@ -1826,18 +2218,33 @@ async fn admin_get_settings(
     Path(room_name): Path<String>,
 ) -> (StatusCode, Json<SettingsResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SettingsResponse {
-            ok: false, config: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SettingsResponse {
+                ok: false,
+                config: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     match state.db.get_room_config(&room_name).await {
-        Ok(config) => (StatusCode::OK, Json(SettingsResponse {
-            ok: true, config: Some(config), error: None
-        })),
-        Err(_) => (StatusCode::OK, Json(SettingsResponse {
-            ok: true, config: Some(crate::game::RoomConfig::default()), error: None
-        })),
+        Ok(config) => (
+            StatusCode::OK,
+            Json(SettingsResponse {
+                ok: true,
+                config: Some(config),
+                error: None,
+            }),
+        ),
+        Err(_) => (
+            StatusCode::OK,
+            Json(SettingsResponse {
+                ok: true,
+                config: Some(crate::game::RoomConfig::default()),
+                error: None,
+            }),
+        ),
     }
 }
 
@@ -1861,17 +2268,26 @@ async fn admin_save_settings(
     Json(req): Json<SaveSettingsRequest>,
 ) -> (StatusCode, Json<SimpleResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(SimpleResponse {
-            ok: false, message: None, error: Some("Admin access required".to_string())
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(SimpleResponse {
+                ok: false,
+                message: None,
+                error: Some("Admin access required".to_string()),
+            }),
+        );
     }
 
     // Get existing config and merge with new values
-    let existing = state.db.get_room_config(&room_name).await.unwrap_or_default();
+    let existing = state
+        .db
+        .get_room_config(&room_name)
+        .await
+        .unwrap_or_default();
 
     // Use pack_id from request, falling back to existing
     let pack_id = match req.pack_id {
-        Some(0) => None,  // 0 means "all packs"
+        Some(0) => None, // 0 means "all packs"
         Some(id) => Some(id),
         None => existing.pack_id,
     };
@@ -1881,12 +2297,20 @@ async fn admin_save_settings(
         bonus_seconds: req.final_seconds.unwrap_or(existing.bonus_seconds),
         bonus_jackpot: req.final_jackpot.unwrap_or(existing.bonus_jackpot),
         prize_replace_cash_values: existing.prize_replace_cash_values,
-        puzzle_display_seconds: req.puzzle_display_seconds.unwrap_or(existing.puzzle_display_seconds),
+        puzzle_display_seconds: req
+            .puzzle_display_seconds
+            .unwrap_or(existing.puzzle_display_seconds),
         prize_wedge_names: req.prize_wedge_names.unwrap_or(existing.prize_wedge_names),
         pack_id,
-        disconnect_timeout_secs: req.disconnect_timeout_secs.unwrap_or(existing.disconnect_timeout_secs),
-        turn_timer_seconds: req.turn_timer_seconds.unwrap_or(existing.turn_timer_seconds),
-        buzz_timer_seconds: req.buzz_timer_seconds.unwrap_or(existing.buzz_timer_seconds),
+        disconnect_timeout_secs: req
+            .disconnect_timeout_secs
+            .unwrap_or(existing.disconnect_timeout_secs),
+        turn_timer_seconds: req
+            .turn_timer_seconds
+            .unwrap_or(existing.turn_timer_seconds),
+        buzz_timer_seconds: req
+            .buzz_timer_seconds
+            .unwrap_or(existing.buzz_timer_seconds),
     };
 
     match state.db.set_room_config(&room_name, &config, pack_id).await {
@@ -1898,15 +2322,25 @@ async fn admin_save_settings(
                     game.config = config;
                 }
             }
-            (StatusCode::OK, Json(SimpleResponse {
-                ok: true, message: Some("Settings saved".to_string()), error: None
-            }))
+            (
+                StatusCode::OK,
+                Json(SimpleResponse {
+                    ok: true,
+                    message: Some("Settings saved".to_string()),
+                    error: None,
+                }),
+            )
         }
         Err(e) => {
             tracing::error!("Failed to save settings for room {}: {}", room_name, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(SimpleResponse {
-                ok: false, message: None, error: Some("Failed to save settings".to_string())
-            }))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(SimpleResponse {
+                    ok: false,
+                    message: None,
+                    error: Some("Failed to save settings".to_string()),
+                }),
+            )
         }
     }
 }
@@ -1936,16 +2370,24 @@ async fn admin_list_tables(
     headers: HeaderMap,
 ) -> (StatusCode, Json<TableListResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(TableListResponse {
-            ok: false, tables: vec![]
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(TableListResponse {
+                ok: false,
+                tables: vec![],
+            }),
+        );
     }
 
     match state.db.list_tables().await {
         Ok(tables) => (StatusCode::OK, Json(TableListResponse { ok: true, tables })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(TableListResponse {
-            ok: false, tables: vec![]
-        })),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(TableListResponse {
+                ok: false,
+                tables: vec![],
+            }),
+        ),
     }
 }
 
@@ -1963,52 +2405,64 @@ async fn admin_get_table_data(
     Query(params): Query<TableQueryParams>,
 ) -> (StatusCode, Json<TableDataResponse>) {
     if get_admin_user(&state, &headers).await.is_none() {
-        return (StatusCode::FORBIDDEN, Json(TableDataResponse {
-            ok: false,
-            table: table_name,
-            columns: vec![],
-            rows: vec![],
-            total_count: 0,
-            page: 1,
-            page_size: 50,
-        }));
+        return (
+            StatusCode::FORBIDDEN,
+            Json(TableDataResponse {
+                ok: false,
+                table: table_name,
+                columns: vec![],
+                rows: vec![],
+                total_count: 0,
+                page: 1,
+                page_size: 50,
+            }),
+        );
     }
 
     // Validate table name (prevent SQL injection)
     if !table_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-        return (StatusCode::BAD_REQUEST, Json(TableDataResponse {
-            ok: false,
-            table: table_name,
-            columns: vec![],
-            rows: vec![],
-            total_count: 0,
-            page: 1,
-            page_size: 50,
-        }));
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(TableDataResponse {
+                ok: false,
+                table: table_name,
+                columns: vec![],
+                rows: vec![],
+                total_count: 0,
+                page: 1,
+                page_size: 50,
+            }),
+        );
     }
 
     let page = params.page.unwrap_or(1).max(1);
     let page_size = params.page_size.unwrap_or(50).clamp(1, 500);
 
     match state.db.get_table_data(&table_name, page, page_size).await {
-        Ok((columns, rows, total_count)) => (StatusCode::OK, Json(TableDataResponse {
-            ok: true,
-            table: table_name,
-            columns,
-            rows,
-            total_count,
-            page,
-            page_size,
-        })),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(TableDataResponse {
-            ok: false,
-            table: table_name,
-            columns: vec![],
-            rows: vec![],
-            total_count: 0,
-            page,
-            page_size,
-        })),
+        Ok((columns, rows, total_count)) => (
+            StatusCode::OK,
+            Json(TableDataResponse {
+                ok: true,
+                table: table_name,
+                columns,
+                rows,
+                total_count,
+                page,
+                page_size,
+            }),
+        ),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(TableDataResponse {
+                ok: false,
+                table: table_name,
+                columns: vec![],
+                rows: vec![],
+                total_count: 0,
+                page,
+                page_size,
+            }),
+        ),
     }
 }
 
@@ -2073,7 +2527,10 @@ mod tests {
     fn test_verify_werkzeug_hash_invalid_format() {
         assert!(!verify_werkzeug_hash("password", "invalid"));
         assert!(!verify_werkzeug_hash("password", "not:a:hash"));
-        assert!(!verify_werkzeug_hash("password", "pbkdf2:sha256:invalid$salt$hash"));
+        assert!(!verify_werkzeug_hash(
+            "password",
+            "pbkdf2:sha256:invalid$salt$hash"
+        ));
     }
 
     // ========== TOKEN EXTRACTION TESTS ==========
@@ -2099,10 +2556,7 @@ mod tests {
     #[test]
     fn test_extract_bearer_token_wrong_prefix() {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            "Authorization",
-            HeaderValue::from_static("Basic sometoken"),
-        );
+        headers.insert("Authorization", HeaderValue::from_static("Basic sometoken"));
 
         assert!(extract_bearer_token(&headers).is_none());
     }
@@ -2112,7 +2566,11 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::COOKIE,
-            HeaderValue::from_str(&format!("{}=my-cookie-token; other=value", AUTH_COOKIE_NAME)).unwrap(),
+            HeaderValue::from_str(&format!(
+                "{}=my-cookie-token; other=value",
+                AUTH_COOKIE_NAME
+            ))
+            .unwrap(),
         );
 
         let token = extract_cookie_token(&headers);
@@ -2190,7 +2648,10 @@ mod tests {
         assert_eq!(cookie.name(), AUTH_COOKIE_NAME);
         assert_eq!(cookie.value(), "");
         // Max age should be 0 or negative to clear the cookie
-        assert!(cookie.max_age().map(|d| d.whole_seconds() <= 0).unwrap_or(true));
+        assert!(cookie
+            .max_age()
+            .map(|d| d.whole_seconds() <= 0)
+            .unwrap_or(true));
     }
 
     // ========== HELPER FUNCTION TESTS ==========
@@ -2374,13 +2835,7 @@ mod tests {
     #[test]
     fn test_profile_update_request_display_name_with_special_chars() {
         // Valid special characters: space, hyphen, underscore, period
-        let valid_names = vec![
-            "John Doe",
-            "Player-1",
-            "user_name",
-            "Mr.Smith",
-            "A B-C_D.E",
-        ];
+        let valid_names = vec!["John Doe", "Player-1", "user_name", "Mr.Smith", "A B-C_D.E"];
         for name in valid_names {
             let request = ProfileUpdateRequest {
                 display_name: Some(name.to_string()),
@@ -2476,7 +2931,8 @@ mod tests {
     #[test]
     fn test_register_request_default_avatar_id() {
         // When avatar_id is not provided, it should default to 1
-        let json = r#"{"email":"test@example.com","password":"Password1!","display_name":"Test User"}"#;
+        let json =
+            r#"{"email":"test@example.com","password":"Password1!","display_name":"Test User"}"#;
         let request: RegisterRequest = serde_json::from_str(json).unwrap();
         assert_eq!(request.avatar_id, 1);
         assert!(request.validate().is_ok());

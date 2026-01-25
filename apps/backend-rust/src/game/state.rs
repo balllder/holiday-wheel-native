@@ -158,10 +158,10 @@ impl Default for RoomConfig {
             prize_replace_cash_values: vec![500, 1000, 1500, 2000, 2500, 3000, 3500],
             puzzle_display_seconds: 30,
             prize_wedge_names: vec!["GIFT CARD".to_string()],
-            pack_id: None, // All packs by default
+            pack_id: None,                // All packs by default
             disconnect_timeout_secs: 300, // 5 minutes
-            turn_timer_seconds: 10, // 10 seconds to guess after spin
-            buzz_timer_seconds: 5, // 5 seconds to solve after buzzing in
+            turn_timer_seconds: 10,       // 10 seconds to guess after spin
+            buzz_timer_seconds: 5,        // 5 seconds to solve after buzzing in
         }
     }
 }
@@ -297,7 +297,7 @@ impl Game {
         Self {
             room_name: room_name.to_string(),
             phase: GamePhase::Pregame, // Start in pregame, waiting for someone to start
-            round: 1, // Start at round 1
+            round: 1,                  // Start at round 1
             players: Vec::new(),
             active_idx: 0,
             puzzle: Puzzle::default(),
@@ -345,7 +345,13 @@ impl Game {
     }
 
     /// Add a player to the game
-    pub fn add_player(&mut self, name: String, socket_id: Option<String>, user_id: Option<i64>, avatar_id: Option<i64>) -> usize {
+    pub fn add_player(
+        &mut self,
+        name: String,
+        socket_id: Option<String>,
+        user_id: Option<i64>,
+        avatar_id: Option<i64>,
+    ) -> usize {
         let id = self.players.len();
         let mut player = Player::new(id, name);
         player.socket_id = socket_id;
@@ -453,7 +459,7 @@ impl Game {
 
         // Physics-based spin simulation
         // Generate random force (like different spin strengths from players)
-        let min_force = 800.0_f64;  // Minimum rotation in degrees
+        let min_force = 800.0_f64; // Minimum rotation in degrees
         let max_force = 2200.0_f64; // Maximum rotation in degrees
         let force = rng.gen_range(min_force..max_force);
 
@@ -462,7 +468,8 @@ impl Game {
         let effective_rotation = force * friction_variation;
 
         // Calculate starting position (use last spin position or random start)
-        let start_angle = self.last_spin_index
+        let start_angle = self
+            .last_spin_index
             .map(|idx| idx as f64 * 360.0 / num_slots as f64)
             .unwrap_or_else(|| rng.gen_range(0.0..360.0));
 
@@ -471,7 +478,9 @@ impl Game {
         let angle_per_slot = 360.0 / num_slots as f64;
 
         // Convert final angle to slot index
-        let raw_idx = ((360.0 - final_angle + angle_per_slot / 2.0) % 360.0 / angle_per_slot) as usize % num_slots;
+        let raw_idx = ((360.0 - final_angle + angle_per_slot / 2.0) % 360.0 / angle_per_slot)
+            as usize
+            % num_slots;
 
         // Anti-clustering: if we've hit this wedge recently, consider adjusting
         let idx = self.apply_anti_clustering(raw_idx, &mut rng);
@@ -517,7 +526,11 @@ impl Game {
         }
 
         // Count how many times this exact wedge appears in recent history
-        let exact_hits = self.spin_history.iter().filter(|&&idx| idx == raw_idx).count();
+        let exact_hits = self
+            .spin_history
+            .iter()
+            .filter(|&&idx| idx == raw_idx)
+            .count();
 
         // Count hits on adjacent wedges (including this one) in last 3 spins
         let recent_window = self.spin_history.iter().rev().take(3);
@@ -862,10 +875,7 @@ impl Game {
     /// Build the reveal order for toss-up (randomized letters)
     pub fn build_tossup_reveal_order(&mut self) {
         let answer_upper = self.puzzle.answer.to_uppercase();
-        let mut letters: Vec<char> = answer_upper
-            .chars()
-            .filter(|c| c.is_alphabetic())
-            .collect();
+        let mut letters: Vec<char> = answer_upper.chars().filter(|c| c.is_alphabetic()).collect();
         letters.shuffle(&mut rand::thread_rng());
         self.tossup.reveal_order = letters;
     }
@@ -1076,8 +1086,10 @@ impl Game {
         // Only normal Cash wedges count - re-spin on everything else
         let spin_value = match &result {
             Some(WedgeValue::Cash(amount)) => *amount,
-            Some(WedgeValue::Prize { .. }) | Some(WedgeValue::FreePlay) |
-            Some(WedgeValue::Bankrupt) | Some(WedgeValue::LoseTurn) => {
+            Some(WedgeValue::Prize { .. })
+            | Some(WedgeValue::FreePlay)
+            | Some(WedgeValue::Bankrupt)
+            | Some(WedgeValue::LoseTurn) => {
                 // Re-spin on any special wedge during Final Spin
                 // Keep spinning until we get a normal cash value
                 return self.final_spin_do_spin();
@@ -1390,7 +1402,8 @@ impl Game {
     /// End final round - transitions to GameOver phase
     pub fn end_bonus(&mut self) {
         // Determine the winner (player with highest total score)
-        let bonus_won = self.bonus_state.stage == BonusStage::Done && self.puzzle_solved_by.is_some();
+        let bonus_won =
+            self.bonus_state.stage == BonusStage::Done && self.puzzle_solved_by.is_some();
 
         let (winner_idx, winner_name, winner_score) = self
             .players
@@ -1700,9 +1713,24 @@ mod tests {
     /// Create a test game with players
     fn create_test_game_with_players() -> Game {
         let mut game = create_test_game();
-        game.add_player("Player 1".to_string(), Some("socket1".to_string()), None, Some(1));
-        game.add_player("Player 2".to_string(), Some("socket2".to_string()), None, Some(2));
-        game.add_player("Player 3".to_string(), Some("socket3".to_string()), None, Some(3));
+        game.add_player(
+            "Player 1".to_string(),
+            Some("socket1".to_string()),
+            None,
+            Some(1),
+        );
+        game.add_player(
+            "Player 2".to_string(),
+            Some("socket2".to_string()),
+            None,
+            Some(2),
+        );
+        game.add_player(
+            "Player 3".to_string(),
+            Some("socket3".to_string()),
+            None,
+            Some(3),
+        );
         game
     }
 
@@ -1935,7 +1963,7 @@ mod tests {
         let result = game.buy_vowel('U');
         assert!(matches!(result, GuessResult::Incorrect));
         assert_eq!(game.players[0].round_bank, 250); // Still charged
-        // Turn should advance
+                                                     // Turn should advance
         assert_ne!(game.active_idx, initial_active);
     }
 
@@ -2027,7 +2055,12 @@ mod tests {
     #[test]
     fn test_add_player() {
         let mut game = create_test_game();
-        let idx = game.add_player("Test Player".to_string(), Some("socket123".to_string()), Some(42), Some(7));
+        let idx = game.add_player(
+            "Test Player".to_string(),
+            Some("socket123".to_string()),
+            Some(42),
+            Some(7),
+        );
 
         assert_eq!(idx, 0);
         assert_eq!(game.players.len(), 1);
@@ -2244,10 +2277,7 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 1); // Player index 1
         assert_eq!(game.active_idx, 1);
-        assert_eq!(
-            game.tossup.controller_sid,
-            Some("socket2".to_string())
-        );
+        assert_eq!(game.tossup.controller_sid, Some("socket2".to_string()));
     }
 
     #[test]

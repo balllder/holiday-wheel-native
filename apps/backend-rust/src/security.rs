@@ -117,18 +117,9 @@ where
                     header::X_CONTENT_TYPE_OPTIONS,
                     X_CONTENT_TYPE_OPTIONS.parse().unwrap(),
                 );
-                headers.insert(
-                    header::X_FRAME_OPTIONS,
-                    X_FRAME_OPTIONS.parse().unwrap(),
-                );
-                headers.insert(
-                    header::X_XSS_PROTECTION,
-                    X_XSS_PROTECTION.parse().unwrap(),
-                );
-                headers.insert(
-                    header::REFERRER_POLICY,
-                    REFERRER_POLICY.parse().unwrap(),
-                );
+                headers.insert(header::X_FRAME_OPTIONS, X_FRAME_OPTIONS.parse().unwrap());
+                headers.insert(header::X_XSS_PROTECTION, X_XSS_PROTECTION.parse().unwrap());
+                headers.insert(header::REFERRER_POLICY, REFERRER_POLICY.parse().unwrap());
                 headers.insert(
                     header::CONTENT_SECURITY_POLICY,
                     CONTENT_SECURITY_POLICY.parse().unwrap(),
@@ -179,7 +170,10 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
-            response.headers().get(header::X_CONTENT_TYPE_OPTIONS).map(|v| v.to_str().unwrap()),
+            response
+                .headers()
+                .get(header::X_CONTENT_TYPE_OPTIONS)
+                .map(|v| v.to_str().unwrap()),
             Some("nosniff")
         );
     }
@@ -194,7 +188,10 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
-            response.headers().get(header::X_FRAME_OPTIONS).map(|v| v.to_str().unwrap()),
+            response
+                .headers()
+                .get(header::X_FRAME_OPTIONS)
+                .map(|v| v.to_str().unwrap()),
             Some("DENY")
         );
     }
@@ -209,7 +206,10 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
-            response.headers().get(header::X_XSS_PROTECTION).map(|v| v.to_str().unwrap()),
+            response
+                .headers()
+                .get(header::X_XSS_PROTECTION)
+                .map(|v| v.to_str().unwrap()),
             Some("1; mode=block")
         );
     }
@@ -224,7 +224,10 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
-            response.headers().get(header::REFERRER_POLICY).map(|v| v.to_str().unwrap()),
+            response
+                .headers()
+                .get(header::REFERRER_POLICY)
+                .map(|v| v.to_str().unwrap()),
             Some("strict-origin-when-cross-origin")
         );
     }
@@ -286,7 +289,9 @@ mod tests {
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
         // Security headers should be present even on error responses
-        assert!(response.headers().contains_key(header::X_CONTENT_TYPE_OPTIONS));
+        assert!(response
+            .headers()
+            .contains_key(header::X_CONTENT_TYPE_OPTIONS));
         assert!(response.headers().contains_key(header::X_FRAME_OPTIONS));
     }
 

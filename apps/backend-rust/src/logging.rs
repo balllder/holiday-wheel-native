@@ -32,7 +32,9 @@ pub async fn request_id_middleware(mut request: Request<Body>, next: Next) -> Re
     let request_id = Uuid::new_v4().to_string();
 
     // Store in request extensions for handler access
-    request.extensions_mut().insert(RequestId(request_id.clone()));
+    request
+        .extensions_mut()
+        .insert(RequestId(request_id.clone()));
 
     // Extract request details for logging
     let method = request.method().clone();
@@ -72,9 +74,7 @@ pub async fn request_id_middleware(mut request: Request<Body>, next: Next) -> Re
 /// Get the current request ID from the tracing span, if available
 #[allow(dead_code)]
 pub fn current_request_id() -> Option<String> {
-    Span::current()
-        .field("request_id")
-        .map(|f| f.to_string())
+    Span::current().field("request_id").map(|f| f.to_string())
 }
 
 #[cfg(test)]

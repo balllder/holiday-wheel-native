@@ -172,9 +172,7 @@ mod tests {
         // For tests, we create a recorder that doesn't conflict
         // Note: In real tests, you'd use a test-specific recorder
         MetricsState {
-            handle: PrometheusBuilder::new()
-                .build_recorder()
-                .handle(),
+            handle: PrometheusBuilder::new().build_recorder().handle(),
             active_connections: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -188,7 +186,10 @@ mod tests {
     #[test]
     fn test_normalize_path_numeric_id() {
         assert_eq!(normalize_path("/api/users/123"), "/api/users/:id");
-        assert_eq!(normalize_path("/api/items/456/details"), "/api/items/:id/details");
+        assert_eq!(
+            normalize_path("/api/items/456/details"),
+            "/api/items/:id/details"
+        );
     }
 
     #[test]

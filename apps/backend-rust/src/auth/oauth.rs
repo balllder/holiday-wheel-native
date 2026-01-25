@@ -7,7 +7,7 @@ use axum::{
     routing::{get, post},
     Form, Json, Router,
 };
-use jsonwebtoken::{decode, decode_header, DecodingKey, Validation, Algorithm};
+use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use rand::distributions::{Alphanumeric, DistString};
 use serde::{Deserialize, Serialize};
 
@@ -25,8 +25,8 @@ struct OAuthStateUserData {
 
 #[derive(Debug, Deserialize)]
 pub struct GoogleAuthRequest {
-    pub id_token: Option<String>,      // For mobile apps (JWT)
-    pub access_token: Option<String>,  // For web (OAuth access token)
+    pub id_token: Option<String>,     // For mobile apps (JWT)
+    pub access_token: Option<String>, // For web (OAuth access token)
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,26 +62,26 @@ pub struct OAuthResponse {
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct GoogleClaims {
-    sub: String,           // Google user ID
+    sub: String, // Google user ID
     email: Option<String>,
     email_verified: Option<bool>,
     name: Option<String>,
     picture: Option<String>,
-    aud: String,           // Client ID (validated by jsonwebtoken)
-    iss: String,           // Issuer (validated by jsonwebtoken)
-    exp: i64,              // Expiration (validated by jsonwebtoken)
+    aud: String, // Client ID (validated by jsonwebtoken)
+    iss: String, // Issuer (validated by jsonwebtoken)
+    exp: i64,    // Expiration (validated by jsonwebtoken)
 }
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct AppleClaims {
-    sub: String,           // Apple user ID
+    sub: String, // Apple user ID
     email: Option<String>,
     #[serde(default)]
     email_verified: Option<bool>, // Apple returns this as boolean (true/false)
-    aud: String,           // Client ID (validated by jsonwebtoken)
-    iss: String,           // Issuer (validated by jsonwebtoken)
-    exp: i64,              // Expiration (validated by jsonwebtoken)
+    aud: String, // Client ID (validated by jsonwebtoken)
+    iss: String, // Issuer (validated by jsonwebtoken)
+    exp: i64,    // Expiration (validated by jsonwebtoken)
 }
 
 // ========== JWKS TYPES ==========
@@ -94,13 +94,13 @@ struct JwkSet {
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct Jwk {
-    kty: String,           // Key type (required by JWKS spec)
+    kty: String, // Key type (required by JWKS spec)
     kid: String,
     #[serde(rename = "use")]
-    use_: Option<String>,  // Key usage
-    alg: Option<String>,   // Algorithm
-    n: Option<String>,     // RSA modulus
-    e: Option<String>,     // RSA exponent
+    use_: Option<String>, // Key usage
+    alg: Option<String>, // Algorithm
+    n: Option<String>,   // RSA modulus
+    e: Option<String>,   // RSA exponent
 }
 
 // ========== ROUTES ==========
@@ -146,13 +146,15 @@ async fn google_auth(
                 is_new_user: None,
                 error: Some("Google Sign-In not configured".to_string()),
             }),
-        ).into_response();
+        )
+            .into_response();
     }
 
     // Determine which token type we have and verify accordingly
     let (sub, email, name) = if let Some(id_token) = &req.id_token {
         // Mobile app flow: verify JWT ID token
-        match verify_google_token(id_token, &[&client_id, &client_id_ios, &client_id_android]).await {
+        match verify_google_token(id_token, &[&client_id, &client_id_ios, &client_id_android]).await
+        {
             Ok(claims) => {
                 let email = match claims.email {
                     Some(e) => e.to_lowercase(),
@@ -166,7 +168,8 @@ async fn google_auth(
                                 is_new_user: None,
                                 error: Some("Email not provided by Google".to_string()),
                             }),
-                        ).into_response();
+                        )
+                            .into_response();
                     }
                 };
                 (claims.sub, email, claims.name)
@@ -182,7 +185,8 @@ async fn google_auth(
                         is_new_user: None,
                         error: Some("Invalid or expired token".to_string()),
                     }),
-                ).into_response();
+                )
+                    .into_response();
             }
         }
     } else if let Some(access_token) = &req.access_token {
@@ -201,7 +205,8 @@ async fn google_auth(
                                 is_new_user: None,
                                 error: Some("Email not provided by Google".to_string()),
                             }),
-                        ).into_response();
+                        )
+                            .into_response();
                     }
                 };
                 (user_info.sub, email, user_info.name)
@@ -217,7 +222,8 @@ async fn google_auth(
                         is_new_user: None,
                         error: Some("Invalid or expired token".to_string()),
                     }),
-                ).into_response();
+                )
+                    .into_response();
             }
         }
     } else {
@@ -230,10 +236,12 @@ async fn google_auth(
                 is_new_user: None,
                 error: Some("No token provided. Send id_token or access_token".to_string()),
             }),
-        ).into_response();
+        )
+            .into_response();
     };
 
-    let display_name = name.unwrap_or_else(|| email.split('@').next().unwrap_or(&email).to_string());
+    let display_name =
+        name.unwrap_or_else(|| email.split('@').next().unwrap_or(&email).to_string());
 
     // Handle login/registration
     handle_oauth_user(&state, "google", &sub, &email, &display_name).await
@@ -258,7 +266,10 @@ async fn verify_google_access_token(access_token: &str) -> Result<GoogleUserInfo
         .map_err(|e| format!("Failed to parse response: {}", e))
 }
 
-async fn verify_google_token(token: &str, valid_client_ids: &[&str]) -> Result<GoogleClaims, String> {
+async fn verify_google_token(
+    token: &str,
+    valid_client_ids: &[&str],
+) -> Result<GoogleClaims, String> {
     // Decode header to get kid
     let header = decode_header(token).map_err(|e| format!("Invalid token header: {}", e))?;
     let kid = header.kid.ok_or("Token missing kid")?;
@@ -267,13 +278,17 @@ async fn verify_google_token(token: &str, valid_client_ids: &[&str]) -> Result<G
     let jwks = fetch_google_jwks().await?;
 
     // Find matching key
-    let jwk = jwks.keys.iter().find(|k| k.kid == kid).ok_or("Key not found")?;
+    let jwk = jwks
+        .keys
+        .iter()
+        .find(|k| k.kid == kid)
+        .ok_or("Key not found")?;
 
     // Build decoding key
     let n = jwk.n.as_ref().ok_or("Missing modulus")?;
     let e = jwk.e.as_ref().ok_or("Missing exponent")?;
-    let decoding_key = DecodingKey::from_rsa_components(n, e)
-        .map_err(|e| format!("Invalid key: {}", e))?;
+    let decoding_key =
+        DecodingKey::from_rsa_components(n, e).map_err(|e| format!("Invalid key: {}", e))?;
 
     // Configure validation
     let mut validation = Validation::new(Algorithm::RS256);
@@ -291,12 +306,14 @@ async fn fetch_google_jwks() -> Result<JwkSet, String> {
     let url = "https://www.googleapis.com/oauth2/v3/certs";
     let client = reqwest::Client::new();
 
-    let response = client.get(url)
+    let response = client
+        .get(url)
         .send()
         .await
         .map_err(|e| format!("Failed to fetch JWKS: {}", e))?;
 
-    response.json::<JwkSet>()
+    response
+        .json::<JwkSet>()
         .await
         .map_err(|e| format!("Failed to parse JWKS: {}", e))
 }
@@ -319,7 +336,8 @@ async fn apple_auth(
                 is_new_user: None,
                 error: Some("Apple Sign-In not configured".to_string()),
             }),
-        ).into_response();
+        )
+            .into_response();
     }
 
     // Verify token
@@ -336,19 +354,22 @@ async fn apple_auth(
                     is_new_user: None,
                     error: Some("Invalid or expired token".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
     // Apple only provides email and name on first auth
     // Use email from claims if available, otherwise from request
-    let email = claims.email
+    let email = claims
+        .email
         .or(req.email)
         .map(|e| e.to_lowercase())
         .unwrap_or_else(|| format!("{}@privaterelay.appleid.com", claims.sub));
 
     // Build display name from Apple's full name data (only on first auth)
-    let display_name = req.full_name
+    let display_name = req
+        .full_name
         .map(|n| {
             let parts: Vec<&str> = [n.given_name.as_deref(), n.family_name.as_deref()]
                 .into_iter()
@@ -375,13 +396,17 @@ async fn verify_apple_token(token: &str, client_id: &str) -> Result<AppleClaims,
     let jwks = fetch_apple_jwks().await?;
 
     // Find matching key
-    let jwk = jwks.keys.iter().find(|k| k.kid == kid).ok_or("Key not found")?;
+    let jwk = jwks
+        .keys
+        .iter()
+        .find(|k| k.kid == kid)
+        .ok_or("Key not found")?;
 
     // Build decoding key
     let n = jwk.n.as_ref().ok_or("Missing modulus")?;
     let e = jwk.e.as_ref().ok_or("Missing exponent")?;
-    let decoding_key = DecodingKey::from_rsa_components(n, e)
-        .map_err(|e| format!("Invalid key: {}", e))?;
+    let decoding_key =
+        DecodingKey::from_rsa_components(n, e).map_err(|e| format!("Invalid key: {}", e))?;
 
     // Configure validation
     let mut validation = Validation::new(Algorithm::RS256);
@@ -399,12 +424,14 @@ async fn fetch_apple_jwks() -> Result<JwkSet, String> {
     let url = "https://appleid.apple.com/auth/keys";
     let client = reqwest::Client::new();
 
-    let response = client.get(url)
+    let response = client
+        .get(url)
         .send()
         .await
         .map_err(|e| format!("Failed to fetch JWKS: {}", e))?;
 
-    response.json::<JwkSet>()
+    response
+        .json::<JwkSet>()
         .await
         .map_err(|e| format!("Failed to parse JWKS: {}", e))
 }
@@ -419,7 +446,12 @@ async fn handle_oauth_user(
     display_name: &str,
 ) -> Response {
     // Check if OAuth account already exists
-    let existing_oauth = state.db.get_oauth_account(provider, provider_user_id).await.ok().flatten();
+    let existing_oauth = state
+        .db
+        .get_oauth_account(provider, provider_user_id)
+        .await
+        .ok()
+        .flatten();
 
     let (user_id, is_new_user) = if let Some(oauth) = existing_oauth {
         // Existing OAuth link - get the user
@@ -429,7 +461,11 @@ async fn handle_oauth_user(
         match state.db.get_user_by_email(email).await {
             Ok(Some(existing_user)) => {
                 // Link OAuth to existing account
-                if let Err(e) = state.db.create_oauth_account(existing_user.id, provider, provider_user_id, Some(email)).await {
+                if let Err(e) = state
+                    .db
+                    .create_oauth_account(existing_user.id, provider, provider_user_id, Some(email))
+                    .await
+                {
                     tracing::warn!("Failed to link OAuth account: {}", e);
                 }
                 (existing_user.id, false)
@@ -439,7 +475,16 @@ async fn handle_oauth_user(
                 match state.db.create_oauth_user(email, display_name, true).await {
                     Ok(new_user_id) => {
                         // Link OAuth account
-                        if let Err(e) = state.db.create_oauth_account(new_user_id, provider, provider_user_id, Some(email)).await {
+                        if let Err(e) = state
+                            .db
+                            .create_oauth_account(
+                                new_user_id,
+                                provider,
+                                provider_user_id,
+                                Some(email),
+                            )
+                            .await
+                        {
                             tracing::warn!("Failed to create OAuth link: {}", e);
                         }
                         (new_user_id, true)
@@ -455,7 +500,8 @@ async fn handle_oauth_user(
                                 is_new_user: None,
                                 error: Some("Failed to create account".to_string()),
                             }),
-                        ).into_response();
+                        )
+                            .into_response();
                     }
                 }
             }
@@ -470,7 +516,8 @@ async fn handle_oauth_user(
                         is_new_user: None,
                         error: Some("An unexpected error occurred".to_string()),
                     }),
-                ).into_response();
+                )
+                    .into_response();
             }
         }
     };
@@ -488,7 +535,8 @@ async fn handle_oauth_user(
                     is_new_user: None,
                     error: Some("User not found after creation".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
         Err(e) => {
             tracing::error!("Database error fetching user by id {}: {}", user_id, e);
@@ -501,7 +549,8 @@ async fn handle_oauth_user(
                     is_new_user: None,
                     error: Some("An unexpected error occurred".to_string()),
                 }),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -527,7 +576,8 @@ async fn handle_oauth_user(
                 is_new_user: None,
                 error: Some("Failed to create session".to_string()),
             }),
-        ).into_response();
+        )
+            .into_response();
     }
     let _ = state.db.update_last_login(user_id).await;
 
@@ -547,7 +597,8 @@ async fn handle_oauth_user(
     };
 
     let mut res = (StatusCode::OK, Json(response)).into_response();
-    res.headers_mut().insert(header::SET_COOKIE, set_cookie_header(&token));
+    res.headers_mut()
+        .insert(header::SET_COOKIE, set_cookie_header(&token));
     res
 }
 
@@ -585,16 +636,22 @@ async fn apple_authorize(
     let final_redirect = query.redirect.unwrap_or_else(|| "/lobby".to_string());
     let user_data = serde_json::to_string(&OAuthStateUserData {
         redirect_uri: final_redirect,
-    }).unwrap_or_else(|_| r#"{"redirect_uri":"/lobby"}"#.to_string());
+    })
+    .unwrap_or_else(|_| r#"{"redirect_uri":"/lobby"}"#.to_string());
 
     // Clean up expired states and store new state
     let _ = state.db.cleanup_expired_oauth_states().await;
-    if let Err(e) = state.db.store_oauth_state(&state_token, &user_data, "apple").await {
+    if let Err(e) = state
+        .db
+        .store_oauth_state(&state_token, &user_data, "apple")
+        .await
+    {
         tracing::error!("Failed to store OAuth state: {}", e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to initialize OAuth flow"
-        ).into_response();
+            "Failed to initialize OAuth flow",
+        )
+            .into_response();
     }
 
     // Build Apple authorization URL
@@ -707,12 +764,11 @@ async fn apple_callback(
     };
 
     // Parse user data if provided (only on first authorization)
-    let user_data: Option<AppleUserData> = form.user.and_then(|u| {
-        serde_json::from_str(&u).ok()
-    });
+    let user_data: Option<AppleUserData> = form.user.and_then(|u| serde_json::from_str(&u).ok());
 
     // Build email and display name
-    let email = claims.email
+    let email = claims
+        .email
         .or_else(|| user_data.as_ref().and_then(|u| u.email.clone()))
         .map(|e| e.to_lowercase())
         .unwrap_or_else(|| format!("{}@privaterelay.appleid.com", claims.sub));
@@ -734,12 +790,14 @@ async fn apple_callback(
 
     // Handle user creation/login using the common handler
     // But we need to handle it differently since we want to redirect, not return JSON
-    let (user_id, _is_new_user) = match handle_apple_web_user(&state, &claims.sub, &email, &display_name).await {
-        Ok(result) => result,
-        Err(e) => {
-            return Redirect::to(&format!("/?error={}", urlencoding::encode(&e))).into_response();
-        }
-    };
+    let (user_id, _is_new_user) =
+        match handle_apple_web_user(&state, &claims.sub, &email, &display_name).await {
+            Ok(result) => result,
+            Err(e) => {
+                return Redirect::to(&format!("/?error={}", urlencoding::encode(&e)))
+                    .into_response();
+            }
+        };
 
     // Get user info for the response
     let user = match state.db.get_user_by_id(user_id).await {
@@ -779,7 +837,10 @@ async fn apple_callback(
     let user_json_str = user_json.to_string();
     let user_encoded = urlencoding::encode(&user_json_str);
 
-    let redirect_url = format!("{}#auth_token={}&user={}", final_redirect, token, user_encoded);
+    let redirect_url = format!(
+        "{}#auth_token={}&user={}",
+        final_redirect, token, user_encoded
+    );
 
     let secure = std::env::var("SSL_ENABLED")
         .map(|v| v.to_lowercase() == "true" || v == "1")
@@ -788,7 +849,9 @@ async fn apple_callback(
 
     let mut response = Redirect::to(&redirect_url).into_response();
     if let Ok(cookie_value) = cookie.to_string().parse() {
-        response.headers_mut().insert(header::SET_COOKIE, cookie_value);
+        response
+            .headers_mut()
+            .insert(header::SET_COOKIE, cookie_value);
     }
 
     response
@@ -804,7 +867,12 @@ async fn handle_apple_web_user(
     let provider = "apple";
 
     // Check if OAuth account already exists
-    let existing_oauth = state.db.get_oauth_account(provider, provider_user_id).await.ok().flatten();
+    let existing_oauth = state
+        .db
+        .get_oauth_account(provider, provider_user_id)
+        .await
+        .ok()
+        .flatten();
 
     if let Some(oauth) = existing_oauth {
         // Existing OAuth link - get the user
@@ -815,7 +883,11 @@ async fn handle_apple_web_user(
     match state.db.get_user_by_email(email).await {
         Ok(Some(existing_user)) => {
             // Link OAuth to existing account
-            if let Err(e) = state.db.create_oauth_account(existing_user.id, provider, provider_user_id, Some(email)).await {
+            if let Err(e) = state
+                .db
+                .create_oauth_account(existing_user.id, provider, provider_user_id, Some(email))
+                .await
+            {
                 tracing::warn!("Failed to link OAuth account: {}", e);
             }
             Ok((existing_user.id, false))
@@ -825,7 +897,11 @@ async fn handle_apple_web_user(
             match state.db.create_oauth_user(email, display_name, true).await {
                 Ok(new_user_id) => {
                     // Link OAuth account
-                    if let Err(e) = state.db.create_oauth_account(new_user_id, provider, provider_user_id, Some(email)).await {
+                    if let Err(e) = state
+                        .db
+                        .create_oauth_account(new_user_id, provider, provider_user_id, Some(email))
+                        .await
+                    {
                         tracing::warn!("Failed to create OAuth link: {}", e);
                     }
                     Ok((new_user_id, true))
@@ -1027,7 +1103,10 @@ mod tests {
         }"#;
         let claims: AppleClaims = serde_json::from_str(json).unwrap();
         assert_eq!(claims.sub, "apple-user-id");
-        assert_eq!(claims.email, Some("user@privaterelay.appleid.com".to_string()));
+        assert_eq!(
+            claims.email,
+            Some("user@privaterelay.appleid.com".to_string())
+        );
         assert_eq!(claims.aud, "com.example.app");
         assert_eq!(claims.iss, "https://appleid.apple.com");
     }

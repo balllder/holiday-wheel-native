@@ -1,14 +1,14 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{middleware, routing::get, Router};
 use axum_server::tls_rustls::RustlsConfig;
 use rustls::crypto::ring::default_provider;
 use socketioxide::SocketIo;
-use tokio::sync::{OnceCell, RwLock};
 use tokio::signal;
+use tokio::sync::{OnceCell, RwLock};
 use tower_http::cors::{AllowHeaders, AllowOrigin, Any, CorsLayer};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -141,7 +141,10 @@ async fn main() -> anyhow::Result<()> {
         from_email: config.email.from_email.clone(),
         base_url: config.email.base_url.clone(),
     });
-    info!("Email service initialized (enabled: {})", config.email.enabled);
+    info!(
+        "Email service initialized (enabled: {})",
+        config.email.enabled
+    );
 
     // Initialize game manager
     let game_manager = GameManager::new();
@@ -189,7 +192,10 @@ async fn main() -> anyhow::Result<()> {
                         );
                         // Broadcast updated state to room
                         let game_state = game.get_state();
-                        io_clone.to(room_name.clone()).emit("state", &game_state).ok();
+                        io_clone
+                            .to(room_name.clone())
+                            .emit("state", &game_state)
+                            .ok();
                     }
                 }
             }
@@ -281,16 +287,16 @@ async fn main() -> anyhow::Result<()> {
         let cert_path = config.server.ssl_cert.as_ref().unwrap();
         let key_path = config.server.ssl_key.as_ref().unwrap();
 
-        let tls_config = RustlsConfig::from_pem_file(
-            PathBuf::from(cert_path),
-            PathBuf::from(key_path),
-        )
-        .await?;
+        let tls_config =
+            RustlsConfig::from_pem_file(PathBuf::from(cert_path), PathBuf::from(key_path)).await?;
 
         info!("Server running on https://0.0.0.0:{}", port);
         info!("SSL cert: {}, key: {}", cert_path, key_path);
         info!("Prometheus metrics available at /metrics");
-        info!("Graceful shutdown enabled ({}s drain timeout)", SHUTDOWN_TIMEOUT_SECS);
+        info!(
+            "Graceful shutdown enabled ({}s drain timeout)",
+            SHUTDOWN_TIMEOUT_SECS
+        );
 
         // Create a handle for graceful shutdown
         let handle = axum_server::Handle::new();
@@ -299,7 +305,10 @@ async fn main() -> anyhow::Result<()> {
         // Spawn shutdown signal listener
         tokio::spawn(async move {
             shutdown_signal().await;
-            info!("Allowing {}s for connections to drain...", SHUTDOWN_TIMEOUT_SECS);
+            info!(
+                "Allowing {}s for connections to drain...",
+                SHUTDOWN_TIMEOUT_SECS
+            );
             shutdown_handle.graceful_shutdown(Some(Duration::from_secs(SHUTDOWN_TIMEOUT_SECS)));
         });
 
@@ -313,7 +322,10 @@ async fn main() -> anyhow::Result<()> {
         info!("Server running on http://0.0.0.0:{}", port);
         info!("To enable HTTPS, set SSL_ENABLED=true with SSL_CERT and SSL_KEY");
         info!("Prometheus metrics available at /metrics");
-        info!("Graceful shutdown enabled ({}s drain timeout)", SHUTDOWN_TIMEOUT_SECS);
+        info!(
+            "Graceful shutdown enabled ({}s drain timeout)",
+            SHUTDOWN_TIMEOUT_SECS
+        );
 
         let listener = tokio::net::TcpListener::bind(addr).await?;
 
@@ -323,12 +335,14 @@ async fn main() -> anyhow::Result<()> {
         // Use axum's serve with graceful shutdown
         // The server will stop accepting new connections when the signal fires,
         // then wait for existing connections to complete.
-        let server = axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                shutdown_signal().await;
-                let _ = shutdown_tx.send(());
-                info!("Allowing {}s for connections to drain...", SHUTDOWN_TIMEOUT_SECS);
-            });
+        let server = axum::serve(listener, app).with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            let _ = shutdown_tx.send(());
+            info!(
+                "Allowing {}s for connections to drain...",
+                SHUTDOWN_TIMEOUT_SECS
+            );
+        });
 
         // Spawn timeout watcher that triggers force shutdown after drain period
         tokio::spawn(async move {
@@ -336,7 +350,10 @@ async fn main() -> anyhow::Result<()> {
             let _ = shutdown_rx.await;
             // Then wait for the drain timeout
             tokio::time::sleep(Duration::from_secs(SHUTDOWN_TIMEOUT_SECS)).await;
-            warn!("Drain timeout of {}s reached, forcing process exit", SHUTDOWN_TIMEOUT_SECS);
+            warn!(
+                "Drain timeout of {}s reached, forcing process exit",
+                SHUTDOWN_TIMEOUT_SECS
+            );
             std::process::exit(0);
         });
 

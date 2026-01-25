@@ -60,9 +60,8 @@ impl IntoResponse for ValidationErrorResponse {
 /// Validate email format using a standard regex pattern
 pub fn validate_email_format(email: &str) -> bool {
     // Standard email regex pattern
-    let email_regex = regex::Regex::new(
-        r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-    ).unwrap();
+    let email_regex =
+        regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
     email_regex.is_match(email)
 }
 
@@ -91,14 +90,22 @@ pub const PASSWORD_MIN_LENGTH: usize = 8;
 pub fn password_validator(password: &str) -> Result<(), validator::ValidationError> {
     if password.len() < PASSWORD_MIN_LENGTH {
         let mut err = validator::ValidationError::new("password_length");
-        err.message = Some(format!("Password must be at least {} characters", PASSWORD_MIN_LENGTH).into());
+        err.message = Some(
+            format!(
+                "Password must be at least {} characters",
+                PASSWORD_MIN_LENGTH
+            )
+            .into(),
+        );
         return Err(err);
     }
 
     let has_lowercase = password.chars().any(|c| c.is_ascii_lowercase());
     let has_uppercase = password.chars().any(|c| c.is_ascii_uppercase());
     let has_digit = password.chars().any(|c| c.is_ascii_digit());
-    let has_special = password.chars().any(|c| "!@#$%^&*(),.?\":{}|<>-_+=[]\\;'/~`".contains(c));
+    let has_special = password
+        .chars()
+        .any(|c| "!@#$%^&*(),.?\":{}|<>-_+=[]\\;'/~`".contains(c));
 
     let mut missing = Vec::new();
 
@@ -147,7 +154,10 @@ pub fn display_name_validator(name: &str) -> Result<(), validator::ValidationErr
     }
 
     // Check for valid characters (alphanumeric, spaces, common punctuation)
-    if !trimmed.chars().all(|c| c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' || c == '.') {
+    if !trimmed
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' || c == '.')
+    {
         let mut err = validator::ValidationError::new("display_name_chars");
         err.message = Some("Display name can only contain letters, numbers, spaces, hyphens, underscores, and periods".into());
         return Err(err);
