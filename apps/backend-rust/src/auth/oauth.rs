@@ -1,6 +1,4 @@
 use std::sync::Arc;
-use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::{
     extract::{Query, State},
@@ -12,19 +10,14 @@ use axum::{
 use jsonwebtoken::{decode, decode_header, DecodingKey, Validation, Algorithm};
 use rand::distributions::{Alphanumeric, DistString};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
-use once_cell::sync::Lazy;
 
 use crate::AppState;
 
 use super::{build_auth_cookie, set_cookie_header, UserInfo};
 
-// In-memory store for OAuth state tokens (expires after 10 minutes)
-static OAUTH_STATES: Lazy<RwLock<HashMap<String, OAuthState>>> = Lazy::new(|| RwLock::new(HashMap::new()));
-
-#[derive(Clone)]
-struct OAuthState {
-    created_at: u64,
+/// JSON structure for OAuth state user data
+#[derive(Debug, Serialize, Deserialize)]
+struct OAuthStateUserData {
     redirect_uri: String,
 }
 
@@ -559,20 +552,6 @@ async fn handle_oauth_user(
 
 // ========== APPLE WEB FLOW ==========
 
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-}
-
-/// Clean up expired OAuth states (older than 10 minutes)
-async fn cleanup_expired_states() {
-    let now = now_secs();
-    let mut states = OAUTH_STATES.write().await;
-    states.retain(|_, state| now - state.created_at < 600);
-}
-
 #[derive(Debug, Deserialize)]
 pub struct AppleAuthorizeQuery {
     /// Where to redirect after successful auth (default: /lobby)
@@ -581,6 +560,7 @@ pub struct AppleAuthorizeQuery {
 
 /// Initiates Apple Sign-In by redirecting to Apple's authorization page
 async fn apple_authorize(
+    State(state): State<Arc<AppState>>,
     Query(query): Query<AppleAuthorizeQuery>,
 ) -> Response {
     // Get client ID for web (Services ID, not bundle ID)
@@ -600,17 +580,20 @@ async fn apple_authorize(
     // Generate state token for CSRF protection
     let state_token = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
 
-    // Store state with redirect destination
+    // Store state with redirect destination in database
     let final_redirect = query.redirect.unwrap_or_else(|| "/lobby".to_string());
-    {
-        // Clean up old states first
-        cleanup_expired_states().await;
+    let user_data = serde_json::to_string(&OAuthStateUserData {
+        redirect_uri: final_redirect,
+    }).unwrap_or_else(|_| r#"{"redirect_uri":"/lobby"}"#.to_string());
 
-        let mut states = OAUTH_STATES.write().await;
-        states.insert(state_token.clone(), OAuthState {
-            created_at: now_secs(),
-            redirect_uri: final_redirect,
-        });
+    // Clean up expired states and store new state
+    let _ = state.db.cleanup_expired_oauth_states().await;
+    if let Err(e) = state.db.store_oauth_state(&state_token, &user_data, "apple").await {
+        tracing::error!("Failed to store OAuth state: {}", e);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to initialize OAuth flow"
+        ).into_response();
     }
 
     // Build Apple authorization URL
@@ -681,19 +664,22 @@ async fn apple_callback(
         }
     };
 
-    let final_redirect = {
-        let mut states = OAUTH_STATES.write().await;
-        match states.remove(&state_token) {
-            Some(oauth_state) => {
-                // Check if state is expired (10 minutes)
-                if now_secs() - oauth_state.created_at > 600 {
-                    return Redirect::to("/?error=state_expired").into_response();
-                }
-                oauth_state.redirect_uri
+    // Get and delete state from database (one-time use)
+    let final_redirect = match state.db.get_and_delete_oauth_state(&state_token).await {
+        Ok(Some(oauth_state)) => {
+            // Parse user_data JSON to get redirect_uri
+            match serde_json::from_str::<OAuthStateUserData>(&oauth_state.user_data) {
+                Ok(data) => data.redirect_uri,
+                Err(_) => "/lobby".to_string(),
             }
-            None => {
-                return Redirect::to("/?error=invalid_state").into_response();
-            }
+        }
+        Ok(None) => {
+            // State not found or expired
+            return Redirect::to("/?error=invalid_state").into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to retrieve OAuth state: {}", e);
+            return Redirect::to("/?error=state_error").into_response();
         }
     };
 
@@ -1113,93 +1099,33 @@ mod tests {
         assert_eq!(name.last_name, Some("Doe".to_string()));
     }
 
-    // ========== OAUTH STATE MANAGEMENT ==========
+    // ========== OAUTH STATE USER DATA ==========
 
-    #[tokio::test]
-    async fn test_oauth_state_storage() {
-        // Use unique key to avoid race conditions with parallel tests
-        let unique_key = format!("test-state-storage-{}", now_secs());
-
-        // Insert a state
-        {
-            let mut states = OAUTH_STATES.write().await;
-            states.insert(unique_key.clone(), OAuthState {
-                created_at: now_secs(),
-                redirect_uri: "/lobby".to_string(),
-            });
-        }
-
-        // Verify it's retrievable
-        {
-            let states = OAUTH_STATES.read().await;
-            let state = states.get(&unique_key).expect("State should exist");
-            assert_eq!(state.redirect_uri, "/lobby");
-        }
-
-        // Clean up only our key
-        {
-            let mut states = OAUTH_STATES.write().await;
-            states.remove(&unique_key);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_oauth_state_cleanup_removes_expired() {
-        // Use unique keys to avoid race conditions with parallel tests
-        let ts = now_secs();
-        let expired_key = format!("expired-state-cleanup-{}", ts);
-        let valid_key = format!("valid-state-cleanup-{}", ts);
-
-        // Insert an expired state (created 11 minutes ago)
-        {
-            let mut states = OAUTH_STATES.write().await;
-            states.insert(expired_key.clone(), OAuthState {
-                created_at: now_secs() - 660, // 11 minutes ago
-                redirect_uri: "/old".to_string(),
-            });
-            // Insert a valid state
-            states.insert(valid_key.clone(), OAuthState {
-                created_at: now_secs(),
-                redirect_uri: "/new".to_string(),
-            });
-        }
-
-        // Run cleanup
-        cleanup_expired_states().await;
-
-        // Verify expired is removed, valid remains
-        {
-            let states = OAUTH_STATES.read().await;
-            assert!(states.get(&expired_key).is_none(), "Expired state should be removed");
-            assert!(states.get(&valid_key).is_some(), "Valid state should remain");
-        }
-
-        // Clean up only our keys
-        {
-            let mut states = OAUTH_STATES.write().await;
-            states.remove(&valid_key);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_oauth_state_10_minute_expiration() {
-        // State exactly at 10 minute boundary
-        let state = OAuthState {
-            created_at: now_secs() - 600, // Exactly 10 minutes ago
-            redirect_uri: "/test".to_string(),
+    #[test]
+    fn test_oauth_state_user_data_serialize() {
+        let data = OAuthStateUserData {
+            redirect_uri: "/lobby".to_string(),
         };
-
-        // Should be expired (>= 600 seconds)
-        let is_expired = now_secs() - state.created_at >= 600;
-        assert!(is_expired, "State at exactly 10 minutes should be expired");
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(json.contains("redirect_uri"));
+        assert!(json.contains("/lobby"));
     }
 
     #[test]
-    fn test_now_secs_reasonable() {
-        let now = now_secs();
-        // Should be after 2024-01-01 (1704067200) and before 2100-01-01
-        assert!(now > 1704067200, "Timestamp should be after 2024");
-        assert!(now < 4102444800, "Timestamp should be before 2100");
+    fn test_oauth_state_user_data_deserialize() {
+        let json = r#"{"redirect_uri": "/custom-page"}"#;
+        let data: OAuthStateUserData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.redirect_uri, "/custom-page");
+    }
+
+    #[test]
+    fn test_oauth_state_user_data_roundtrip() {
+        let original = OAuthStateUserData {
+            redirect_uri: "/games/wheel".to_string(),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let parsed: OAuthStateUserData = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.redirect_uri, original.redirect_uri);
     }
 
     // ========== APPLE AUTHORIZE QUERY ==========

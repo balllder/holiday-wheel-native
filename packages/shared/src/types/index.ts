@@ -1,3 +1,6 @@
+// Socket.IO typed events
+export * from './socketEvents';
+
 // Types matching the Flask backend game state
 
 export interface Player {

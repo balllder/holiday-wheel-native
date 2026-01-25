@@ -18,6 +18,8 @@ export interface ConnectionStatusProps {
   onRetry?: () => void;
   /** Whether to show in compact mode (dot only) */
   compact?: boolean;
+  /** Maximum reconnection attempts (for display purposes) */
+  maxAttempts?: number;
   /** Test ID for testing */
   testID?: string;
 }
@@ -32,7 +34,8 @@ interface StatusConfig {
 
 const getStatusConfig = (
   status: ConnectionStatusType,
-  reconnectAttempt: number
+  reconnectAttempt: number,
+  maxAttempts?: number
 ): StatusConfig => {
   switch (status) {
     case 'connected':
@@ -51,14 +54,18 @@ const getStatusConfig = (
         showPulse: true,
         showRetry: false,
       };
-    case 'reconnecting':
+    case 'reconnecting': {
+      const attemptLabel = maxAttempts
+        ? `${reconnectAttempt}/${maxAttempts}`
+        : `${reconnectAttempt}`;
       return {
         color: '#f97316', // Orange
         glowColor: 'rgba(249, 115, 22, 0.4)',
-        label: `Reconnecting (${reconnectAttempt})...`,
+        label: `Reconnecting... (${attemptLabel})`,
         showPulse: true,
         showRetry: false,
       };
+    }
     case 'disconnected':
     default:
       return {
@@ -92,6 +99,7 @@ export function ConnectionStatus({
   style,
   onRetry,
   compact = false,
+  maxAttempts = 15,
   testID,
 }: ConnectionStatusProps): React.JSX.Element {
   const connectionStatus = useGameStore((state) => state.connectionStatus);
@@ -101,7 +109,7 @@ export function ConnectionStatus({
   const opacityAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  const statusConfig = getStatusConfig(connectionStatus, reconnectAttempt);
+  const statusConfig = getStatusConfig(connectionStatus, reconnectAttempt, maxAttempts);
 
   // Pulsing animation for connecting/reconnecting states
   useEffect(() => {

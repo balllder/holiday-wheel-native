@@ -33,6 +33,9 @@ pub enum ConfigError {
     #[error("Invalid boolean '{value}' for '{name}': expected 'true', 'false', '1', or '0'")]
     InvalidBoolean { name: String, value: String },
 
+    #[error("Insecure HOST_CODE: {0}")]
+    InsecureHostCode(String),
+
     #[error("Multiple configuration errors: {0:?}")]
     Multiple(Vec<ConfigError>),
 }
@@ -237,7 +240,14 @@ impl Config {
         let (cors_origins, cors_permissive) = Self::parse_cors_origins();
 
         // Game configuration
-        let (host_code, using_default_host_code) = Self::parse_host_code();
+        let (host_code, using_default_host_code) = match Self::parse_host_code() {
+            Ok(result) => result,
+            Err(e) => {
+                errors.push(e);
+                // Return placeholder values; startup will fail due to error
+                ("placeholder".to_string(), true)
+            }
+        };
 
         // Logging configuration
         let rust_log = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
@@ -457,26 +467,40 @@ impl Config {
 
     /// Parse HOST_CODE from environment variable.
     ///
-    /// If HOST_CODE is not set, uses insecure default "holiday" and logs a warning.
+    /// HOST_CODE must be at least 8 characters and cannot be the insecure default "holiday".
+    /// If HOST_CODE is not set or invalid, returns an error that will fail startup.
     /// Returns (host_code, using_default)
-    fn parse_host_code() -> (String, bool) {
+    fn parse_host_code() -> Result<(String, bool), ConfigError> {
         match std::env::var("HOST_CODE") {
             Ok(code) if !code.trim().is_empty() => {
                 let code = code.trim().to_string();
-                if code.len() < 8 {
-                    warn!(
-                        "HOST_CODE is set but short ({} chars). Consider using a longer code for security.",
-                        code.len()
-                    );
+
+                // Check for insecure default value
+                if code.to_lowercase() == "holiday" {
+                    return Err(ConfigError::InsecureHostCode(
+                        "HOST_CODE cannot be 'holiday'. Please set a secure value (minimum 8 characters).".to_string()
+                    ));
                 }
-                (code, false)
+
+                // Enforce minimum length
+                if code.len() < 8 {
+                    return Err(ConfigError::InsecureHostCode(
+                        format!(
+                            "HOST_CODE must be at least 8 characters (got {} chars). \
+                            Please set a secure value.",
+                            code.len()
+                        )
+                    ));
+                }
+
+                Ok((code, false))
             }
             _ => {
-                warn!(
-                    "HOST_CODE not set! Using insecure default. \
-                    In production, set HOST_CODE to a secure value."
-                );
-                ("holiday".to_string(), true)
+                Err(ConfigError::InsecureHostCode(
+                    "HOST_CODE environment variable is required. \
+                    Please set HOST_CODE to a secure value (minimum 8 characters)."
+                        .to_string()
+                ))
             }
         }
     }
@@ -615,6 +639,9 @@ mod tests {
         "RUST_LOG",
     ];
 
+    /// Valid HOST_CODE for tests that don't specifically test HOST_CODE validation
+    const TEST_HOST_CODE: &str = "test-secure-code-12345";
+
     /// Helper to run a test with a clean environment, setting only the specified vars.
     /// This ensures tests don't interfere with each other.
     fn with_clean_env<F>(vars: &[(&str, &str)], f: F)
@@ -651,17 +678,39 @@ mod tests {
         }
     }
 
-    /// Helper to set environment variables for testing (wraps with_clean_env)
+    /// Helper to set environment variables for testing with a valid HOST_CODE.
+    /// This wraps with_clean_env and automatically includes a valid HOST_CODE
+    /// unless one is explicitly provided in vars.
     fn with_env_vars<F>(vars: &[(&str, &str)], f: F)
     where
         F: FnOnce(),
     {
-        with_clean_env(vars, f);
+        // Check if HOST_CODE is explicitly provided
+        let has_host_code = vars.iter().any(|(k, _)| *k == "HOST_CODE");
+
+        if has_host_code {
+            with_clean_env(vars, f);
+        } else {
+            let mut all_vars = vec![("HOST_CODE", TEST_HOST_CODE)];
+            all_vars.extend(vars.iter().cloned());
+            with_clean_env(&all_vars, f);
+        }
+    }
+
+    /// Helper to run a test with a valid HOST_CODE plus any additional vars.
+    /// Use this for tests that don't specifically test HOST_CODE validation.
+    fn with_valid_host_code<F>(extra_vars: &[(&str, &str)], f: F)
+    where
+        F: FnOnce(),
+    {
+        let mut vars = vec![("HOST_CODE", TEST_HOST_CODE)];
+        vars.extend(extra_vars.iter().cloned());
+        with_clean_env(&vars, f);
     }
 
     #[test]
     fn test_default_config() {
-        with_clean_env(&[], || {
+        with_valid_host_code(&[], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert_eq!(config.server.port, 5000);
             assert!(!config.server.ssl_enabled);
@@ -672,7 +721,7 @@ mod tests {
 
     #[test]
     fn test_custom_port() {
-        with_clean_env(&[("PORT", "8080")], || {
+        with_valid_host_code(&[("PORT", "8080")], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert_eq!(config.server.port, 8080);
         });
@@ -721,7 +770,7 @@ mod tests {
     #[test]
     fn test_ssl_enabled_without_certs() {
         // SSL_ENABLED=true but no SSL_CERT or SSL_KEY
-        with_clean_env(&[("SSL_ENABLED", "true")], || {
+        with_env_vars(&[("SSL_ENABLED", "true")], || {
             let result = Config::from_env_no_dotenv();
             assert!(result.is_err());
             let err = result.unwrap_err();
@@ -758,31 +807,31 @@ mod tests {
     #[test]
     fn test_boolean_parsing() {
         // Test "true" - SSL_ENABLED=true should fail due to missing certs
-        with_clean_env(&[("SSL_ENABLED", "true")], || {
+        with_env_vars(&[("SSL_ENABLED", "true")], || {
             let result = Config::from_env_no_dotenv();
             assert!(result.is_err());
         });
 
         // Test "1" - EMAIL_ENABLED=1 should fail due to missing SMTP credentials
-        with_clean_env(&[("EMAIL_ENABLED", "1")], || {
+        with_env_vars(&[("EMAIL_ENABLED", "1")], || {
             let result = Config::from_env_no_dotenv();
             assert!(result.is_err());
         });
 
         // Test "yes" - EMAIL_ENABLED=yes should fail due to missing SMTP credentials
-        with_clean_env(&[("EMAIL_ENABLED", "yes")], || {
+        with_env_vars(&[("EMAIL_ENABLED", "yes")], || {
             let result = Config::from_env_no_dotenv();
             assert!(result.is_err());
         });
 
         // Test "false"
-        with_clean_env(&[("EMAIL_ENABLED", "false")], || {
+        with_env_vars(&[("EMAIL_ENABLED", "false")], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert!(!config.email.enabled);
         });
 
         // Test "0"
-        with_clean_env(&[("EMAIL_ENABLED", "0")], || {
+        with_env_vars(&[("EMAIL_ENABLED", "0")], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert!(!config.email.enabled);
         });
@@ -859,7 +908,7 @@ mod tests {
     #[test]
     fn test_database_path_priority() {
         // DATABASE_URL takes priority over DB_PATH
-        with_clean_env(
+        with_env_vars(
             &[
                 ("DATABASE_URL", "/path/to/database.db"),
                 ("DB_PATH", "/other/path.db"),
@@ -871,7 +920,7 @@ mod tests {
         );
 
         // Falls back to DB_PATH when DATABASE_URL is not set
-        with_clean_env(&[("DB_PATH", "/other/path.db")], || {
+        with_env_vars(&[("DB_PATH", "/other/path.db")], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert_eq!(config.database.path, "/other/path.db");
         });
@@ -880,13 +929,13 @@ mod tests {
     #[test]
     fn test_email_enabled_requires_credentials() {
         // EMAIL_ENABLED=true without credentials should fail
-        with_clean_env(&[("EMAIL_ENABLED", "true")], || {
+        with_env_vars(&[("EMAIL_ENABLED", "true")], || {
             let result = Config::from_env_no_dotenv();
             assert!(result.is_err());
         });
 
         // EMAIL_ENABLED=true with credentials should succeed
-        with_clean_env(
+        with_env_vars(
             &[
                 ("EMAIL_ENABLED", "true"),
                 ("SMTP_USER", "user@example.com"),
@@ -902,8 +951,8 @@ mod tests {
 
     #[test]
     fn test_webauthn_defaults() {
-        // With clean env (no WEBAUTHN vars set), should use defaults
-        with_clean_env(&[], || {
+        // With env (no WEBAUTHN vars set), should use defaults
+        with_valid_host_code(&[], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert_eq!(config.webauthn.rp_id, "localhost");
             assert_eq!(config.webauthn.rp_origin, "http://localhost:5000");
@@ -912,8 +961,8 @@ mod tests {
 
     #[test]
     fn test_oauth_config_optional() {
-        // With clean env (no OAuth vars), all should be None
-        with_clean_env(&[], || {
+        // With env (no OAuth vars), all should be None
+        with_valid_host_code(&[], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert!(config.oauth.google_client_id.is_none());
             assert!(config.oauth.apple_client_id.is_none());
@@ -941,7 +990,7 @@ mod tests {
 
     #[test]
     fn test_config_display() {
-        with_clean_env(&[], || {
+        with_valid_host_code(&[], || {
             let config = Config::from_env_no_dotenv().unwrap();
             let display = format!("{}", config);
             assert!(display.contains("port: 5000"));
@@ -954,7 +1003,7 @@ mod tests {
     #[test]
     fn test_multiple_errors() {
         // Multiple errors: invalid port, missing SSL certs, invalid URL
-        with_clean_env(
+        with_env_vars(
             &[
                 ("PORT", "invalid"),
                 ("SSL_ENABLED", "true"),
@@ -976,7 +1025,7 @@ mod tests {
     #[test]
     fn test_cors_default_permissive() {
         // Without CORS_ALLOWED_ORIGINS, should be permissive
-        with_clean_env(&[], || {
+        with_valid_host_code(&[], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert!(config.cors.permissive);
             assert!(config.cors.allowed_origins.is_empty());
@@ -986,7 +1035,7 @@ mod tests {
     #[test]
     fn test_cors_explicit_wildcard() {
         // CORS_ALLOWED_ORIGINS="*" should be explicitly permissive
-        with_clean_env(&[("CORS_ALLOWED_ORIGINS", "*")], || {
+        with_env_vars(&[("CORS_ALLOWED_ORIGINS", "*")], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert!(config.cors.permissive);
             assert!(config.cors.allowed_origins.is_empty());
@@ -995,7 +1044,7 @@ mod tests {
 
     #[test]
     fn test_cors_single_origin() {
-        with_clean_env(&[("CORS_ALLOWED_ORIGINS", "https://example.com")], || {
+        with_env_vars(&[("CORS_ALLOWED_ORIGINS", "https://example.com")], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert!(!config.cors.permissive);
             assert_eq!(config.cors.allowed_origins.len(), 1);
@@ -1005,7 +1054,7 @@ mod tests {
 
     #[test]
     fn test_cors_multiple_origins() {
-        with_clean_env(
+        with_env_vars(
             &[(
                 "CORS_ALLOWED_ORIGINS",
                 "https://example.com, https://app.example.com, http://localhost:3000",
@@ -1024,7 +1073,7 @@ mod tests {
     #[test]
     fn test_cors_empty_string_fallback() {
         // Empty CORS_ALLOWED_ORIGINS should fall back to permissive
-        with_clean_env(&[("CORS_ALLOWED_ORIGINS", "")], || {
+        with_env_vars(&[("CORS_ALLOWED_ORIGINS", "")], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert!(config.cors.permissive);
         });
@@ -1033,24 +1082,33 @@ mod tests {
     #[test]
     fn test_cors_whitespace_only_fallback() {
         // Whitespace-only CORS_ALLOWED_ORIGINS should fall back to permissive
-        with_clean_env(&[("CORS_ALLOWED_ORIGINS", "   ")], || {
+        with_env_vars(&[("CORS_ALLOWED_ORIGINS", "   ")], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert!(config.cors.permissive);
         });
     }
 
     #[test]
-    fn test_host_code_default() {
-        // Without HOST_CODE, should use default "holiday"
+    fn test_host_code_not_set_fails() {
+        // Without HOST_CODE, startup should fail
         with_clean_env(&[], || {
-            let config = Config::from_env_no_dotenv().unwrap();
-            assert!(config.game.using_default_host_code);
-            assert_eq!(config.game.host_code, "holiday");
+            let result = Config::from_env_no_dotenv();
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                ConfigError::InsecureHostCode(msg) => {
+                    assert!(msg.contains("required"));
+                }
+                ConfigError::Multiple(errors) => {
+                    assert!(errors.iter().any(|e| matches!(e, ConfigError::InsecureHostCode(_))));
+                }
+                _ => panic!("Expected InsecureHostCode error, got {:?}", err),
+            }
         });
     }
 
     #[test]
-    fn test_host_code_custom() {
+    fn test_host_code_custom_valid() {
         with_clean_env(&[("HOST_CODE", "my-secure-code-123")], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert!(!config.game.using_default_host_code);
@@ -1059,21 +1117,68 @@ mod tests {
     }
 
     #[test]
-    fn test_host_code_empty_falls_back() {
-        // Empty HOST_CODE should fall back to default
-        with_clean_env(&[("HOST_CODE", "")], || {
+    fn test_host_code_holiday_rejected() {
+        // "holiday" is explicitly rejected as insecure
+        with_clean_env(&[("HOST_CODE", "holiday")], || {
+            let result = Config::from_env_no_dotenv();
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                ConfigError::InsecureHostCode(msg) => {
+                    assert!(msg.contains("holiday"));
+                }
+                ConfigError::Multiple(errors) => {
+                    assert!(errors.iter().any(|e| matches!(e, ConfigError::InsecureHostCode(_))));
+                }
+                _ => panic!("Expected InsecureHostCode error, got {:?}", err),
+            }
+        });
+    }
+
+    #[test]
+    fn test_host_code_too_short_rejected() {
+        // HOST_CODE must be at least 8 characters
+        with_clean_env(&[("HOST_CODE", "short")], || {
+            let result = Config::from_env_no_dotenv();
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            match err {
+                ConfigError::InsecureHostCode(msg) => {
+                    assert!(msg.contains("8 characters"));
+                }
+                ConfigError::Multiple(errors) => {
+                    assert!(errors.iter().any(|e| matches!(e, ConfigError::InsecureHostCode(_))));
+                }
+                _ => panic!("Expected InsecureHostCode error, got {:?}", err),
+            }
+        });
+    }
+
+    #[test]
+    fn test_host_code_exactly_8_chars_valid() {
+        // Exactly 8 characters should be valid
+        with_clean_env(&[("HOST_CODE", "12345678")], || {
             let config = Config::from_env_no_dotenv().unwrap();
-            assert!(config.game.using_default_host_code);
-            assert_eq!(config.game.host_code, "holiday");
+            assert!(!config.game.using_default_host_code);
+            assert_eq!(config.game.host_code, "12345678");
+        });
+    }
+
+    #[test]
+    fn test_host_code_empty_fails() {
+        // Empty HOST_CODE should fail
+        with_clean_env(&[("HOST_CODE", "")], || {
+            let result = Config::from_env_no_dotenv();
+            assert!(result.is_err());
         });
     }
 
     #[test]
     fn test_host_code_whitespace_trimmed() {
-        with_clean_env(&[("HOST_CODE", "  my-code  ")], || {
+        with_clean_env(&[("HOST_CODE", "  my-secure-code  ")], || {
             let config = Config::from_env_no_dotenv().unwrap();
             assert!(!config.game.using_default_host_code);
-            assert_eq!(config.game.host_code, "my-code");
+            assert_eq!(config.game.host_code, "my-secure-code");
         });
     }
 }

@@ -13,12 +13,18 @@ export {
   GlassCardContent,
   GlassCardFooter,
   GoldButton,
+  ConnectionStatus,
 } from './components/ui';
 export type {
   GradientBackgroundProps,
   GlassCardProps,
   GoldButtonProps,
+  ConnectionStatusProps,
 } from './components/ui';
+
+// Error Boundary
+export { ErrorBoundary } from './components/ErrorBoundary';
+export type { ErrorBoundaryProps } from './components/ErrorBoundary';
 
 // Components
 export { AnimatedWheel } from './components/AnimatedWheel';

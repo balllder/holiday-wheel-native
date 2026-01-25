@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,9 @@ type TVGameScreenProps = {
 
 const HOST_CODE = 'holiday'; // Default host code
 
+// D-pad navigation direction type
+type DPadDirection = 'up' | 'down' | 'left' | 'right';
+
 export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
   const { room } = route.params;
   const [controlsVisible, setControlsVisible] = useState(false);
@@ -47,10 +50,33 @@ export function TVGameScreen({ route }: TVGameScreenProps): React.JSX.Element {
   const lastSpinIndex = useGameStore((state) => state.lastSpinIndex);
   const isHost = useGameStore((state) => state.isHost);
 
-  // Handle TV remote events (Menu/PlayPause toggles host controls)
+  // Handle D-pad navigation direction
+  const handleDPadNavigation = useCallback((direction: DPadDirection) => {
+    // When controls are visible, let the HostControlPanel handle navigation
+    // The focus system will automatically handle D-pad events
+    if (!controlsVisible) {
+      // When controls are hidden, D-pad can toggle QR code visibility
+      if (direction === 'left' || direction === 'right') {
+        setShowQRCode((prev) => !prev);
+      }
+    }
+  }, [controlsVisible]);
+
+  // Handle TV remote events (Menu/PlayPause toggles host controls, D-pad for navigation)
   useTVEventHandler((evt: { eventType: string }) => {
+    // Menu/PlayPause toggles host controls
     if (evt.eventType === 'menu' || evt.eventType === 'playPause') {
       setControlsVisible((prev) => !prev);
+    }
+    // D-pad navigation
+    else if (evt.eventType === 'up') {
+      handleDPadNavigation('up');
+    } else if (evt.eventType === 'down') {
+      handleDPadNavigation('down');
+    } else if (evt.eventType === 'left') {
+      handleDPadNavigation('left');
+    } else if (evt.eventType === 'right') {
+      handleDPadNavigation('right');
     }
   });
 

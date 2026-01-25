@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  TVFocusGuideView,
+  Animated,
 } from 'react-native';
 import { useGameStore, socketService } from '@holiday-wheel/shared';
 
@@ -15,6 +17,66 @@ interface HostControlPanelProps {
 }
 
 type TabType = 'game' | 'players' | 'settings';
+
+// Custom focusable button component with visual feedback
+interface FocusableButtonProps {
+  onPress: () => void;
+  style: object | object[];
+  children: React.ReactNode;
+  hasTVPreferredFocus?: boolean;
+  onFocusChange?: (focused: boolean) => void;
+  testID?: string;
+}
+
+function FocusableButton({
+  onPress,
+  style,
+  children,
+  hasTVPreferredFocus,
+  onFocusChange,
+  testID,
+}: FocusableButtonProps): React.JSX.Element {
+  const [isFocused, setIsFocused] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handleFocus = useCallback(() => {
+    setIsFocused(true);
+    onFocusChange?.(true);
+    Animated.spring(scaleAnim, {
+      toValue: 1.05,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 8,
+    }).start();
+  }, [scaleAnim, onFocusChange]);
+
+  const handleBlur = useCallback(() => {
+    setIsFocused(false);
+    onFocusChange?.(false);
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 8,
+    }).start();
+  }, [scaleAnim, onFocusChange]);
+
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <TouchableOpacity
+        style={[style, isFocused && styles.buttonFocused]}
+        onPress={onPress}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        hasTVPreferredFocus={hasTVPreferredFocus}
+        testID={testID}
+        activeOpacity={0.8}
+      >
+        {children}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
 
 export function HostControlPanel({
   room,
@@ -45,87 +107,95 @@ export function HostControlPanel({
   ];
 
   const renderGameControls = () => (
-    <View style={styles.controlsGrid}>
-      <TouchableOpacity
+    <TVFocusGuideView style={styles.controlsGrid} autoFocus>
+      <FocusableButton
         style={[styles.controlButton, styles.primaryButton]}
         onPress={handleNewPuzzle}
         hasTVPreferredFocus={activeTab === 'game'}
+        testID="btn-new-puzzle"
       >
         <Text style={styles.buttonIcon}>📝</Text>
         <Text style={styles.buttonLabel}>NEW PUZZLE</Text>
-      </TouchableOpacity>
+      </FocusableButton>
 
-      <TouchableOpacity
+      <FocusableButton
         style={[styles.controlButton, styles.greenButton]}
         onPress={handleSpin}
+        testID="btn-spin"
       >
         <Text style={styles.buttonIcon}>🎡</Text>
         <Text style={styles.buttonLabel}>SPIN</Text>
-      </TouchableOpacity>
+      </FocusableButton>
 
-      <TouchableOpacity
+      <FocusableButton
         style={[styles.controlButton, styles.secondaryButton]}
         onPress={handleRevealAll}
+        testID="btn-reveal-all"
       >
         <Text style={styles.buttonIcon}>👁️</Text>
         <Text style={styles.buttonLabel}>REVEAL ALL</Text>
-      </TouchableOpacity>
+      </FocusableButton>
 
       {phase === 'normal' && (
         <>
-          <TouchableOpacity
+          <FocusableButton
             style={[styles.controlButton, styles.orangeButton]}
             onPress={handleStartTossup}
+            testID="btn-start-tossup"
           >
             <Text style={styles.buttonIcon}>🔔</Text>
             <Text style={styles.buttonLabel}>START TOSS-UP</Text>
-          </TouchableOpacity>
+          </FocusableButton>
 
-          <TouchableOpacity
+          <FocusableButton
             style={[styles.controlButton, styles.purpleButton]}
             onPress={handleStartFinal}
+            testID="btn-start-final"
           >
             <Text style={styles.buttonIcon}>🏆</Text>
             <Text style={styles.buttonLabel}>START FINAL</Text>
-          </TouchableOpacity>
+          </FocusableButton>
         </>
       )}
 
       {phase === 'tossup' && (
-        <TouchableOpacity
+        <FocusableButton
           style={[styles.controlButton, styles.redButton]}
           onPress={handleEndTossup}
+          testID="btn-end-tossup"
         >
           <Text style={styles.buttonIcon}>⏹️</Text>
           <Text style={styles.buttonLabel}>END TOSS-UP</Text>
-        </TouchableOpacity>
+        </FocusableButton>
       )}
 
       {phase === 'final' && (
-        <TouchableOpacity
+        <FocusableButton
           style={[styles.controlButton, styles.redButton]}
           onPress={handleEndFinal}
+          testID="btn-end-final"
         >
           <Text style={styles.buttonIcon}>⏹️</Text>
           <Text style={styles.buttonLabel}>END FINAL</Text>
-        </TouchableOpacity>
+        </FocusableButton>
       )}
 
-      <TouchableOpacity
+      <FocusableButton
         style={[styles.controlButton, styles.resetButton]}
         onPress={handleNewGame}
+        testID="btn-new-game"
       >
         <Text style={styles.buttonIcon}>🔄</Text>
         <Text style={styles.buttonLabel}>NEW GAME</Text>
-      </TouchableOpacity>
-    </View>
+      </FocusableButton>
+    </TVFocusGuideView>
   );
 
   const renderPlayersControls = () => (
-    <View style={styles.playersList}>
+    <TVFocusGuideView style={styles.playersList} autoFocus>
       <Text style={styles.sectionTitle}>Set Active Player</Text>
       {players.map((player, idx) => (
-        <TouchableOpacity
+        <FocusableButton
           key={player.id}
           style={[
             styles.playerButton,
@@ -133,31 +203,37 @@ export function HostControlPanel({
           ]}
           onPress={() => handleSetActivePlayer(idx)}
           hasTVPreferredFocus={activeTab === 'players' && idx === 0}
+          testID={`btn-player-${idx}`}
         >
           <Text style={styles.playerName}>{player.name}</Text>
           <Text style={styles.playerScore}>${player.total}</Text>
           {idx === activeIdx && <Text style={styles.activeBadge}>ACTIVE</Text>}
-        </TouchableOpacity>
+        </FocusableButton>
       ))}
-    </View>
+    </TVFocusGuideView>
   );
 
   return (
     <View style={styles.overlay}>
-      <View style={styles.panel}>
+      <TVFocusGuideView style={styles.panel} autoFocus trapFocusLeft trapFocusRight>
         <View style={styles.header}>
           <Text style={styles.title}>Host Controls</Text>
-          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+          <FocusableButton
+            style={styles.closeButton}
+            onPress={onClose}
+            testID="btn-close"
+          >
             <Text style={styles.closeText}>✕</Text>
-          </TouchableOpacity>
+          </FocusableButton>
         </View>
 
-        <View style={styles.tabs}>
+        <TVFocusGuideView style={styles.tabs} trapFocusUp>
           {tabs.map((tab) => (
-            <TouchableOpacity
+            <FocusableButton
               key={tab.key}
               style={[styles.tab, activeTab === tab.key && styles.activeTab]}
               onPress={() => setActiveTab(tab.key)}
+              testID={`btn-tab-${tab.key}`}
             >
               <Text
                 style={[
@@ -167,9 +243,9 @@ export function HostControlPanel({
               >
                 {tab.label}
               </Text>
-            </TouchableOpacity>
+            </FocusableButton>
           ))}
-        </View>
+        </TVFocusGuideView>
 
         <ScrollView style={styles.content}>
           {activeTab === 'game' && renderGameControls()}
@@ -180,7 +256,7 @@ export function HostControlPanel({
           <Text style={styles.phaseLabel}>Current Phase:</Text>
           <Text style={styles.phaseValue}>{phase.toUpperCase()}</Text>
         </View>
-      </View>
+      </TVFocusGuideView>
     </View>
   );
 }
@@ -287,6 +363,15 @@ const styles = StyleSheet.create({
   },
   resetButton: {
     backgroundColor: '#607d8b',
+  },
+  buttonFocused: {
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#d4af37',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
+    elevation: 10,
   },
   buttonIcon: {
     fontSize: 32,

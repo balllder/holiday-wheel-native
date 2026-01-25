@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   StyleSheet,
   FlatList,
   TVFocusGuideView,
+  Animated,
+  useTVEventHandler,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -15,16 +17,82 @@ import type { RoomInfo } from '@holiday-wheel/shared';
 import type { TVStackParamList } from '../navigation/TVNavigator';
 import { RoomQRCode } from '../components/RoomQRCode';
 
+// Custom focusable button for lobby with animation
+interface FocusableButtonProps {
+  onPress: () => void;
+  style: object | object[];
+  focusedStyle?: object;
+  children: React.ReactNode;
+  hasTVPreferredFocus?: boolean;
+  onFocusChange?: (focused: boolean) => void;
+  testID?: string;
+}
+
+function FocusableButton({
+  onPress,
+  style,
+  focusedStyle,
+  children,
+  hasTVPreferredFocus,
+  onFocusChange,
+  testID,
+}: FocusableButtonProps): React.JSX.Element {
+  const [isFocused, setIsFocused] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handleFocus = useCallback(() => {
+    setIsFocused(true);
+    onFocusChange?.(true);
+    Animated.spring(scaleAnim, {
+      toValue: 1.03,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 8,
+    }).start();
+  }, [scaleAnim, onFocusChange]);
+
+  const handleBlur = useCallback(() => {
+    setIsFocused(false);
+    onFocusChange?.(false);
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 8,
+    }).start();
+  }, [scaleAnim, onFocusChange]);
+
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <TouchableOpacity
+        style={[style, isFocused && (focusedStyle || styles.buttonFocused)]}
+        onPress={onPress}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        hasTVPreferredFocus={hasTVPreferredFocus}
+        testID={testID}
+        activeOpacity={0.8}
+      >
+        {children}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
 type TVLobbyScreenProps = {
   navigation: NativeStackNavigationProp<TVStackParamList, 'TVLobby'>;
 };
 
 const DEFAULT_API_URL = 'http://192.168.1.100:5000';
 
+// Focus regions for navigation
+type FocusRegion = 'header' | 'serverConfig' | 'joinSection' | 'rooms' | 'rightPanel';
+
 export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Element {
   const [rooms, setRooms] = useState<RoomInfo[]>([]);
   const [customRoom, setCustomRoom] = useState('main');
   const [focusedItem, setFocusedItem] = useState<string>('input');
+  const [focusRegion, setFocusRegion] = useState<FocusRegion>('joinSection');
   const [serverUrl, setServerUrl] = useState<string>(DEFAULT_API_URL);
   const [serverUrlInput, setServerUrlInput] = useState<string>(DEFAULT_API_URL);
   const [showQRCode, setShowQRCode] = useState<boolean>(false);
@@ -34,6 +102,36 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
   const user = useAuthStore((state) => state.user);
   const token = useAuthStore((state) => state.token);
   const clearAuth = useAuthStore((state) => state.clearAuth);
+
+  // Handle TV remote D-pad events for region navigation
+  useTVEventHandler((evt: { eventType: string }) => {
+    // Update focus region tracking based on D-pad
+    if (evt.eventType === 'up') {
+      if (focusRegion === 'rooms') {
+        setFocusRegion('joinSection');
+      } else if (focusRegion === 'joinSection' && showServerConfig) {
+        setFocusRegion('serverConfig');
+      } else if (focusRegion === 'joinSection' || focusRegion === 'serverConfig') {
+        setFocusRegion('header');
+      }
+    } else if (evt.eventType === 'down') {
+      if (focusRegion === 'header') {
+        setFocusRegion(showServerConfig ? 'serverConfig' : 'joinSection');
+      } else if (focusRegion === 'serverConfig') {
+        setFocusRegion('joinSection');
+      } else if (focusRegion === 'joinSection') {
+        setFocusRegion('rooms');
+      }
+    } else if (evt.eventType === 'right') {
+      if (focusRegion !== 'rightPanel') {
+        setFocusRegion('rightPanel');
+      }
+    } else if (evt.eventType === 'left') {
+      if (focusRegion === 'rightPanel') {
+        setFocusRegion('joinSection');
+      }
+    }
+  });
 
   // Load server URL from config
   useEffect(() => {
@@ -94,55 +192,65 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
   };
 
   const renderRoomItem = ({ item, index }: { item: RoomInfo; index: number }) => (
-    <TouchableOpacity
-      style={[
-        styles.roomCard,
-        focusedItem === `room-${index}` && styles.roomCardFocused,
-      ]}
+    <FocusableButton
+      style={styles.roomCard}
+      focusedStyle={styles.roomCardFocused}
       onPress={() => joinRoom(item.name)}
-      onFocus={() => setFocusedItem(`room-${index}`)}
-      activeOpacity={0.8}
+      onFocusChange={(focused) => {
+        if (focused) {
+          setFocusedItem(`room-${index}`);
+          setFocusRegion('rooms');
+        }
+      }}
+      hasTVPreferredFocus={index === 0 && rooms.length > 0 && focusRegion === 'rooms'}
+      testID={`room-${index}`}
     >
       <Text style={styles.roomName}>{item.name}</Text>
       <Text style={styles.roomPlayers}>{item.player_count} players</Text>
-    </TouchableOpacity>
+    </FocusableButton>
   );
 
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <TVFocusGuideView style={styles.header} trapFocusUp>
         <View>
           <Text style={styles.title}>🎡 Holiday Wheel</Text>
           <Text style={styles.welcome}>Welcome, {user?.display_name}!</Text>
         </View>
         <View style={styles.headerButtons}>
-          <TouchableOpacity
-            style={[
-              styles.settingsButton,
-              focusedItem === 'settings' && styles.buttonFocused,
-            ]}
+          <FocusableButton
+            style={styles.settingsButton}
             onPress={() => setShowServerConfig(!showServerConfig)}
-            onFocus={() => setFocusedItem('settings')}
+            onFocusChange={(focused) => {
+              if (focused) {
+                setFocusedItem('settings');
+                setFocusRegion('header');
+              }
+            }}
+            testID="btn-settings"
           >
             <Text style={styles.settingsText}>⚙️ Server</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.logoutButton,
-              focusedItem === 'logout' && styles.buttonFocused,
-            ]}
+          </FocusableButton>
+          <FocusableButton
+            style={styles.logoutButton}
             onPress={handleLogout}
-            onFocus={() => setFocusedItem('logout')}
+            onFocusChange={(focused) => {
+              if (focused) {
+                setFocusedItem('logout');
+                setFocusRegion('header');
+              }
+            }}
+            testID="btn-logout"
           >
             <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
+          </FocusableButton>
         </View>
-      </View>
+      </TVFocusGuideView>
 
       {/* Server Configuration Panel */}
       {showServerConfig && (
-        <View style={styles.serverConfigPanel}>
+        <TVFocusGuideView style={styles.serverConfigPanel}>
           <Text style={styles.serverConfigTitle}>Server Configuration</Text>
           <View style={styles.serverConfigRow}>
             <TextInput
@@ -154,35 +262,44 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
               placeholderTextColor="#666"
               value={serverUrlInput}
               onChangeText={setServerUrlInput}
-              onFocus={() => setFocusedItem('serverInput')}
+              onFocus={() => {
+                setFocusedItem('serverInput');
+                setFocusRegion('serverConfig');
+              }}
               onSubmitEditing={handleSaveServer}
               autoCapitalize="none"
               autoCorrect={false}
+              hasTVPreferredFocus={showServerConfig && focusRegion === 'serverConfig'}
             />
-            <TouchableOpacity
+            <FocusableButton
               style={[
                 styles.saveButton,
                 serverSaved && styles.saveButtonSaved,
-                focusedItem === 'saveServer' && styles.buttonFocused,
               ]}
               onPress={handleSaveServer}
-              onFocus={() => setFocusedItem('saveServer')}
+              onFocusChange={(focused) => {
+                if (focused) {
+                  setFocusedItem('saveServer');
+                  setFocusRegion('serverConfig');
+                }
+              }}
+              testID="btn-save-server"
             >
               <Text style={styles.saveButtonText}>
                 {serverSaved ? '✓ Saved' : 'Save'}
               </Text>
-            </TouchableOpacity>
+            </FocusableButton>
           </View>
           <Text style={styles.serverHint}>
             Enter the IP address of the computer running the backend server
           </Text>
-        </View>
+        </TVFocusGuideView>
       )}
 
       <View style={styles.content}>
         <View style={styles.mainContent}>
           {/* Left side - Room controls */}
-          <View style={styles.leftPanel}>
+          <TVFocusGuideView style={styles.leftPanel} trapFocusLeft>
             {/* Join Room Section */}
             <TVFocusGuideView style={styles.joinSection} autoFocus>
               <Text style={styles.sectionTitle}>Join a Room</Text>
@@ -196,25 +313,31 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
                   placeholderTextColor="#666"
                   value={customRoom}
                   onChangeText={setCustomRoom}
-                  onFocus={() => setFocusedItem('input')}
+                  onFocus={() => {
+                    setFocusedItem('input');
+                    setFocusRegion('joinSection');
+                  }}
                   onSubmitEditing={() => joinRoom(customRoom)}
-                  hasTVPreferredFocus={!showServerConfig}
+                  hasTVPreferredFocus={!showServerConfig && focusRegion === 'joinSection'}
                 />
-                <TouchableOpacity
-                  style={[
-                    styles.joinButton,
-                    focusedItem === 'join' && styles.buttonFocused,
-                  ]}
+                <FocusableButton
+                  style={styles.joinButton}
                   onPress={() => joinRoom(customRoom)}
-                  onFocus={() => setFocusedItem('join')}
+                  onFocusChange={(focused) => {
+                    if (focused) {
+                      setFocusedItem('join');
+                      setFocusRegion('joinSection');
+                    }
+                  }}
+                  testID="btn-join"
                 >
                   <Text style={styles.joinButtonText}>JOIN</Text>
-                </TouchableOpacity>
+                </FocusableButton>
               </View>
             </TVFocusGuideView>
 
             {/* Active Rooms */}
-            <View style={styles.roomsSection}>
+            <TVFocusGuideView style={styles.roomsSection}>
               <Text style={styles.sectionTitle}>Active Rooms</Text>
               {rooms.length > 0 ? (
                 <FlatList
@@ -228,11 +351,11 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
               ) : (
                 <Text style={styles.emptyText}>No active rooms. Join one above!</Text>
               )}
-            </View>
-          </View>
+            </TVFocusGuideView>
+          </TVFocusGuideView>
 
-          {/* Right side - Connection info */}
-          <View style={styles.rightPanel}>
+          {/* Right side - Connection info (QR code area - focusable but not a trap) */}
+          <TVFocusGuideView style={styles.rightPanel} trapFocusRight>
             <Text style={styles.sectionTitle}>Phone Connection</Text>
             <View style={styles.serverInfo}>
               <Text style={styles.serverLabel}>Server:</Text>
@@ -243,18 +366,22 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
               <Text style={styles.serverUrlText}>{customRoom || 'main'}</Text>
             </View>
 
-            <TouchableOpacity
-              style={[
-                styles.qrButton,
-                focusedItem === 'qr' && styles.buttonFocused,
-              ]}
+            <FocusableButton
+              style={styles.qrButton}
               onPress={() => setShowQRCode(!showQRCode)}
-              onFocus={() => setFocusedItem('qr')}
+              onFocusChange={(focused) => {
+                if (focused) {
+                  setFocusedItem('qr');
+                  setFocusRegion('rightPanel');
+                }
+              }}
+              hasTVPreferredFocus={focusRegion === 'rightPanel'}
+              testID="btn-qr"
             >
               <Text style={styles.qrButtonText}>
                 {showQRCode ? 'Hide QR Code' : 'Show QR Code'}
               </Text>
-            </TouchableOpacity>
+            </FocusableButton>
 
             {showQRCode && (
               <View style={styles.qrContainer}>
@@ -272,7 +399,7 @@ export function TVLobbyScreen({ navigation }: TVLobbyScreenProps): React.JSX.Ele
             <Text style={styles.manualHint}>
               Or enter server URL manually on phone
             </Text>
-          </View>
+          </TVFocusGuideView>
         </View>
       </View>
 

@@ -13,7 +13,7 @@ import {
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainerRef } from '@react-navigation/native';
-import { useAuthStore, configService } from '@holiday-wheel/shared';
+import { useAuthStore, configService, ErrorBoundary } from '@holiday-wheel/shared';
 import { AppNavigator, RootStackParamList } from './src/navigation/AppNavigator';
 
 // Deep link configuration
@@ -141,10 +141,12 @@ function App(): React.JSX.Element {
   }
 
   return (
-    <SafeAreaProvider>
-      <StatusBar barStyle="light-content" backgroundColor="#0d0628" />
-      <AppNavigator navigationRef={navigationRef} linking={linking} />
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <StatusBar barStyle="light-content" backgroundColor="#0d0628" />
+        <AppNavigator navigationRef={navigationRef} linking={linking} />
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 

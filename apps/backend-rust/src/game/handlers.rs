@@ -846,11 +846,53 @@ pub fn register_handlers(io: &SocketIo) {
 
         // ========== HOST SYSTEM ==========
 
-        // Claim host
+        // Claim host (with rate limiting: max 3 attempts per minute per socket)
         socket.on(
             "claim_host",
             |socket: SocketRef, Data(req): Data<ClaimHostRequest>, State(state): State<Arc<AppState>>| async move {
+                const MAX_ATTEMPTS: u32 = 3;
+                const WINDOW_SECS: u64 = 60;
+
+                let socket_id = socket.id.to_string();
+
+                // Check rate limit
+                {
+                    let mut limits = state.claim_host_limits.write().await;
+                    let now = std::time::Instant::now();
+
+                    if let Some((count, window_start)) = limits.get_mut(&socket_id) {
+                        // Check if we're in a new window
+                        if now.duration_since(*window_start).as_secs() >= WINDOW_SECS {
+                            // Reset window
+                            *count = 1;
+                            *window_start = now;
+                        } else if *count >= MAX_ATTEMPTS {
+                            // Rate limited
+                            warn!(
+                                socket_id = %socket_id,
+                                room = %req.room,
+                                "Rate limited claim_host attempt (exceeded {} per minute)",
+                                MAX_ATTEMPTS
+                            );
+                            toast!(socket, "Too many host claim attempts. Please wait a minute.");
+                            socket.emit("host_granted", &serde_json::json!({ "granted": false })).ok();
+                            return;
+                        } else {
+                            *count += 1;
+                        }
+                    } else {
+                        // First attempt
+                        limits.insert(socket_id.clone(), (1, now));
+                    }
+                }
+
+                // Validate host code
                 if req.code != state.config.game.host_code {
+                    warn!(
+                        socket_id = %socket_id,
+                        room = %req.room,
+                        "Failed host claim attempt with invalid code"
+                    );
                     toast!(socket, "Invalid host code.");
                     socket.emit("host_granted", &serde_json::json!({ "granted": false })).ok();
                     return;
@@ -860,6 +902,11 @@ pub fn register_handlers(io: &SocketIo) {
                 let game = manager.get_or_create_room(&req.room);
                 game.host_sid = Some(socket.id.to_string());
 
+                info!(
+                    socket_id = %socket_id,
+                    room = %req.room,
+                    "Host mode granted"
+                );
                 socket.emit("host_granted", &serde_json::json!({ "granted": true })).ok();
                 toast!(socket, "Host mode enabled on this device.");
                 broadcast_state!(socket, req.room, game.get_state());

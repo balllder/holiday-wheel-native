@@ -67,6 +67,9 @@ async fn shutdown_signal() {
     }
 }
 
+/// Tracks rate limiting for socket events (socket_id -> (count, window_start))
+pub type SocketRateLimits = RwLock<HashMap<String, (u32, std::time::Instant)>>;
+
 /// Application state shared across handlers
 pub struct AppState {
     pub game_manager: RwLock<GameManager>,
@@ -77,6 +80,8 @@ pub struct AppState {
     pub user_sockets: RwLock<HashMap<i64, HashSet<String>>>,
     /// Application configuration
     pub config: Config,
+    /// Rate limiting for claim_host attempts (max 3 per minute per socket)
+    pub claim_host_limits: SocketRateLimits,
 }
 
 #[tokio::main]
@@ -149,6 +154,7 @@ async fn main() -> anyhow::Result<()> {
         io: OnceCell::new(),
         user_sockets: RwLock::new(HashMap::new()),
         config: config.clone(),
+        claim_host_limits: RwLock::new(HashMap::new()),
     });
 
     // Set up Socket.IO with CORS support for cross-origin connections

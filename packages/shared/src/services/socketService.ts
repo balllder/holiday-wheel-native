@@ -1,6 +1,7 @@
-import { io, Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
 import { useGameStore, ConnectionStatus } from '../stores/gameStore';
 import type { ServerGameState } from '../types';
+import type { TypedClientSocket } from '../types/socketEvents';
 
 type ToastCallback = (message: string) => void;
 type SessionInvalidatedCallback = (reason: string) => void;
@@ -34,7 +35,7 @@ const DEFAULT_RECONNECTION_CONFIG: ReconnectionConfig = {
 };
 
 class SocketService {
-  private socket: Socket | null = null;
+  private socket: TypedClientSocket | null = null;
   private onToast: ToastCallback | null = null;
   private onSessionInvalidated: SessionInvalidatedCallback | null = null;
   private onConnectionStatusChange: ConnectionStatusCallback | null = null;
@@ -89,7 +90,7 @@ class SocketService {
       reconnectionDelay: this.reconnectionConfig.initialDelay,
       reconnectionDelayMax: this.reconnectionConfig.maxDelay,
       randomizationFactor: this.reconnectionConfig.jitter,
-    });
+    }) as TypedClientSocket;
 
     this.setupListeners();
   }

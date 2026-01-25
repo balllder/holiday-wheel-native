@@ -154,6 +154,16 @@ pub struct WebAuthnChallenge {
     pub expires_at: i64,
 }
 
+/// Stored OAuth state for CSRF protection during OAuth redirects
+#[derive(Debug, Clone)]
+pub struct OAuthStateData {
+    pub state: String,
+    pub user_data: String,      // JSON data (redirect_uri, etc.)
+    pub provider: String,       // 'apple', 'google', etc.
+    pub created_at: i64,
+    pub expires_at: i64,
+}
+
 // ========== PUZZLE PACK TYPES ==========
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
@@ -308,7 +318,13 @@ impl Database {
     }
 
     /// Create a new user
+    ///
+    /// The verification_token is hashed (SHA-256) before storage for security.
+    /// The caller should keep the plaintext token to send to the user.
     pub async fn create_user(&self, user: NewUser) -> Result<i64, DbError> {
+        // Hash the verification token before storing
+        let token_hash = hash_token(&user.verification_token);
+
         let result = sqlx::query(
             r#"
             INSERT INTO users (email, password_hash, display_name, verification_token,
@@ -319,7 +335,7 @@ impl Database {
         .bind(user.email.to_lowercase())
         .bind(&user.password_hash)
         .bind(&user.display_name)
-        .bind(&user.verification_token)
+        .bind(&token_hash)
         .bind(user.verification_token_expires)
         .bind(now_secs())
         .bind(user.avatar_id.clamp(1, 12)) // Validate avatar_id range
@@ -348,13 +364,17 @@ impl Database {
     }
 
     /// Get user by verification token
+    ///
+    /// The provided token is hashed before comparison since tokens are
+    /// stored as hashes for security.
     pub async fn get_user_by_verification_token(
         &self,
         token: &str,
     ) -> Result<Option<User>, DbError> {
+        let token_hash = hash_token(token);
         let user =
             sqlx::query_as::<_, User>("SELECT * FROM users WHERE verification_token = ?")
-                .bind(token)
+                .bind(token_hash)
                 .fetch_optional(&self.pool)
                 .await?;
         Ok(user)
@@ -429,14 +449,18 @@ impl Database {
     }
 
     /// Set password reset token
+    ///
+    /// The token is hashed (SHA-256) before storage for security.
+    /// The caller should keep the plaintext token to send to the user.
     pub async fn set_password_reset_token(
         &self,
         user_id: i64,
         token: &str,
         expires: i64,
     ) -> Result<(), DbError> {
+        let token_hash = hash_token(token);
         sqlx::query("UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?")
-            .bind(token)
+            .bind(token_hash)
             .bind(expires)
             .bind(user_id)
             .execute(&self.pool)
@@ -457,16 +481,20 @@ impl Database {
     }
 
     /// Set verification token (for resending)
+    ///
+    /// The token is hashed (SHA-256) before storage for security.
+    /// The caller should keep the plaintext token to send to the user.
     pub async fn set_verification_token(
         &self,
         user_id: i64,
         token: &str,
         expires: i64,
     ) -> Result<(), DbError> {
+        let token_hash = hash_token(token);
         sqlx::query(
             "UPDATE users SET verification_token = ?, verification_token_expires = ?, verified = 0 WHERE id = ?",
         )
-        .bind(token)
+        .bind(token_hash)
         .bind(expires)
         .bind(user_id)
         .execute(&self.pool)
@@ -1188,6 +1216,91 @@ impl Database {
     /// Clean up expired challenges
     pub async fn cleanup_expired_challenges(&self) -> Result<u64, DbError> {
         let result = sqlx::query("DELETE FROM webauthn_challenges WHERE expires_at < ?")
+            .bind(now_secs())
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected())
+    }
+
+    // ========== OAUTH STATE METHODS ==========
+
+    /// OAuth state expiration: 10 minutes in seconds
+    const OAUTH_STATE_EXPIRATION_SECS: i64 = 10 * 60;
+
+    /// Store OAuth state for CSRF protection during OAuth redirects
+    ///
+    /// The state is stored with a 10-minute expiration time.
+    pub async fn store_oauth_state(
+        &self,
+        state: &str,
+        user_data: &str,
+        provider: &str,
+    ) -> Result<(), DbError> {
+        let now = now_secs();
+        sqlx::query(
+            r#"
+            INSERT INTO oauth_states (state, user_data, provider, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(state)
+        .bind(user_data)
+        .bind(provider)
+        .bind(now)
+        .bind(now + Self::OAUTH_STATE_EXPIRATION_SECS)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Get and delete an OAuth state (one-time use)
+    ///
+    /// Returns None if state not found or expired.
+    /// The state is always deleted (consumed) after retrieval.
+    pub async fn get_and_delete_oauth_state(
+        &self,
+        state: &str,
+    ) -> Result<Option<OAuthStateData>, DbError> {
+        // First get the state
+        let row = sqlx::query(
+            "SELECT state, user_data, provider, created_at, expires_at FROM oauth_states WHERE state = ?",
+        )
+        .bind(state)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(row) = row {
+            let state_data = OAuthStateData {
+                state: row.get("state"),
+                user_data: row.get("user_data"),
+                provider: row.get("provider"),
+                created_at: row.get("created_at"),
+                expires_at: row.get("expires_at"),
+            };
+
+            // Delete it (one-time use)
+            sqlx::query("DELETE FROM oauth_states WHERE state = ?")
+                .bind(&state_data.state)
+                .execute(&self.pool)
+                .await?;
+
+            // Check if expired
+            if state_data.expires_at < now_secs() {
+                return Ok(None);
+            }
+
+            Ok(Some(state_data))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Clean up expired OAuth states
+    ///
+    /// This should be called periodically to prevent accumulation of
+    /// abandoned OAuth states.
+    pub async fn cleanup_expired_oauth_states(&self) -> Result<u64, DbError> {
+        let result = sqlx::query("DELETE FROM oauth_states WHERE expires_at < ?")
             .bind(now_secs())
             .execute(&self.pool)
             .await?;
@@ -2025,6 +2138,100 @@ mod tests {
         assert!(challenge.is_none());
     }
 
+    // ========== OAUTH STATE TESTS ==========
+
+    #[tokio::test]
+    async fn test_store_and_get_oauth_state() {
+        let db = create_test_db().await;
+
+        let user_data = r#"{"redirect_uri":"/lobby"}"#;
+        db.store_oauth_state("state-abc", user_data, "apple")
+            .await
+            .unwrap();
+
+        // Get and delete state
+        let state = db.get_and_delete_oauth_state("state-abc").await.unwrap();
+        assert!(state.is_some());
+        let state = state.unwrap();
+        assert_eq!(state.state, "state-abc");
+        assert_eq!(state.user_data, user_data);
+        assert_eq!(state.provider, "apple");
+
+        // State should be deleted (one-time use)
+        let state_again = db.get_and_delete_oauth_state("state-abc").await.unwrap();
+        assert!(state_again.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_oauth_state_not_found() {
+        let db = create_test_db().await;
+
+        // Non-existent state should return None
+        let state = db.get_and_delete_oauth_state("nonexistent").await.unwrap();
+        assert!(state.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_expired_oauth_states() {
+        let db = create_test_db().await;
+
+        // Store a valid state
+        db.store_oauth_state("valid-state", r#"{"redirect_uri":"/lobby"}"#, "apple")
+            .await
+            .unwrap();
+
+        // Insert an expired state directly using raw SQL
+        // (We need to bypass the normal store method to insert an expired state)
+        sqlx::query(
+            r#"
+            INSERT INTO oauth_states (state, user_data, provider, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind("expired-state")
+        .bind(r#"{"redirect_uri":"/old"}"#)
+        .bind("google")
+        .bind(0) // created long ago
+        .bind(1) // expired at timestamp 1 (1970)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+        // Cleanup should remove expired state
+        let deleted = db.cleanup_expired_oauth_states().await.unwrap();
+        assert!(deleted >= 1, "Should have deleted at least one expired state");
+
+        // Expired state should be gone
+        let expired = db.get_and_delete_oauth_state("expired-state").await.unwrap();
+        assert!(expired.is_none());
+
+        // Valid state should still exist
+        let valid = db.get_and_delete_oauth_state("valid-state").await.unwrap();
+        assert!(valid.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_oauth_state_multiple_providers() {
+        let db = create_test_db().await;
+
+        // Store states for different providers
+        db.store_oauth_state("state-apple", r#"{"redirect_uri":"/apple"}"#, "apple")
+            .await
+            .unwrap();
+        db.store_oauth_state("state-google", r#"{"redirect_uri":"/google"}"#, "google")
+            .await
+            .unwrap();
+
+        // Both should be retrievable
+        let apple = db.get_and_delete_oauth_state("state-apple").await.unwrap();
+        assert!(apple.is_some());
+        assert_eq!(apple.unwrap().provider, "apple");
+
+        let google = db.get_and_delete_oauth_state("state-google").await.unwrap();
+        assert!(google.is_some());
+        assert_eq!(google.unwrap().provider, "google");
+    }
+
     // ========== ROOM CONFIG TESTS ==========
 
     #[tokio::test]
@@ -2234,14 +2441,18 @@ mod tests {
             .await
             .unwrap();
 
-        // Set reset token
-        db.set_password_reset_token(user_id, "reset-token-123", 9999999999)
+        // Set reset token (plaintext goes in, hash gets stored)
+        let plaintext_token = "reset-token-123";
+        db.set_password_reset_token(user_id, plaintext_token, 9999999999)
             .await
             .unwrap();
 
-        // Verify reset token was set
+        // Verify reset token was set (as a hash, not plaintext)
         let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
-        assert_eq!(user.reset_token, Some("reset-token-123".to_string()));
+        // Token should be stored as a SHA-256 hash (64 hex chars)
+        assert!(user.reset_token.is_some());
+        assert_eq!(user.reset_token.as_ref().unwrap().len(), 64); // SHA-256 hex length
+        assert_ne!(user.reset_token, Some(plaintext_token.to_string())); // Not plaintext
         assert_eq!(user.reset_token_expires, Some(9999999999));
 
         // Update password (should clear reset token)
@@ -2301,15 +2512,24 @@ mod tests {
         let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
         assert!(user.verified);
 
-        // Resend verification (set new token)
-        db.set_verification_token(user_id, "new-token", 9999999999)
+        // Resend verification (set new token - gets stored as hash)
+        let new_token = "new-token";
+        db.set_verification_token(user_id, new_token, 9999999999)
             .await
             .unwrap();
 
         let user = db.get_user_by_id(user_id).await.unwrap().unwrap();
         assert!(!user.verified); // Should be unverified again
-        assert_eq!(user.verification_token, Some("new-token".to_string()));
+        // Token should be stored as a SHA-256 hash (64 hex chars)
+        assert!(user.verification_token.is_some());
+        assert_eq!(user.verification_token.as_ref().unwrap().len(), 64);
+        assert_ne!(user.verification_token, Some(new_token.to_string())); // Not plaintext
         assert_eq!(user.verification_token_expires, Some(9999999999));
+
+        // Verify we can still look up user by the plaintext token
+        let found = db.get_user_by_verification_token(new_token).await.unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, user_id);
     }
 
     #[tokio::test]

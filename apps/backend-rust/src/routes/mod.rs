@@ -8533,6 +8533,8 @@ mod tests {
         let db = Database::new(&path).await.unwrap();
         let email = EmailService::from_env();
         let game_manager = GameManager::new();
+        // Set valid HOST_CODE for tests (required since HOST_CODE security hardening)
+        std::env::set_var("HOST_CODE", "test-secure-code-12345");
         let config = Config::from_env_no_dotenv().unwrap();
 
         Arc::new(AppState {
@@ -8542,6 +8544,7 @@ mod tests {
             io: OnceCell::new(),
             user_sockets: RwLock::new(HashMap::new()),
             config,
+            claim_host_limits: RwLock::new(HashMap::new()),
         })
     }
 

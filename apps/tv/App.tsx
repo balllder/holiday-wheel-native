@@ -7,7 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuthStore } from '@holiday-wheel/shared';
+import { useAuthStore, ErrorBoundary } from '@holiday-wheel/shared';
 import { TVNavigator } from './src/navigation/TVNavigator';
 
 function App(): React.JSX.Element {
@@ -44,9 +44,11 @@ function App(): React.JSX.Element {
   }
 
   return (
-    <SafeAreaProvider>
-      <TVNavigator />
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <TVNavigator />
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 
