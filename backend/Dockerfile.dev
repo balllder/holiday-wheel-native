@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1.4
+
+#=============================================================================
+# Development Dockerfile with Hot-Reload
+# This is optimized for fast iteration, not production deployment
+#=============================================================================
+
+FROM rust:1.75-alpine AS dev
+
+# Install development dependencies
+RUN apk add --no-cache \
+    musl-dev \
+    pkgconfig \
+    openssl-dev \
+    openssl-libs-static
+
+# Install cargo-watch for hot-reload
+RUN cargo install cargo-watch
+
+WORKDIR /app
+
+# Pre-build dependencies for faster startup
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs && \
+    cargo build && \
+    rm -rf src
+
+# Source code will be mounted via volume
+# This allows hot-reload without rebuilding the image
+
+EXPOSE 3000
+
+# Default command (can be overridden)
+CMD ["cargo", "watch", "-x", "run"]

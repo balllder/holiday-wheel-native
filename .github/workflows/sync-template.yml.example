@@ -1,0 +1,143 @@
+# TEMPLATE: Copy this file to your project repository
+# Location: .github/workflows/sync-template.yml
+#
+# This workflow automatically syncs updates from project-starter
+# when a notification issue is created.
+
+name: Sync Project-Starter Updates
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  auto-sync:
+    # Only run when issue is from template update notification
+    if: contains(github.event.issue.title, 'Project-Starter Updates Available')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Check if .project-starter exists
+        id: check
+        run: |
+          if [ -d ".project-starter" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Add project-starter as subtree (first time)
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          git subtree add --prefix=.project-starter \
+            https://github.com/${{ github.repository_owner }}/project-starter.git main --squash
+
+      - name: Pull latest updates
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          git subtree pull --prefix=.project-starter \
+            https://github.com/${{ github.repository_owner }}/project-starter.git main --squash || {
+            echo "Manual merge required - conflicts detected"
+            exit 0
+          }
+
+      - name: Copy relevant updates
+        run: |
+          # Copy documentation updates (customize as needed)
+          mkdir -p docs/testing
+          mkdir -p docs/methodology
+
+          [ -f .project-starter/docs/testing/API_TESTING_REQUIREMENTS.md ] && \
+            cp .project-starter/docs/testing/API_TESTING_REQUIREMENTS.md docs/testing/ || true
+
+          [ -f .project-starter/docs/testing/TESTING_GUIDE.md ] && \
+            cp .project-starter/docs/testing/TESTING_GUIDE.md docs/testing/ || true
+
+          [ -f .project-starter/docs/methodology/SHARING_STRATEGY.md ] && \
+            cp .project-starter/docs/methodology/SHARING_STRATEGY.md docs/methodology/ || true
+
+      - name: Check if changes exist
+        id: changes
+        run: |
+          git add -A
+          if git diff --staged --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'docs: sync project-starter updates'
+          branch: sync/project-starter
+          delete-branch: true
+          title: '📋 Sync project-starter updates'
+          body: |
+            ## Project-Starter Updates
+
+            This PR syncs the latest updates from [project-starter](https://github.com/${{ github.repository_owner }}/project-starter).
+
+            ### Changes Included
+            - Updated testing documentation
+            - Updated methodology documentation
+            - Latest best practices
+
+            ### Review Checklist
+            - [ ] Review changes to documentation
+            - [ ] Verify examples match our tech stack
+            - [ ] Update project-specific customizations
+            - [ ] Test that updated guidelines work for our project
+
+            ### Related Issue
+            Closes #${{ github.event.issue.number }}
+
+            ---
+            *This PR was automatically created in response to template updates.*
+          labels: template-sync, documentation, automated
+
+      - name: Comment on issue
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '✅ Automatic sync completed! Created PR for review: #' + context.payload.pull_request.number
+            });
+
+      - name: Close issue if no changes
+        if: steps.changes.outputs.has_changes == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: 'ℹ️ No changes to sync - already up to date!'
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed'
+            });

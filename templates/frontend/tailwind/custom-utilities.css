@@ -1,0 +1,287 @@
+/**
+ * Custom Tailwind Utilities
+ *
+ * NAMING CONVENTION: Use project prefix (e.g., ps-, rf-, app-)
+ * Example: .ps-card-hover, .rf-gradient-primary
+ *
+ * Replace "ps-" with your project prefix throughout this file.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================================
+   CUSTOM UTILITIES LAYER
+   ============================================================================ */
+
+@layer utilities {
+  /* -------------------------------------------------------------------------
+     HOVER EFFECTS
+     ------------------------------------------------------------------------- */
+
+  /* Card hover effect with scale and shadow */
+  .ps-card-hover {
+    @apply transition-all duration-200 hover:shadow-lg hover:scale-[1.02];
+  }
+
+  /* Button hover effect */
+  .ps-button-hover {
+    @apply transition-colors duration-150 hover:brightness-110;
+  }
+
+  /* Image hover zoom */
+  .ps-image-zoom {
+    @apply transition-transform duration-300 hover:scale-110;
+  }
+
+  /* -------------------------------------------------------------------------
+     TEXT UTILITIES
+     ------------------------------------------------------------------------- */
+
+  /* Text balance (CSS Text Level 4) */
+  .ps-text-balance {
+    text-wrap: balance;
+  }
+
+  /* Text pretty (CSS Text Level 4) */
+  .ps-text-pretty {
+    text-wrap: pretty;
+  }
+
+  /* Truncate with custom lines */
+  .ps-line-clamp-7 {
+    display: -webkit-box;
+    -webkit-line-clamp: 7;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .ps-line-clamp-8 {
+    display: -webkit-box;
+    -webkit-line-clamp: 8;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* -------------------------------------------------------------------------
+     GRADIENTS
+     ------------------------------------------------------------------------- */
+
+  /* Primary gradient */
+  .ps-gradient-primary {
+    @apply bg-gradient-to-r from-blue-600 to-blue-800;
+  }
+
+  /* Secondary gradient */
+  .ps-gradient-secondary {
+    @apply bg-gradient-to-r from-purple-600 to-pink-600;
+  }
+
+  /* Success gradient */
+  .ps-gradient-success {
+    @apply bg-gradient-to-r from-green-500 to-emerald-600;
+  }
+
+  /* Danger gradient */
+  .ps-gradient-danger {
+    @apply bg-gradient-to-r from-red-500 to-rose-600;
+  }
+
+  /* Subtle gradient overlay */
+  .ps-gradient-overlay {
+    background: linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0.7) 100%
+    );
+  }
+
+  /* -------------------------------------------------------------------------
+     SCROLLBAR STYLING
+     ------------------------------------------------------------------------- */
+
+  /* Thin scrollbar */
+  .ps-scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.gray.400') transparent;
+  }
+
+  .ps-scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .ps-scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .ps-scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: theme('colors.gray.400');
+    border-radius: 4px;
+  }
+
+  .ps-scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: theme('colors.gray.500');
+  }
+
+  /* Hide scrollbar but keep scrollable */
+  .ps-scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .ps-scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* -------------------------------------------------------------------------
+     GLASSMORPHISM
+     ------------------------------------------------------------------------- */
+
+  /* Glass card effect */
+  .ps-glass {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20;
+  }
+
+  .ps-glass-dark {
+    @apply bg-black/10 backdrop-blur-lg border border-black/20;
+  }
+
+  /* -------------------------------------------------------------------------
+     FOCUS STATES
+     ------------------------------------------------------------------------- */
+
+  /* Custom focus ring */
+  .ps-focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2;
+  }
+
+  .ps-focus-ring-inset {
+    @apply focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500;
+  }
+}
+
+/* ============================================================================
+   CUSTOM COMPONENTS LAYER
+   ============================================================================ */
+
+@layer components {
+  /* -------------------------------------------------------------------------
+     SKELETON LOADERS
+     ------------------------------------------------------------------------- */
+
+  @keyframes ps-shimmer {
+    0% {
+      background-position: -1000px 0;
+    }
+    100% {
+      background-position: 1000px 0;
+    }
+  }
+
+  .ps-skeleton {
+    @apply bg-gray-200 dark:bg-gray-700;
+    animation: ps-shimmer 2s infinite linear;
+    background: linear-gradient(
+      to right,
+      #f0f0f0 0%,
+      #e0e0e0 20%,
+      #f0f0f0 40%,
+      #f0f0f0 100%
+    );
+    background-size: 1000px 100%;
+  }
+
+  .dark .ps-skeleton {
+    background: linear-gradient(
+      to right,
+      #374151 0%,
+      #4b5563 20%,
+      #374151 40%,
+      #374151 100%
+    );
+    background-size: 1000px 100%;
+  }
+
+  /* -------------------------------------------------------------------------
+     CUSTOM ALERTS
+     ------------------------------------------------------------------------- */
+
+  .ps-alert {
+    @apply p-4 rounded-lg border flex items-start gap-3;
+  }
+
+  .ps-alert-info {
+    @apply ps-alert bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-200;
+  }
+
+  .ps-alert-success {
+    @apply ps-alert bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200;
+  }
+
+  .ps-alert-warning {
+    @apply ps-alert bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200;
+  }
+
+  .ps-alert-error {
+    @apply ps-alert bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200;
+  }
+
+  /* -------------------------------------------------------------------------
+     CUSTOM BADGES
+     ------------------------------------------------------------------------- */
+
+  .ps-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .ps-badge-primary {
+    @apply ps-badge bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200;
+  }
+
+  .ps-badge-secondary {
+    @apply ps-badge bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200;
+  }
+
+  .ps-badge-success {
+    @apply ps-badge bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200;
+  }
+
+  .ps-badge-danger {
+    @apply ps-badge bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200;
+  }
+}
+
+/* ============================================================================
+   CUSTOM BASE STYLES
+   ============================================================================ */
+
+@layer base {
+  /* Custom focus styles for accessibility */
+  :focus-visible {
+    @apply outline-none ring-2 ring-blue-500 ring-offset-2;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Custom scrollbar for webkit browsers */
+  ::-webkit-scrollbar {
+    width: 12px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-100 dark:bg-gray-800;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-400 dark:bg-gray-600 rounded-lg;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-500 dark:bg-gray-500;
+  }
+}
