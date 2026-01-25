@@ -53,6 +53,7 @@ impl MetricsState {
     }
 
     /// Get current active connections count
+    #[allow(dead_code)]
     pub fn get_connections(&self) -> u64 {
         self.active_connections.load(Ordering::SeqCst)
     }

@@ -5,7 +5,6 @@
 
 use axum::{
     body::Body,
-    extract::ConnectInfo,
     http::{Request, Response, StatusCode},
     response::IntoResponse,
 };
@@ -15,7 +14,6 @@ use governor::{
     Quota, RateLimiter,
 };
 use std::{
-    net::SocketAddr,
     num::NonZeroU32,
     sync::Arc,
     task::{Context, Poll},

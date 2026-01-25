@@ -1988,7 +1988,7 @@ async fn admin_get_table_data(
     }
 
     let page = params.page.unwrap_or(1).max(1);
-    let page_size = params.page_size.unwrap_or(50).min(500).max(1);
+    let page_size = params.page_size.unwrap_or(50).clamp(1, 500);
 
     match state.db.get_table_data(&table_name, page, page_size).await {
         Ok((columns, rows, total_count)) => (StatusCode::OK, Json(TableDataResponse {

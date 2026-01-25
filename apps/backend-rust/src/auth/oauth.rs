@@ -118,6 +118,7 @@ pub fn routes() -> Router<Arc<AppState>> {
 
 // Response from Google's userinfo endpoint (for access token flow)
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct GoogleUserInfo {
     sub: String,
     email: Option<String>,
@@ -762,7 +763,7 @@ async fn apple_callback(
 
     // Generate auth token
     let token = Alphanumeric.sample_string(&mut rand::thread_rng(), 32);
-    if let Err(_) = state.db.set_remember_token(user_id, &token).await {
+    if state.db.set_remember_token(user_id, &token).await.is_err() {
         return Redirect::to("/?error=session_error").into_response();
     }
     let _ = state.db.update_last_login(user_id).await;

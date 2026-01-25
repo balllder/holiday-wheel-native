@@ -199,7 +199,7 @@ impl Default for BonusState {
 }
 
 /// Game over state
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GameOverState {
     /// Index of the winning player (highest total score)
     pub winner_idx: Option<usize>,
@@ -211,18 +211,6 @@ pub struct GameOverState {
     pub bonus_won: bool,
     /// Timestamp when game over will auto-reset to pregame (Unix timestamp in seconds)
     pub reset_at: Option<f64>,
-}
-
-impl Default for GameOverState {
-    fn default() -> Self {
-        Self {
-            winner_idx: None,
-            winner_name: None,
-            winner_score: 0,
-            bonus_won: false,
-            reset_at: None,
-        }
-    }
 }
 
 /// Default game over display time in seconds before auto-reset

@@ -18,6 +18,7 @@ pub const REQUEST_ID_HEADER: &str = "x-request-id";
 
 /// Extension type for storing request ID in request extensions
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct RequestId(pub String);
 
 /// Middleware that generates a unique request ID for each request.
@@ -69,6 +70,7 @@ pub async fn request_id_middleware(mut request: Request<Body>, next: Next) -> Re
 }
 
 /// Get the current request ID from the tracing span, if available
+#[allow(dead_code)]
 pub fn current_request_id() -> Option<String> {
     Span::current()
         .field("request_id")

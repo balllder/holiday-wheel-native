@@ -403,11 +403,10 @@ impl Config {
         }
 
         // Check for host after scheme
-        let after_scheme = if url.starts_with("https://") {
-            &url[8..]
-        } else {
-            &url[7..]
-        };
+        let after_scheme = url
+            .strip_prefix("https://")
+            .or_else(|| url.strip_prefix("http://"))
+            .unwrap_or("");
 
         if after_scheme.is_empty() || after_scheme.starts_with('/') {
             return Err(ConfigError::InvalidUrl {

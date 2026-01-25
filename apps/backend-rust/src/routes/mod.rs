@@ -8513,7 +8513,7 @@ pub async fn admin() -> Html<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
 
     use axum::{body::Body, http::Request, Router, routing::get};
     use tower::ServiceExt;

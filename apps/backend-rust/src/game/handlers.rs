@@ -382,15 +382,18 @@ pub async fn get_user_avatar_id(state: &Arc<AppState>, user_id: i64) -> Option<i
 
 // ========== TESTABLE HELPER FUNCTIONS ==========
 // These functions extract handler logic for unit testing
+// Note: These are used in tests but not in the main app code
 
 /// Validate and process a room join request
 /// Returns the game state if successful
+#[allow(dead_code)]
 pub fn handle_join_room(manager: &GameManager, room: &str) -> Option<super::state::GameState> {
     manager.get_room(room).map(|game| game.get_state())
 }
 
 /// Process a player joining the game
 /// Returns (player_idx, is_reconnect, player_name)
+#[allow(dead_code)]
 pub fn handle_join_game(
     manager: &mut GameManager,
     room: &str,
@@ -426,6 +429,7 @@ pub fn handle_join_game(
 
 /// Process host claim request
 /// Returns true if host was granted
+#[allow(dead_code)]
 pub fn handle_claim_host(
     manager: &mut super::GameManager,
     room: &str,
@@ -444,6 +448,7 @@ pub fn handle_claim_host(
 
 /// Process spin request
 /// Returns Some(wedge, message) if spin was successful
+#[allow(dead_code)]
 pub fn handle_spin(
     manager: &mut super::GameManager,
     room: &str,
@@ -477,6 +482,7 @@ pub fn handle_spin(
 
 /// Process guess consonant request
 /// Returns (result_message, should_broadcast)
+#[allow(dead_code)]
 pub fn handle_guess(
     manager: &mut super::GameManager,
     room: &str,
@@ -534,6 +540,7 @@ pub fn handle_guess(
 
 /// Process solve attempt
 /// Returns (solved, message, auto_advance_context)
+#[allow(dead_code)]
 pub fn handle_solve(
     manager: &mut super::GameManager,
     room: &str,
@@ -625,6 +632,7 @@ pub fn handle_solve(
 
 /// Process buzz-in during toss-up
 /// Returns (player_idx, player_name) on success
+#[allow(dead_code)]
 pub fn handle_buzz(
     manager: &mut super::GameManager,
     room: &str,
