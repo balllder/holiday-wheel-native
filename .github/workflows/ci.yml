@@ -61,7 +61,9 @@ jobs:
         run: cd apps/backend-rust && cargo clippy -- -D warnings
 
       - name: Run tests
-        run: cd apps/backend-rust && cargo test
+        run: cd apps/backend-rust && cargo test -- --test-threads=1
+        env:
+          HOST_CODE: ${{ env.HOST_CODE }}
 
   lint-and-test:
     needs: [validate-embedded-js, backend-test]
